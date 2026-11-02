@@ -738,6 +738,7 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 - [API reference](https://pkg.go.dev/github.com/eugeneliukindev/gashe) on pkg.go.dev, and
   [REFERENCE.md](REFERENCE.md) in the repository.
+- [Changelog](CHANGELOG.md) of every release.
 - [Glossary](GLOSSARY.md) of the terms used here, and [Contributing](CONTRIBUTING.md).
 
 Under the [MIT license](LICENSE).

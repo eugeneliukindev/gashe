@@ -34,8 +34,10 @@ go work init . ./backend/redis ./backend/redis/integration ./codec/msgpack
 The integration module is never published, so its `go.mod` replaces the gashe modules with the
 local copies and always tests the code of the repository.
 
-To release, tag the root first (`v0.2.0`), then raise the version the other modules require, and
-tag them with their directory in front: `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`.
+To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the date, then
+tag the root first (`v0.2.0`), raise the version the other modules require, and tag them with
+their directory in front: `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`. Copy the section into
+the GitHub release of the tag.
 
 Domain terms are defined in [GLOSSARY.md](GLOSSARY.md). `REFERENCE.md` lists the public API; a test
 fails when an exported name is missing from it.
