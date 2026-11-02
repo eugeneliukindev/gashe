@@ -41,13 +41,19 @@ type DoneFunc func(err error)
 // call went. The breaker lives in the memory of this process: every process judges the dependency
 // by its own calls, and checking it costs no backend round trip.
 func (c *Cache) CircuitBreaker(key string, o BreakerOptions) (DoneFunc, error) {
-	if o.FailurePercent <= 0 || o.FailurePercent >= percent || o.Window <= 0 || o.OpenFor <= 0 ||
-		o.MinCalls < 0 || o.HalfOpenCalls < 0 {
-		return nil, fmt.Errorf(
-			"%w: CircuitBreaker needs FailurePercent 1..99, positive Window and OpenFor, "+
-				"non-negative MinCalls and HalfOpenCalls", ErrInvalidOptions)
+	if err := o.check(); err != nil {
+		return nil, err
 	}
 	return c.breakers.get(key).allow(o, time.Now())
+}
+
+func (o BreakerOptions) check() error {
+	if o.FailurePercent <= 0 || o.FailurePercent >= percent || o.Window <= 0 || o.OpenFor <= 0 ||
+		o.MinCalls < 0 || o.HalfOpenCalls < 0 {
+		return fmt.Errorf("%w: a breaker needs FailurePercent 1..99, positive Window and OpenFor, "+
+			"non-negative MinCalls and HalfOpenCalls", ErrInvalidOptions)
+	}
+	return nil
 }
 
 // breakers holds the state of every breaker key of a Cache.

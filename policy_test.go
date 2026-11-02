@@ -105,3 +105,12 @@ func TestGetOrLoadJitter(t *testing.T) {
 		t.Fatal("Jitter did not spread the TTLs")
 	}
 }
+
+func TestStaleIfSlowNeedsStaleIfError(t *testing.T) {
+	_, err := gashe.GetOrLoad(context.Background(), newCache(t), "k",
+		gashe.Policy[int]{TTL: time.Minute, StaleIfSlow: time.Second},
+		func(context.Context) (int, error) { return 1, nil })
+	if !errors.Is(err, gashe.ErrInvalidOptions) {
+		t.Fatalf("err = %v, want ErrInvalidOptions", err)
+	}
+}

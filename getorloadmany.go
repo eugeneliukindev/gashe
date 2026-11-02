@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"time"
 )
@@ -37,7 +38,7 @@ func GetOrLoadMany[V any](
 	if len(keys) == 0 {
 		return map[string]V{}, nil
 	}
-	l := loading[V]{c: c, o: o}
+	l := loading[V]{c: c, o: o, shape: c.shapeOf(reflect.TypeFor[V]())}
 	found, missing, err := l.readMany(ctx, keys)
 	if err != nil {
 		return load(ctx, keys)
@@ -45,7 +46,12 @@ func GetOrLoadMany[V any](
 	if len(missing) == 0 {
 		return found, nil
 	}
+	start := time.Now()
 	loaded, err := load(ctx, missing)
+	took := time.Since(start)
+	for _, k := range missing {
+		c.onResult(ctx, Outcome{Key: o.Prefix + k, Result: ResultMiss, Load: took})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +69,15 @@ func (l *loading[V]) readMany(
 	for i, k := range keys {
 		full[i] = l.o.Prefix + k
 	}
-	raws, err := l.c.backend.GetMany(ctx, append(full, l.tagKeys()...)...)
+	tagKeys := l.tagKeys()
+	raws, err := l.c.backend.GetMany(ctx, append(full, tagKeys...)...)
+	if err == nil {
+		l.gens, err = l.c.generations(ctx, tagKeys, raws[len(keys):])
+	}
 	if err != nil {
 		l.c.onError(ctx, fmt.Errorf("gashe: get many: %w", err))
 		return nil, nil, err
 	}
-	l.gens = generations(raws[len(keys):])
 	found = make(map[string]V, len(keys))
 	now := time.Now()
 	for i, k := range keys {
@@ -76,14 +85,13 @@ func (l *loading[V]) readMany(
 		if raws[i] != nil {
 			if err = l.c.decode(full[i], raws[i], &e); err != nil {
 				l.c.onError(ctx, err)
-			} else if !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) {
+			} else if l.usable(&e, now) {
 				found[k] = e.V
-				l.c.onResult(ctx, full[i], ResultHit)
+				l.c.onResult(ctx, Outcome{Key: full[i], Result: ResultHit})
 				continue
 			}
 		}
 		missing = append(missing, k)
-		l.c.onResult(ctx, full[i], ResultMiss)
 	}
 	return found, missing, nil
 }
@@ -106,7 +114,7 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 			continue
 		}
 		key := l.o.Prefix + k
-		raw, err := l.c.encode(key, entry[V]{At: time.Now().Add(fresh), V: v, G: l.gens}, fresh)
+		raw, err := l.c.encode(key, entry[V]{At: time.Now().Add(fresh), V: v, G: l.gens, T: l.shape}, fresh)
 		var back entry[V]
 		if err == nil {
 			err = l.c.decode(key, raw, &back)
@@ -125,4 +133,10 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 		}
 	}
 	return out
+}
+
+// usable reports whether e answers without loading: fresh, of the current tag generations and of
+// the current shape of V.
+func (l *loading[V]) usable(e *entry[V], now time.Time) bool {
+	return !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) && e.sameShape(l.shape)
 }

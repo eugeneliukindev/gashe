@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"sync"
 	"time"
 )
 
@@ -18,12 +19,16 @@ type Options struct {
 	// OnError receives errors the cache works around instead of returning them, such as a
 	// failing backend during GetOrLoad; each error names the operation and key. nil drops them.
 	OnError func(ctx context.Context, err error)
-	// OnResult receives how every GetOrLoad call was answered, with the stored key: use it to
-	// count hits and misses. nil drops them.
-	OnResult func(ctx context.Context, key string, r Result)
+	// OnResult receives how every GetOrLoad call, and every key of GetOrLoadMany, was answered:
+	// use it to count hits and misses and to time the loader. nil drops them.
+	OnResult func(ctx context.Context, o Outcome)
 	// LockPollInterval is how often Lock and LockOnMiss check whether a busy lock is free.
 	// 0 means 100ms.
 	LockPollInterval time.Duration
+	// Namespace is put in front of the keys the cache keeps for itself: tag counters, the locks
+	// of LockOnMiss and of background reloads, and rate limit counters. Change it when these could
+	// collide with your keys or when Redis ACLs grant keys by pattern. "" means "gashe:".
+	Namespace string
 }
 
 // Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits
@@ -32,10 +37,12 @@ type Cache struct {
 	backend  Backend
 	codec    Codec
 	onError  func(ctx context.Context, err error)
-	onResult func(ctx context.Context, key string, r Result)
+	onResult func(ctx context.Context, o Outcome)
 	lockPoll time.Duration
+	ns       string // Options.Namespace
 	calls    group
 	breakers breakers
+	shapes   sync.Map // reflect.Type to the uint64 of shapeOf
 	bg       background
 }
 
@@ -54,7 +61,7 @@ func New(b Backend, o Options) *Cache {
 		o.OnError = func(context.Context, error) {}
 	}
 	if o.OnResult == nil {
-		o.OnResult = func(context.Context, string, Result) {}
+		o.OnResult = func(context.Context, Outcome) {}
 	}
 	return &Cache{
 		backend:  b,
@@ -62,6 +69,7 @@ func New(b Backend, o Options) *Cache {
 		onError:  o.OnError,
 		onResult: o.OnResult,
 		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),
+		ns:       cmp.Or(o.Namespace, defaultNamespace),
 	}
 }
 

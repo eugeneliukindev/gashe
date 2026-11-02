@@ -36,3 +36,22 @@ func TestInvalidateTags(t *testing.T) {
 		t.Fatalf("after Reload: v%d, want the reloaded v4 kept with the current generation", got)
 	}
 }
+
+func TestEvictedTagCounterDoesNotRevalidateEntries(t *testing.T) {
+	ctx := context.Background()
+	c := newCache(t)
+	o := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"users"}}
+	calls, load := versions()
+
+	_, _ = gashe.GetOrLoad(ctx, c, "u", o, load)
+	if err := c.InvalidateTags(ctx, "users"); err != nil {
+		t.Fatal(err)
+	}
+	// The backend evicts the counter, as Redis may under maxmemory-policy allkeys-lru.
+	if _, err := c.Backend().Delete(ctx, "gashe:tag:users"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := gashe.GetOrLoad(ctx, c, "u", o, load); got != 2 || calls.Load() != 2 {
+		t.Fatalf("got v%d after the counter was evicted; the invalidated v1 came back", got)
+	}
+}

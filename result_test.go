@@ -12,7 +12,7 @@ func TestGetOrLoadOnResult(t *testing.T) {
 	ctx := context.Background()
 	var got []gashe.Result
 	c := gashe.New(newCache(t).Backend(), gashe.Options{
-		OnResult: func(_ context.Context, _ string, r gashe.Result) { got = append(got, r) },
+		OnResult: func(_ context.Context, o gashe.Outcome) { got = append(got, o.Result) },
 	})
 	o := gashe.Policy[int]{TTL: time.Hour, StaleIfError: time.Hour}
 	_, load := versions()

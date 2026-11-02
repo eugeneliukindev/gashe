@@ -1,7 +1,7 @@
 # gashe API reference
 
 Every exported function, method, type and field: what it takes and what it returns. When to use
-which strategy is explained in the [README](README.md#strategies). The same text is in the doc
+which strategy is explained in the [README](README.md#direct-calls). The same text is in the doc
 comments, so `go doc github.com/eugeneliukindev/gashe.GetOrLoad` shows it too.
 
 - [Common parameters](#common-parameters)
@@ -59,8 +59,9 @@ concurrent use. It does not close `b`. Panics if `b` is nil or `o.LockPollInterv
 type Options struct {
 	Codec            Codec
 	OnError          func(ctx context.Context, err error)
-	OnResult         func(ctx context.Context, key string, r Result)
+	OnResult         func(ctx context.Context, o Outcome)
 	LockPollInterval time.Duration
+	Namespace        string
 }
 ```
 
@@ -68,8 +69,9 @@ type Options struct {
 |---|---|---|
 | `Codec` | `JSON{}` | Turns values into bytes and back. |
 | `OnError` | errors are dropped | Receives errors the cache works around: a failed backend in `GetOrLoad`, `RateLimit`, a background reload. |
-| `OnResult` | not called | Receives how every `GetOrLoad` and every key of `GetOrLoadMany` was answered, with the stored key. |
+| `OnResult` | not called | Receives an `Outcome` for every `GetOrLoad` and every key of `GetOrLoadMany`, see [Result](#result). |
 | `LockPollInterval` | 100ms | How often `Lock` and `LockOnMiss` check a busy lock. |
+| `Namespace` | `"gashe:"` | Put in front of the keys the cache keeps for itself: tag counters (`tag:`), entry locks (`load:`, `refresh:`) and rate limit counters (`rate:sliding:`, `rate:fixed:`). |
 
 #### Cache.Shutdown
 
@@ -154,6 +156,7 @@ type Policy[V any] struct {
 	StaleWhileRevalidate time.Duration
 	StaleIfError         time.Duration
 	StaleIf              func(error) bool
+	StaleIfSlow          time.Duration
 	LockOnMiss           time.Duration
 	Negative             Negative
 	Tags                 []string
@@ -174,6 +177,7 @@ be set. Durations must not be negative.
 | `StaleWhileRevalidate` | How long after TTL a stale result is answered at once while one caller reloads it in the background. |
 | `StaleIfError` | How long after TTL a stale result answers a loader error. |
 | `StaleIf` | Which loader errors `StaleIfError` covers. nil means any. |
+| `StaleIfSlow` | How long a call waits for the loader while a stale result is within `StaleIfError`; after it, the stale result answers and the load goes on in the background. Needs `StaleIfError`. |
 | `LockOnMiss` | On a missing key, one process loads under a lock held at most this long; the others wait for its result. |
 | `Negative` | Caches "not found" errors, see below. |
 | `Tags` | The tags of the result; `InvalidateTags` with any of them makes it a miss. |
@@ -216,13 +220,20 @@ const (
 	ResultStaleWhileRevalidate // a stale result, reloaded in the background
 	ResultStaleIfError         // a stale result instead of a loader error
 	ResultNegativeHit          // a cached negative answer
+	ResultStaleIfSlow          // a stale result, because the loader took longer than StaleIfSlow
 )
 
 func (r Result) String() string
+
+type Outcome struct {
+	Key    string        // the stored key, with Policy.Prefix
+	Result Result        // how the call was answered
+	Load   time.Duration // how long the loader ran for this call; 0 on a hit
+}
 ```
 
-What `Options.OnResult` receives. `String` returns `"hit"`, `"miss"`, `"stale-while-revalidate"`,
-`"stale-if-error"` or `"negative-hit"`.
+`Options.OnResult` receives an `Outcome` for every answered call. `String` returns `"hit"`,
+`"miss"`, `"stale-while-revalidate"`, `"stale-if-error"`, `"negative-hit"` or `"stale-if-slow"`.
 
 ### Invalidation
 
@@ -423,6 +434,7 @@ type Backend interface {
 const NoExpiry time.Duration = -1
 
 func WithPrefix(b Backend, prefix string) Backend
+func WithBreaker(b Backend, o BreakerOptions) Backend
 ```
 
 `Backend` stores bytes; implement it for your own storage and check it with `backendtest.Run`. The
@@ -438,7 +450,10 @@ methods match the basic API on bytes, plus:
 
 `NoExpiry` is what `TTL` returns for an entry that never expires. `WithPrefix` returns a backend that
 keeps every key of `b` under `prefix`, for several services in one Redis; `Scan` yields keys without
-it.
+it. `WithBreaker` returns a backend that stops calling a failing `b` for a while, as `CircuitBreaker`
+does: an open breaker returns `ErrCircuitOpen` at once. Misses, wrong types and done contexts are not
+failures unless `o.IsFailure` says so; `Ping` and `Close` are not guarded. It panics on invalid
+options.
 
 ### Errors
 
@@ -452,7 +467,7 @@ Check them with `errors.Is`.
 | `ErrInvalidOptions` | a `Policy`, `BreakerOptions` or `Limit` is invalid. |
 | `ErrLockLost` | `Lease.Extend` finds the lock expired. |
 | `ErrRateLimited` | `RateLimit` refuses a call. |
-| `ErrCircuitOpen` | `CircuitBreaker` refuses a call. |
+| `ErrCircuitOpen` | `CircuitBreaker` or a `WithBreaker` backend refuses a call. |
 
 ## Package gashe/backend/memory
 
@@ -593,8 +608,9 @@ Rules:
   request that made them, never to concurrent ones.
 - A 5xx response is a loader error: `StaleIfError` answers it with the stored response.
 - Request `Cache-Control` and `Pragma` are ignored.
-- Responses get `ETag`, `Age` on a hit and `X-Cache: hit` or `miss`; a matching `If-None-Match`
-  gets `304`.
+- Responses get `ETag`, `Age` on a hit, and `Cache-Status` (RFC 9211): `gashe; hit`,
+  `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss` (not stored), `gashe; fwd=method` or
+  `gashe; fwd=request` (`Range` or `Authorization`). A matching `If-None-Match` gets `304`.
 
 ## Package gashe/backendtest
 

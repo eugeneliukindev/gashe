@@ -32,6 +32,11 @@ type Policy[V any] struct {
 	StaleIfError time.Duration
 	// StaleIf decides which loader errors StaleIfError covers. nil means any error.
 	StaleIf func(error) bool
+	// StaleIfSlow is how long a call waits for the loader while an old result is within
+	// StaleIfError. After it, the call answers with the old result, and the load goes on in the
+	// background and stores what it gets; meanwhile other calls answer with the old result at
+	// once. 0 means wait for the loader. It needs StaleIfError.
+	StaleIfSlow time.Duration
 	// LockOnMiss, when set, makes a missing key load under a lock: one process calls the loader,
 	// the others wait and take its result. The value is the longest the lock is held. The lock is
 	// shared by every process that uses the same backend.
@@ -65,12 +70,13 @@ func (o Policy[V]) check() error {
 		why    string
 	}{
 		{
-			negative(o.TTL, o.StaleWhileRevalidate, o.StaleIfError, o.LockOnMiss, o.Negative.TTL),
+			negative(o.TTL, o.StaleWhileRevalidate, o.StaleIfError, o.StaleIfSlow, o.LockOnMiss, o.Negative.TTL),
 			"durations must not be negative",
 		},
 		{o.Jitter < 0 || o.Jitter >= 1, "Jitter must be from 0 to less than 1"},
 		{o.TTL == 0 && o.TTLFunc == nil && o.keep() == 0, "set TTL, TTLFunc or a window, or nothing is ever stored"},
 		{o.Negative.If != nil && (o.Negative.Err == nil || o.Negative.TTL == 0), "Negative needs Err and TTL"},
+		{o.StaleIfSlow > 0 && o.StaleIfError == 0, "StaleIfSlow needs StaleIfError"},
 	} {
 		if rule.broken {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, rule.why)

@@ -149,7 +149,7 @@ func TestGetOrLoadMissLock(t *testing.T) {
 		if n := calls.Load(); n != 1 {
 			t.Fatalf("loader ran %d times for one miss, want 1", n)
 		}
-		if ok, _ := c.IsLocked(ctx, "k:load"); ok {
+		if ok, _ := c.IsLocked(ctx, "gashe:load:k"); ok {
 			t.Fatal("load lock left behind")
 		}
 	})

@@ -2,9 +2,20 @@ package gashe
 
 import (
 	"strconv"
+	"time"
 )
 
-// Result says how a GetOrLoad call was answered; Options.OnResult receives it.
+// Outcome is what Options.OnResult receives about one answered call.
+type Outcome struct {
+	// Key is the stored key, with Policy.Prefix.
+	Key string
+	// Result says how the call was answered.
+	Result Result
+	// Load is how long the loader ran for this call; 0 when it did not run, as on a hit.
+	Load time.Duration
+}
+
+// Result says how a GetOrLoad call was answered.
 type Result int
 
 const (
@@ -19,6 +30,9 @@ const (
 	ResultStaleIfError
 	// ResultNegativeHit is a cached negative answer.
 	ResultNegativeHit
+	// ResultStaleIfSlow is a stale stored result, answered because the loader took longer than
+	// StaleIfSlow; the load goes on in the background.
+	ResultStaleIfSlow
 )
 
 // String returns the name of r.
@@ -34,6 +48,8 @@ func (r Result) String() string {
 		return "stale-if-error"
 	case ResultNegativeHit:
 		return "negative-hit"
+	case ResultStaleIfSlow:
+		return "stale-if-slow"
 	}
 	return "Result(" + strconv.Itoa(int(r)) + ")"
 }

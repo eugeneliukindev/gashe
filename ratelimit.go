@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	fixedPrefix   = "rate_limit:"
-	slidingPrefix = "srl:"
 	// slidingWindows is how many fixed windows a sliding limit reads: the current and the last.
 	slidingWindows = 2
 )
@@ -58,7 +56,7 @@ func (l SlidingWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if l.Calls <= 0 || l.Per <= 0 {
 		return fmt.Errorf("%w: SlidingWindow needs positive Calls and Per", ErrInvalidOptions)
 	}
-	key = slidingPrefix + key
+	key = c.ownKey(spaceSliding, key)
 	now := time.Now()
 	window := now.UnixNano() / int64(l.Per)
 	current := key + ":" + strconv.FormatInt(window, 10)
@@ -85,7 +83,7 @@ func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if l.Calls <= 0 || l.Per <= 0 || l.BanFor < 0 {
 		return fmt.Errorf("%w: FixedWindow needs positive Calls and Per and a non-negative BanFor", ErrInvalidOptions)
 	}
-	key = fixedPrefix + key
+	key = c.ownKey(spaceFixed, key)
 	n, err := c.backend.Incr(ctx, key, 1, l.Per)
 	if err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: rate limit %q: %w", key, err))
