@@ -209,6 +209,8 @@ c := gashe.New(gasheredis.New(client), gashe.Options{})
 
 Notes:
 
+- Redis-compatible servers work through the same module: the integration tests pass on Redis 7.0,
+  Valkey 8, Dragonfly and KeyDB.
 - On a Cluster, `Keys`, `All` and `DeleteMatch` visit every master, and multi-key operations are
   sent one command per key, so keys may live in different slots.
 - `Keys` and `All` may yield a key more than once, as Redis `SCAN` does.
@@ -1106,7 +1108,9 @@ The repository holds three modules. Run every command in each of them.
 | `redis/integration/` | tests of `gashe/redis` against a real Redis | testcontainers-go, Docker |
 
 The integration module is separate so that testcontainers never reaches users of `gashe/redis`.
-Its tests start `redis:7.0.0` in Docker by themselves and fail if Docker is not available.
+Its tests start `redis:7.0.0` in Docker by themselves and fail if Docker is not available. Set
+`GASHE_REDIS_IMAGE` to run them against another server, for example
+`GASHE_REDIS_IMAGE=valkey/valkey:8 go test ./...`.
 
 The modules support Go 1.23 and newer, five releases at the moment. Tests that need
 `testing/synctest` are behind `//go:build go1.25`, so on Go 1.23 and 1.24 they are skipped and the

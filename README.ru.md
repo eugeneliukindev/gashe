@@ -210,6 +210,8 @@ c := gashe.New(gasheredis.New(client), gashe.Options{})
 
 Заметки:
 
+- Redis-совместимые серверы работают через тот же модуль: интеграционные тесты проходят на Redis 7.0,
+  Valkey 8, Dragonfly и KeyDB.
 - В Cluster `Keys`, `All` и `DeleteMatch` обходят все master-узлы, а операции с несколькими ключами
   отправляются по одной команде на ключ, поэтому ключи могут лежать в разных слотах.
 - `Keys` и `All` могут выдать ключ больше одного раза, как это делает Redis `SCAN`.
@@ -1117,6 +1119,8 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 Интеграционный модуль отдельный, чтобы testcontainers никогда не попал к пользователям
 `gashe/redis`. Его тесты сами поднимают `redis:7.0.0` в Docker и падают, если Docker недоступен.
+Задайте `GASHE_REDIS_IMAGE`, чтобы прогнать их на другом сервере, например
+`GASHE_REDIS_IMAGE=valkey/valkey:8 go test ./...`.
 
 Модули поддерживают Go 1.23 и новее, сейчас это пять версий. Тесты, которым нужен
 `testing/synctest`, стоят за `//go:build go1.25`, поэтому на Go 1.23 и 1.24 они пропускаются, а

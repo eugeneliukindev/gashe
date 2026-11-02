@@ -13,14 +13,15 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/backendtest"
 	"github.com/eugeneliukindev/gashe/memory"
 	"github.com/eugeneliukindev/gashe/nearcache"
 	gasheredis "github.com/eugeneliukindev/gashe/redis"
+	"github.com/eugeneliukindev/gashe/backendtest"
 )
 
-// redisImage is the oldest Redis the backend is tested against.
-const redisImage = "redis:7.0.0"
+// defaultImage is the oldest Redis the backend is tested against. GASHE_REDIS_IMAGE runs the tests
+// against another Redis-compatible server, such as valkey/valkey:8.
+const defaultImage = "redis:7.0.0"
 
 // addr is the address of the Redis container that TestMain starts for the whole package.
 var addr string
@@ -31,11 +32,15 @@ func TestMain(m *testing.M) {
 
 func run(m *testing.M) int {
 	ctx := context.Background()
+	image := os.Getenv("GASHE_REDIS_IMAGE")
+	if image == "" {
+		image = defaultImage
+	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        redisImage,
+			Image:        image,
 			ExposedPorts: []string{"6379/tcp"},
-			WaitingFor:   wait.ForLog("Ready to accept connections"),
+			WaitingFor:   wait.ForListeningPort("6379/tcp"),
 		},
 		Started: true,
 	})
