@@ -65,3 +65,41 @@ func (g Gzip) Unmarshal(data []byte, v any) error {
 	}
 	return g.Inner.Unmarshal(raw, v)
 }
+
+// Raw stores []byte and string values as they are, without the quotes and base64 of JSON, for
+// pages, images or payloads that are already encoded. Other values go to Inner; a nil Inner means
+// JSON. GetOrLoad stores its result inside a record of its own, so Raw helps only Get, Set and
+// the other basic calls.
+type Raw struct {
+	Inner Codec
+}
+
+// Marshal implements Codec.
+func (r Raw) Marshal(v any) ([]byte, error) {
+	switch v := v.(type) {
+	case []byte:
+		return v, nil
+	case string:
+		return []byte(v), nil
+	}
+	if r.Inner == nil {
+		return JSON{}.Marshal(v)
+	}
+	return r.Inner.Marshal(v)
+}
+
+// Unmarshal implements Codec.
+func (r Raw) Unmarshal(data []byte, v any) error {
+	switch v := v.(type) {
+	case *[]byte:
+		*v = bytes.Clone(data)
+		return nil
+	case *string:
+		*v = string(data)
+		return nil
+	}
+	if r.Inner == nil {
+		return JSON{}.Unmarshal(data, v)
+	}
+	return r.Inner.Unmarshal(data, v)
+}
