@@ -4,106 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"reflect"
 	"slices"
-	"strconv"
 	"time"
 )
 
 const (
 	refreshLockSuffix = ":refresh"
 	loadLockSuffix    = ":load"
-	tagPrefix         = "gashe:tag:"
 	// maxRefreshLock bounds the refresh lock and the background reload that holds it, so a
 	// reload that hangs or a refresher that dies blocks refreshes for at most this long.
 	maxRefreshLock = time.Minute
 )
-
-// Policy says how GetOrLoad caches results of type V. Define it once and pass it to
-// every call; the zero value of each field means "off".
-//
-// A stored result is fresh for TTL: it is answered without calling the loader. After TTL it is
-// old: StaleWhileRevalidate and StaleIfError say for how much longer it is still good enough. The
-// entry is kept for TTL plus the longer of the two windows.
-type Policy[V any] struct {
-	// TTL is how long a result is fresh. It may be 0 when a window is set: then every call
-	// either refreshes in the background (StaleWhileRevalidate) or calls the loader (StaleIfError).
-	TTL time.Duration
-	// TTLFunc, when set, picks TTL from the result. A negative TTL means "do not store".
-	TTLFunc func(V) time.Duration
-	// Jitter spreads TTLs randomly by up to this share, from 0 to 1 (0.1 means +-10%), so that
-	// entries stored together do not expire together.
-	Jitter float64
-	// StaleWhileRevalidate is how long after TTL an old result is still answered at once, while one
-	// caller reloads it in the background. The refresh lock is shared by every process that uses
-	// the same backend.
-	StaleWhileRevalidate time.Duration
-	// StaleIfError is how long after TTL an old result answers a loader error, so callers keep
-	// getting data while the source is down.
-	StaleIfError time.Duration
-	// StaleIf decides which loader errors StaleIfError covers. nil means any error.
-	StaleIf func(error) bool
-	// LockOnMiss, when set, makes a missing key load under a lock: one process calls the loader,
-	// the others wait and take its result. The value is the longest the lock is held. The lock is
-	// shared by every process that uses the same backend.
-	LockOnMiss time.Duration
-	// Negative caches answers like "not found", so lookups of missing data do not reach the
-	// source every time.
-	Negative Negative
-	// Tags lists the tags of a result; Cache.InvalidateTags of any of them makes it a miss. Tags
-	// are shared by every process that uses the same backend.
-	Tags []string
-	// CacheIf decides whether a result is stored. nil stores every successful result.
-	CacheIf func(V) bool
-	// Prefix is put in front of every key as is, separator included: "v2:" stores "v2:user:42".
-	Prefix string
-}
-
-// Negative caches loader errors that mean "there is no such data".
-type Negative struct {
-	// If picks the loader errors to cache. nil turns negative caching off.
-	If func(error) bool
-	// Err is the error GetOrLoad returns while the negative answer is cached. Return a sentinel
-	// your code already checks, such as sql.ErrNoRows.
-	Err error
-	// TTL is how long the negative answer is kept.
-	TTL time.Duration
-}
-
-// Result says how a GetOrLoad call was answered; Options.OnResult receives it.
-type Result int
-
-const (
-	// ResultHit is a fresh stored result.
-	ResultHit Result = iota + 1
-	// ResultMiss means the loader ran.
-	ResultMiss
-	// ResultStaleWhileRevalidate is a stale stored result, answered while it is reloaded in the
-	// background.
-	ResultStaleWhileRevalidate
-	// ResultStaleIfError is a stale stored result, answered instead of a loader error.
-	ResultStaleIfError
-	// ResultNegativeHit is a cached negative answer.
-	ResultNegativeHit
-)
-
-// String returns the name of r.
-func (r Result) String() string {
-	switch r {
-	case ResultHit:
-		return "hit"
-	case ResultMiss:
-		return "miss"
-	case ResultStaleWhileRevalidate:
-		return "stale-while-revalidate"
-	case ResultStaleIfError:
-		return "stale-if-error"
-	case ResultNegativeHit:
-		return "negative-hit"
-	}
-	return "Result(" + strconv.Itoa(int(r)) + ")"
-}
 
 // GetOrLoad returns the result stored under key, or calls load, stores its result and returns
 // it; o says when a stored result is still good enough. Stored results are shared by every
@@ -157,54 +69,6 @@ func Reload[V any](
 	}
 	l.gens = gens
 	return l.loadAndStore(ctx, true)
-}
-
-// InvalidateTags makes every result stored with one of tags a miss. Every tag has a generation
-// counter that a result remembers when it is stored; this bumps the counters, so it costs one
-// write per tag and no scan of the backend. Tags are shared by every process that uses the same
-// backend.
-func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error {
-	for _, tag := range tags {
-		if _, err := c.backend.Incr(ctx, tagPrefix+tag, 1, 0); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (o Policy[V]) check() error {
-	for _, rule := range []struct {
-		broken bool
-		why    string
-	}{
-		{
-			negative(o.TTL, o.StaleWhileRevalidate, o.StaleIfError, o.LockOnMiss, o.Negative.TTL),
-			"durations must not be negative",
-		},
-		{o.Jitter < 0 || o.Jitter >= 1, "Jitter must be from 0 to less than 1"},
-		{o.TTL == 0 && o.TTLFunc == nil && o.keep() == 0, "set TTL, TTLFunc or a window, or nothing is ever stored"},
-		{o.Negative.If != nil && (o.Negative.Err == nil || o.Negative.TTL == 0), "Negative needs Err and TTL"},
-	} {
-		if rule.broken {
-			return fmt.Errorf("%w: %s", ErrInvalidOptions, rule.why)
-		}
-	}
-	return nil
-}
-
-func negative(ds ...time.Duration) bool {
-	return slices.ContainsFunc(ds, func(d time.Duration) bool { return d < 0 })
-}
-
-// keep is how long an entry outlives its fresh period.
-func (o Policy[V]) keep() time.Duration { return max(o.StaleWhileRevalidate, o.StaleIfError) }
-
-// spread applies Jitter to d.
-func (o Policy[V]) spread(d time.Duration) time.Duration {
-	if o.Jitter == 0 || d <= 0 {
-		return d
-	}
-	return time.Duration(float64(d) * (1 + (rand.Float64()*2-1)*o.Jitter)) //nolint:gosec // jitter, not a secret
 }
 
 // entry is what GetOrLoad stores: the result, when it stops being fresh, the generations of its
@@ -301,35 +165,6 @@ func (l *loading[V]) read(ctx context.Context) (entry[V], error) {
 	return e, nil
 }
 
-func (l *loading[V]) readGens(ctx context.Context) ([]int64, error) {
-	if len(l.o.Tags) == 0 {
-		return nil, nil
-	}
-	raws, err := l.c.backend.GetMany(ctx, l.tagKeys()...)
-	if err != nil {
-		l.c.onError(ctx, fmt.Errorf("gashe: get tags of %q: %w", l.key, err))
-		return nil, err
-	}
-	return generations(raws), nil
-}
-
-func (l *loading[V]) tagKeys() []string {
-	keys := make([]string, len(l.o.Tags))
-	for i, g := range l.o.Tags {
-		keys[i] = tagPrefix + g
-	}
-	return keys
-}
-
-// generations parses tag counters; a missing counter is generation 0.
-func generations(raws [][]byte) []int64 {
-	gens := make([]int64, len(raws))
-	for i, raw := range raws {
-		gens[i], _ = strconv.ParseInt(string(raw), 10, 64)
-	}
-	return gens
-}
-
 // loadAndStore calls the loader and, if the backend is fine and the result qualifies, stores it.
 func (l *loading[V]) loadAndStore(ctx context.Context, backendOK bool) (V, error) {
 	v, err := l.load(ctx)
@@ -413,4 +248,43 @@ func (l *loading[V]) unlock(ctx context.Context, lease *Lease) {
 	if err := lease.Unlock(ctx); err != nil {
 		l.c.onError(ctx, fmt.Errorf("gashe: unlock %q: %w", lease.key, err))
 	}
+}
+
+// lookup returns the decoded value under key. ErrNotFound means a miss; an undecodable entry
+// counts as a miss too. Any other error is a backend failure and is already reported.
+func lookup[V any](ctx context.Context, c *Cache, key string) (V, error) {
+	var v V
+	raw, err := c.backend.Get(ctx, key)
+	if errors.Is(err, ErrNotFound) {
+		return v, ErrNotFound
+	}
+	if err != nil {
+		err = fmt.Errorf("gashe: get %q: %w", key, err)
+		c.onError(ctx, err)
+		return v, err
+	}
+	if err := c.decode(key, raw, &v); err != nil {
+		c.onError(ctx, err)
+		return v, ErrNotFound
+	}
+	return v, nil
+}
+
+// store saves v under key and returns v as it reads back from the cache, so callers see the
+// same value on a hit and on a miss. Failures are reported and leave v as it is.
+func store[V any](ctx context.Context, c *Cache, key string, v V, ttl time.Duration) V {
+	raw, err := c.encode(key, v, ttl)
+	if err != nil {
+		c.onError(ctx, err)
+		return v
+	}
+	var out V
+	if err := c.decode(key, raw, &out); err != nil {
+		c.onError(ctx, err)
+		return v
+	}
+	if err := c.backend.Set(ctx, key, raw, ttl); err != nil {
+		c.onError(ctx, fmt.Errorf("gashe: set %q: %w", key, err))
+	}
+	return out
 }

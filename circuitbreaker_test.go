@@ -38,3 +38,12 @@ func TestCircuitBreakerInvalid(t *testing.T) {
 		t.Fatalf("got %v, want ErrInvalidOptions", err)
 	}
 }
+
+func TestCircuitBreakerUsesNoBackend(t *testing.T) {
+	c := gashe.New(incrDown{Backend: lockDown{Backend: newCache(t).Backend()}}, gashe.Options{})
+	o := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute}
+	_ = through(c, o, errAPI)
+	if err := through(c, o, nil); !errors.Is(err, gashe.ErrCircuitOpen) {
+		t.Fatalf("got %v, want the breaker open without any backend", err)
+	}
+}

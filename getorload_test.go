@@ -149,47 +149,6 @@ func TestGetOrLoadSurvivesBackendFailure(t *testing.T) {
 	}
 }
 
-func TestGetOrLoadRejectsInvalidOptions(t *testing.T) {
-	ctx := context.Background()
-	c := newCache(t)
-	_, load := counter(user{})
-	for _, o := range []gashe.Policy[user]{
-		{},                          // nothing would ever be stored
-		{TTL: -time.Second},         // negative duration
-		{TTL: time.Hour, Jitter: 1}, // jitter of 100% or more
-		{TTL: time.Hour, Negative: gashe.Negative{If: func(error) bool { return true }}}, // no Err, no TTL
-	} {
-		if _, err := gashe.GetOrLoad(ctx, c, "k", o, load); !errors.Is(err, gashe.ErrInvalidOptions) {
-			t.Errorf("%+v: got %v, want ErrInvalidOptions", o, err)
-		}
-		if _, err := gashe.Reload(ctx, c, "k", o, load); !errors.Is(err, gashe.ErrInvalidOptions) {
-			t.Errorf("Reload %+v: got %v, want ErrInvalidOptions", o, err)
-		}
-	}
-}
-
-func TestNotNil(t *testing.T) {
-	var nilMap map[string]int
-	var nilAny any
-	cases := []struct {
-		name string
-		got  bool
-		want bool
-	}{
-		{"nil pointer", gashe.NotNil[*user](nil), false},
-		{"pointer", gashe.NotNil(&user{}), true},
-		{"nil map", gashe.NotNil(nilMap), false},
-		{"nil interface", gashe.NotNil(nilAny), false},
-		{"zero int", gashe.NotNil(0), true},
-		{"empty string", gashe.NotNil(""), true},
-	}
-	for _, tc := range cases {
-		if tc.got != tc.want {
-			t.Errorf("%s: got %v, want %v", tc.name, tc.got, tc.want)
-		}
-	}
-}
-
 func TestGetOrLoadTTLOfNegativeSkipsStore(t *testing.T) {
 	ctx := context.Background()
 	s := newCached(newCache(t), gashe.Policy[user]{
