@@ -23,11 +23,18 @@ const (
 
 var errOverflow = errors.New("memory: increment would overflow")
 
+// ErrTooLarge reports a value that does not fit into MaxBytes even alone; it is not stored.
+var ErrTooLarge = errors.New("memory: value larger than MaxBytes")
+
 // Options configures a memory Backend. The zero value is ready to use.
 type Options struct {
 	// MaxEntries is the maximum number of entries, not bytes; the least recently used one is
 	// evicted when it is exceeded. 0 means 1000.
 	MaxEntries int
+	// MaxBytes is the most bytes keys and values may take together; the least recently used
+	// entries are evicted to stay under it. It counts the bytes of keys and values only, not the
+	// overhead of the Go runtime, so leave headroom. 0 means no limit.
+	MaxBytes int64
 	// PurgeInterval is how often expired entries are purged in the background.
 	// 0 means one second; a negative value turns the purge off. Expired entries are never
 	// returned either way.
@@ -36,10 +43,12 @@ type Options struct {
 
 // Backend is an in-process gashe.Backend. Create it with New and stop it with Close.
 type Backend struct {
-	mu    sync.Mutex
-	size  int
-	items map[string]*list.Element
-	lru   *list.List // front is the most recently used entry
+	mu         sync.Mutex
+	maxEntries int
+	maxBytes   int64
+	used       int64 // bytes of all keys and values
+	items      map[string]*list.Element
+	lru        *list.List // front is the most recently used entry
 
 	stop      chan struct{}
 	done      chan struct{}
@@ -54,10 +63,11 @@ type entry struct {
 
 var _ gashe.Backend = (*Backend)(nil)
 
-// New returns a memory Backend and starts its background purge. It panics on a negative MaxEntries.
+// New returns a memory Backend and starts its background purge. It panics on a negative
+// MaxEntries or MaxBytes.
 func New(o Options) *Backend {
-	if o.MaxEntries < 0 {
-		panic("memory: negative MaxEntries")
+	if o.MaxEntries < 0 || o.MaxBytes < 0 {
+		panic("memory: negative MaxEntries or MaxBytes")
 	}
 	if o.MaxEntries == 0 {
 		o.MaxEntries = defaultMaxEntries
@@ -66,11 +76,12 @@ func New(o Options) *Backend {
 		o.PurgeInterval = defaultPurgeInterval
 	}
 	m := &Backend{
-		size:  o.MaxEntries,
-		items: make(map[string]*list.Element),
-		lru:   list.New(),
-		stop:  make(chan struct{}),
-		done:  make(chan struct{}),
+		maxEntries: o.MaxEntries,
+		maxBytes:   o.MaxBytes,
+		items:      make(map[string]*list.Element),
+		lru:        list.New(),
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 	if o.PurgeInterval < 0 {
 		close(m.done)
@@ -115,8 +126,7 @@ func (m *Backend) GetMany(_ context.Context, keys ...string) ([][]byte, error) {
 func (m *Backend) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.put(key, bytes.Clone(value), expiry(ttl))
-	return nil
+	return m.put(key, bytes.Clone(value), expiry(ttl))
 }
 
 // SetMany implements gashe.Backend.
@@ -124,10 +134,13 @@ func (m *Backend) SetMany(_ context.Context, values map[string][]byte, ttl time.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	at := expiry(ttl)
+	var tooLarge error
 	for key, value := range values {
-		m.put(key, bytes.Clone(value), at)
+		if err := m.put(key, bytes.Clone(value), at); err != nil {
+			tooLarge = err // store the others anyway
+		}
 	}
-	return nil
+	return tooLarge
 }
 
 // SetIfAbsent implements gashe.Backend.
@@ -137,7 +150,9 @@ func (m *Backend) SetIfAbsent(_ context.Context, key string, value []byte, ttl t
 	if m.live(key) != nil {
 		return false, nil
 	}
-	m.put(key, bytes.Clone(value), expiry(ttl))
+	if err := m.put(key, bytes.Clone(value), expiry(ttl)); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -148,7 +163,9 @@ func (m *Backend) SetIfPresent(_ context.Context, key string, value []byte, ttl 
 	if m.live(key) == nil {
 		return false, nil
 	}
-	m.put(key, bytes.Clone(value), expiry(ttl))
+	if err := m.put(key, bytes.Clone(value), expiry(ttl)); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -221,8 +238,7 @@ func (m *Backend) Incr(_ context.Context, key string, by int64, ttl time.Duratio
 	defer m.mu.Unlock()
 	e := m.live(key)
 	if e == nil {
-		m.put(key, strconv.AppendInt(nil, by, 10), expiry(ttl))
-		return by, nil
+		return by, m.put(key, strconv.AppendInt(nil, by, 10), expiry(ttl))
 	}
 	n, err := strconv.ParseInt(string(e.data), 10, 64)
 	if err != nil {
@@ -232,7 +248,10 @@ func (m *Backend) Incr(_ context.Context, key string, by int64, ttl time.Duratio
 		return 0, errOverflow
 	}
 	n += by
-	e.data = strconv.AppendInt(nil, n, 10)
+	data := strconv.AppendInt(nil, n, 10)
+	m.used += int64(len(data) - len(e.data))
+	e.data = data
+	m.evict(m.items[key])
 	return n, nil
 }
 
@@ -305,6 +324,7 @@ func (m *Backend) Clear(context.Context) error {
 	defer m.mu.Unlock()
 	m.items = make(map[string]*list.Element)
 	m.lru.Init()
+	m.used = 0
 	return nil
 }
 
@@ -348,20 +368,39 @@ func (m *Backend) live(key string) *entry {
 	return e
 }
 
-// put stores data under key, replacing any entry, and evicts the least recently used entry
-// when the size is exceeded.
-func (m *Backend) put(key string, data []byte, expireAt time.Time) {
+// put stores data under key, replacing any entry, and evicts the least recently used entries
+// while a limit is exceeded. A value that does not fit into MaxBytes alone is not stored.
+func (m *Backend) put(key string, data []byte, expireAt time.Time) error {
+	size := entrySize(key, data)
+	if m.maxBytes > 0 && size > m.maxBytes {
+		return ErrTooLarge
+	}
 	if el, ok := m.items[key]; ok {
 		m.remove(el)
 	}
-	m.items[key] = m.lru.PushFront(&entry{key: key, data: data, expireAt: expireAt})
-	if len(m.items) > m.size {
-		m.remove(m.lru.Back())
+	el := m.lru.PushFront(&entry{key: key, data: data, expireAt: expireAt})
+	m.items[key] = el
+	m.used += size
+	m.evict(el)
+	return nil
+}
+
+// evict removes the least recently used entries, never keep, while a limit is exceeded.
+func (m *Backend) evict(keep *list.Element) {
+	for len(m.items) > m.maxEntries || (m.maxBytes > 0 && m.used > m.maxBytes) {
+		back := m.lru.Back()
+		if back == keep {
+			return
+		}
+		m.remove(back)
 	}
 }
 
+func entrySize(key string, data []byte) int64 { return int64(len(key) + len(data)) }
+
 func (m *Backend) remove(el *list.Element) {
 	e, _ := el.Value.(*entry)
+	m.used -= entrySize(e.key, e.data)
 	delete(m.items, e.key)
 	m.lru.Remove(el)
 }

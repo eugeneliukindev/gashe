@@ -139,7 +139,8 @@ empty struct always works.
 
 ```go
 mem := memory.New(memory.Options{
-	MaxEntries:    10_000,      // keep at most this many entries (not bytes); 0 means 1000
+	MaxEntries:    10_000,      // keep at most this many entries; 0 means 1000
+	MaxBytes:      256 << 20,   // and at most this many bytes of keys and values; 0 means no limit
 	PurgeInterval: time.Minute, // how often to throw out expired entries; 0 means every second
 })
 defer mem.Close()
@@ -176,8 +177,11 @@ Patterns in `Keys`, `All` and `DeleteMatch` use Redis glob syntax: `*`, `?`, `[a
 `[a-z]`, and `\` to escape.
 
 > [!WARNING]
-> `MaxEntries` counts entries, not bytes: 10,000 entries of 1 MB each is 10 GB of RAM. Every process
-> keeps its own copy, and everything is lost on restart.
+> `MaxEntries` alone counts entries, not bytes: 10,000 entries of 1 MB each is 10 GB of RAM. Set
+> `MaxBytes` too. It counts only the bytes of keys and values, not the overhead of Go, so leave
+> headroom. A value larger than `MaxBytes` is not stored: `Set` returns `memory.ErrTooLarge`, and
+> `GetOrLoad` reports it to `OnError`. Every process keeps its own copy, and everything is lost on
+> restart.
 
 ### Redis
 
@@ -691,7 +695,7 @@ func (s *Service) Flags(ctx context.Context) (Flags, error) {
 
 > [!WARNING]
 > The local level lives in every process: with 50 pods, `MaxEntries` of the local `memory.Backend` is
-> held 50 times, and the RAM of each pod has to fit it. Size it by bytes, not by entries, and keep
+> held 50 times, and the RAM of each pod has to fit it. Bound it with `MaxBytes`, not only entries, and keep
 > `LocalTTL` short: it is also how long other pods may answer with a stale value.
 
 ### Storage

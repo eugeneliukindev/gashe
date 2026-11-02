@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/backendtest"
 	"github.com/eugeneliukindev/gashe/memory"
+	"github.com/eugeneliukindev/gashe/backendtest"
 )
 
 func newMemory(t *testing.T, o memory.Options) *memory.Backend {
@@ -42,6 +42,44 @@ func TestLRUEvictsLeastRecentlyUsed(t *testing.T) {
 		if _, err := m.Get(ctx, k); err != nil {
 			t.Fatalf("%s evicted: %v", k, err)
 		}
+	}
+}
+
+func TestMaxBytesEvictsLeastRecentlyUsed(t *testing.T) {
+	ctx := context.Background()
+	m := newMemory(t, memory.Options{MaxBytes: 10}) // each entry below is 1+4 bytes
+	_ = m.Set(ctx, "a", []byte("1111"), 0)
+	_ = m.Set(ctx, "b", []byte("2222"), 0)
+	_ = m.Set(ctx, "c", []byte("3333"), 0)
+
+	if _, err := m.Get(ctx, "a"); !errors.Is(err, gashe.ErrNotFound) {
+		t.Fatalf("a survived: %v", err)
+	}
+	if m.Len() != 2 {
+		t.Fatalf("Len = %d, want 2", m.Len())
+	}
+	// Growing b in place must count too: c goes.
+	_ = m.Set(ctx, "b", []byte("22222"), 0)
+	if _, err := m.Get(ctx, "c"); !errors.Is(err, gashe.ErrNotFound) {
+		t.Fatalf("c survived: %v", err)
+	}
+	if err := m.Set(ctx, "big", []byte("12345678"), 0); !errors.Is(err, memory.ErrTooLarge) {
+		t.Fatalf("Set too large = %v, want ErrTooLarge", err)
+	}
+	if _, err := m.Get(ctx, "b"); err != nil {
+		t.Fatalf("b evicted by a rejected value: %v", err)
+	}
+}
+
+func TestMaxBytesCountsIncr(t *testing.T) {
+	ctx := context.Background()
+	m := newMemory(t, memory.Options{MaxBytes: 6})
+	_ = m.Set(ctx, "a", []byte("1"), 0) // 2 bytes
+	_, _ = m.Incr(ctx, "n", 1, 0)       // 2 bytes
+	_, _ = m.Incr(ctx, "n", 99999, 0)   // n is now "100000": 7 bytes, alone over the limit
+
+	if _, err := m.Get(ctx, "a"); !errors.Is(err, gashe.ErrNotFound) {
+		t.Fatalf("a survived: %v", err)
 	}
 }
 
