@@ -1,16 +1,13 @@
-package integration_test
+package redis_test
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backend/memory"
@@ -19,46 +16,21 @@ import (
 	"github.com/eugeneliukindev/gashe/backendtest"
 )
 
-// defaultImage is the oldest Redis the backend is tested against. GASHE_REDIS_IMAGE runs the tests
-// against another Redis-compatible server, such as valkey/valkey:8.
-const defaultImage = "redis:7.0.0"
-
-// addr is the address of the Redis container that TestMain starts for the whole package.
-var addr string
-
-func TestMain(m *testing.M) {
-	os.Exit(run(m))
-}
-
-func run(m *testing.M) int {
-	ctx := context.Background()
-	image := os.Getenv("GASHE_REDIS_IMAGE")
-	if image == "" {
-		image = defaultImage
+// redisAddr returns the address of the Redis these tests run against, from GASHE_REDIS_ADDR.
+// `just integration` starts one in Docker and sets it; without it the tests are skipped, so
+// go test needs no Docker.
+func redisAddr(t *testing.T) string {
+	t.Helper()
+	addr := os.Getenv("GASHE_REDIS_ADDR")
+	if addr == "" {
+		t.Skip("no Redis: GASHE_REDIS_ADDR is not set; run `just integration`")
 	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        image,
-			ExposedPorts: []string{"6379/tcp"},
-			WaitingFor:   wait.ForListeningPort("6379/tcp"),
-		},
-		Started: true,
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "integration tests need Docker:", err)
-		return 1
-	}
-	defer func() { _ = container.Terminate(ctx) }()
-	if addr, err = container.Endpoint(ctx, ""); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	return m.Run()
+	return addr
 }
 
 func newClient(t *testing.T) *goredis.Client {
 	t.Helper()
-	client := goredis.NewClient(&goredis.Options{Addr: addr})
+	client := goredis.NewClient(&goredis.Options{Addr: redisAddr(t)})
 	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
@@ -83,10 +55,10 @@ func TestWrappersOverRedis(t *testing.T) {
 		}
 		return gasheredis.New(client)
 	}
-	t.Run("WithPrefix", func(t *testing.T) {
+	t.Run("Prefix", func(t *testing.T) {
 		backendtest.Run(t, func(t *testing.T) gashe.Backend {
 			t.Helper()
-			return gashe.WithPrefix(fresh(t), "svc:")
+			return gashe.New(fresh(t), gashe.Options{Prefix: "svc:"}).Backend()
 		})
 	})
 	t.Run("NearCache", func(t *testing.T) {
@@ -186,7 +158,7 @@ func TestLocksAndLimitsOverRedis(t *testing.T) {
 		}
 	}
 
-	db := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
+	db := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
 	done, err := c.CircuitBreaker("db", db)
 	if err != nil {
 		t.Fatal(err)
