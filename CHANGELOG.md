@@ -15,6 +15,8 @@ the API. The root module and `backend/redis` and `codec/msgpack` are released wi
   `InvalidateTags` becomes instant on every process too.
 - `backend/redis`: `NewBus`, a `nearcache.Bus` over Redis pub/sub. It drops all local copies after
   every reconnect, since messages may have been lost, and works on a Cluster.
+- `httpcache`: a middleware that caches whole HTTP responses of a handler through `GetOrLoad`,
+  with `ETag` and `304`, and serves the last good page on a 5xx with `StaleIfError`.
 
 ### Changed
 

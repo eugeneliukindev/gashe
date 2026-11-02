@@ -14,7 +14,9 @@ import (
 // TestReferenceListsEveryExport fails when an exported name of a package is missing from
 // REFERENCE.md, so the reference does not fall behind the code.
 func TestReferenceListsEveryExport(t *testing.T) {
-	dirs := []string{".", "backend/memory", "backend/nearcache", "backend/redis", "codec/msgpack", "backendtest"}
+	dirs := []string{
+		".", "backend/memory", "backend/nearcache", "backend/redis", "codec/msgpack", "backendtest", "httpcache",
+	}
 	names := make([]string, 0, 200) // about the size of the public API
 	for _, dir := range dirs {
 		names = append(names, exports(t, dir)...)

@@ -20,6 +20,7 @@ comments, so `go doc github.com/eugeneliukindev/gashe.GetOrLoad` shows it too.
 - [Package gashe/backend/nearcache](#package-gashebackendnearcache)
 - [Package gashe/backend/redis](#package-gashebackendredis)
 - [Package gashe/codec/msgpack](#package-gashecodecmsgpack)
+- [Package gashe/httpcache](#package-gashehttpcache)
 - [Package gashe/backendtest](#package-gashebackendtest)
 
 ## Common parameters
@@ -548,6 +549,52 @@ type Codec struct{}
 
 A `gashe.Codec` based on MessagePack. Use `gashe.Options{Codec: msgpack.Codec{}}`. Errors are wrapped
 as `gashe/msgpack: marshal: <error>` and `gashe/msgpack: unmarshal: <error>`.
+
+## Package gashe/httpcache
+
+`import "github.com/eugeneliukindev/gashe/httpcache"`
+
+```go
+func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler
+
+type Options struct {
+	Policy       gashe.Policy[Response]
+	Key          func(r *http.Request) string
+	MaxBodyBytes int
+}
+
+type Response struct {
+	Status int
+	Header http.Header
+	Body   []byte
+	ETag   string
+	Stored time.Time
+}
+```
+
+`New` returns a middleware that caches whole responses of a handler through `GetOrLoad`, so every
+field of `Policy` works for them. It panics on a negative `MaxBodyBytes`.
+
+| Field | Zero value | Meaning |
+|---|---|---|
+| `Policy` | required: set `TTL` or a window | How responses are cached. `CacheIf` decides which statuses are stored; nil stores 200 only. |
+| `Key` | host, path and query; requests with `Authorization` are not cached | The key of a request, after `Policy.Prefix`. It must not depend on the method. With your own `Key`, requests with `Authorization` are cached: put the user in it. |
+| `MaxBodyBytes` | 1 MB | The largest body that is stored; a larger one is sent but not stored. |
+
+`Response` is what is stored, and what `CacheIf` receives: the status, the headers without
+hop-by-hop ones, the body, the `ETag` and when it was stored.
+
+Rules:
+
+- Only `GET` and `HEAD` without `Range` are cached; `HEAD` runs the handler as `GET` and sends no
+  body.
+- Not stored: responses with `Set-Cookie`, `Vary`, `Cache-Control` `no-store`, `private` or
+  `no-cache`, a body over `MaxBodyBytes`, or a status `CacheIf` rejects. They are sent only to the
+  request that made them, never to concurrent ones.
+- A 5xx response is a loader error: `StaleIfError` answers it with the stored response.
+- Request `Cache-Control` and `Pragma` are ignored.
+- Responses get `ETag`, `Age` on a hit and `X-Cache: hit` or `miss`; a matching `If-None-Match`
+  gets `304`.
 
 ## Package gashe/backendtest
 

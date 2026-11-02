@@ -4,7 +4,7 @@ The repository holds four modules. Run every command in each of them.
 
 | Module | Holds | Dependencies |
 |---|---|---|
-| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest` | none |
+| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest`, `gashe/httpcache` | none |
 | `backend/redis/` | `gashe/backend/redis` | go-redis v9 |
 | `backend/redis/integration/` | tests of `gashe/backend/redis` against a real Redis | testcontainers-go, Docker |
 | `codec/msgpack/` | `gashe/codec/msgpack` | vmihailenco/msgpack v5 |

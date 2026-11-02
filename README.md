@@ -123,7 +123,8 @@ func main() {
 - [Basic API](#basic-api)
 - [Strategies](#strategies)
   - Caching: [cache-aside](#cache-aside), [stale-while-revalidate](#stale-while-revalidate),
-    [stale-if-error](#stale-if-error), [negative caching](#negative-caching)
+    [stale-if-error](#stale-if-error), [negative caching](#negative-caching),
+    [HTTP responses](#whole-http-responses)
   - Invalidation: [by tag](#invalidation-by-tag), [other ways](#other-ways-to-invalidate)
   - Load on the source: [stampede inside a process](#cache-stampede-inside-a-process),
     [stampede across processes](#cache-stampede-across-processes), [batch loading](#batch-loading),
@@ -279,6 +280,7 @@ your own code.
 | Every request waits when a popular key expires | [`StaleWhileRevalidate`](#stale-while-revalidate) |
 | The database is down and the cache is empty | [`StaleIfError`](#stale-if-error) |
 | Lookups of missing ids always reach the database | [`Negative`](#negative-caching) |
+| A heavy page is rendered on every request | [`httpcache`](#whole-http-responses) |
 | One change makes many entries stale | [`Tags`, `InvalidateTags`](#invalidation-by-tag) |
 | A cold key: a thousand identical queries | built in for one process, [`LockOnMiss`](#cache-stampede-across-processes) for all pods |
 | N+1 queries on a list page | [`GetOrLoadMany`](#batch-loading) |
@@ -401,6 +403,32 @@ $ redis-cli GET user:999
 > [!WARNING]
 > Data created after a negative answer stays "not found" until `Negative.TTL` ends. Keep it short,
 > or `Delete` the key when you create the data.
+
+#### Whole HTTP responses
+
+A page or a JSON response is the same for everyone but costly to render on every request.
+`httpcache` caches whole responses of a handler: a hit sends the stored status, headers and body
+without calling the handler. It runs on `GetOrLoad`, so every `Policy` field works for pages: a
+5xx with `StaleIfError` gets the last good page, `LockOnMiss` renders a cold page once for all pods.
+
+```go
+cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+	Prefix:       "http:",
+	TTL:          time.Minute,
+	StaleIfError: time.Hour,
+	Tags:         []string{"catalog"}, // c.InvalidateTags(ctx, "catalog") after an edit
+}})
+mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
+```
+
+Only `GET` and `HEAD` are cached, keyed by host, path and query. Responses get an `ETag`, and a
+matching `If-None-Match` gets `304` without a body; `X-Cache` says `hit` or `miss`. Request
+`Cache-Control` is ignored, so clients cannot make the handler run on every request.
+
+> [!CAUTION]
+> A response must be the same for everyone who gets its key. A response with `Set-Cookie`, `Vary`
+> or `Cache-Control: private` is never stored, and requests with `Authorization` skip the cache.
+> If a page depends on a cookie, set `Key` and put the user in it, or do not wrap that route.
 
 ### Invalidation
 

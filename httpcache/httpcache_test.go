@@ -1,0 +1,277 @@
+package httpcache_test
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/eugeneliukindev/gashe"
+	"github.com/eugeneliukindev/gashe/backend/memory"
+	"github.com/eugeneliukindev/gashe/httpcache"
+)
+
+func newCache(t *testing.T) *gashe.Cache {
+	t.Helper()
+	mem := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = mem.Close() })
+	return gashe.New(mem, gashe.Options{})
+}
+
+// page is a handler that answers body with status and the headers set by header, counting runs.
+type page struct {
+	runs   atomic.Int32
+	status atomic.Int32
+	body   string
+	header func(h http.Header)
+	method atomic.Value // the method of the last run
+}
+
+func (p *page) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.runs.Add(1)
+	p.method.Store(r.Method)
+	if p.header != nil {
+		p.header(w.Header())
+	}
+	if s := p.status.Load(); s != 0 {
+		w.WriteHeader(int(s))
+	}
+	_, _ = io.WriteString(w, p.body)
+}
+
+func serve(t *testing.T, c *gashe.Cache, opts *httpcache.Options, h http.Handler) http.Handler {
+	t.Helper()
+	o := *opts
+	if o.Policy.TTL == 0 && o.Policy.StaleIfError == 0 {
+		o.Policy.TTL = time.Minute
+	}
+	return httpcache.New(c, o)(h)
+}
+
+func get(h http.Handler, method, target string, header ...string) *httptest.ResponseRecorder {
+	r := httptest.NewRequestWithContext(context.Background(), method, target, http.NoBody)
+	for i := 0; i+1 < len(header); i += 2 {
+		r.Header.Set(header[i], header[i+1])
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func TestMissThenHit(t *testing.T) {
+	p := &page{body: "catalog"}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	first := get(h, http.MethodGet, "/products?page=2")
+	second := get(h, http.MethodGet, "/products?page=2")
+	if p.runs.Load() != 1 {
+		t.Fatalf("handler ran %d times, want 1", p.runs.Load())
+	}
+	if first.Header().Get("X-Cache") != "miss" || second.Header().Get("X-Cache") != "hit" {
+		t.Fatalf("X-Cache = %q, %q", first.Header().Get("X-Cache"), second.Header().Get("X-Cache"))
+	}
+	if second.Body.String() != "catalog" || second.Code != http.StatusOK || second.Header().Get("Age") == "" {
+		t.Fatalf("hit: %d %q, Age %q", second.Code, second.Body.String(), second.Header().Get("Age"))
+	}
+	get(h, http.MethodGet, "/products?page=3")
+	if p.runs.Load() != 2 {
+		t.Fatal("another query must be another key")
+	}
+}
+
+func TestIfNoneMatch(t *testing.T) {
+	p := &page{body: "catalog"}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	etag := get(h, http.MethodGet, "/").Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag")
+	}
+	w := get(h, http.MethodGet, "/", "If-None-Match", `"other", W/`+etag)
+	if w.Code != http.StatusNotModified || w.Body.Len() != 0 {
+		t.Fatalf("matching If-None-Match: %d %q, want 304 without a body", w.Code, w.Body.String())
+	}
+	if w := get(h, http.MethodGet, "/", "If-None-Match", `"other"`); w.Code != http.StatusOK {
+		t.Fatalf("other ETag: %d, want 200", w.Code)
+	}
+}
+
+func TestHandlerETagIsKept(t *testing.T) {
+	p := &page{body: "x", header: func(h http.Header) { h.Set("ETag", `"v7"`) }}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	if got := get(h, http.MethodGet, "/").Header().Get("ETag"); got != `"v7"` {
+		t.Fatalf("ETag = %q", got)
+	}
+	if w := get(h, http.MethodGet, "/", "If-None-Match", `"v7"`); w.Code != http.StatusNotModified {
+		t.Fatalf("got %d, want 304", w.Code)
+	}
+}
+
+func TestStaleIfErrorAnswersServerErrors(t *testing.T) {
+	p := &page{body: "last good page"}
+	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+		StaleIfError: time.Hour, // TTL 0: the handler runs every time, its failures get the stored page
+	}}, p)
+
+	get(h, http.MethodGet, "/")
+	p.status.Store(http.StatusBadGateway)
+	w := get(h, http.MethodGet, "/")
+	if w.Code != http.StatusOK || w.Body.String() != "last good page" || p.runs.Load() != 2 {
+		t.Fatalf("during the outage: %d %q after %d runs", w.Code, w.Body.String(), p.runs.Load())
+	}
+}
+
+func TestServerErrorIsSentAndNotStored(t *testing.T) {
+	p := &page{body: "down"}
+	p.status.Store(http.StatusServiceUnavailable)
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	for range 2 {
+		if w := get(h, http.MethodGet, "/"); w.Code != http.StatusServiceUnavailable || w.Body.String() != "down" {
+			t.Fatalf("got %d %q", w.Code, w.Body.String())
+		}
+	}
+	if p.runs.Load() != 2 {
+		t.Fatalf("handler ran %d times; a 5xx must not be stored", p.runs.Load())
+	}
+}
+
+func TestResponsesThatAreNotStored(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int32
+		header func(h http.Header)
+	}{
+		{"Set-Cookie", 0, func(h http.Header) { h.Set("Set-Cookie", "session=1") }},
+		{"Vary", 0, func(h http.Header) { h.Set("Vary", "Accept-Language") }},
+		{"no-store", 0, func(h http.Header) { h.Set("Cache-Control", "no-store") }},
+		{"private", 0, func(h http.Header) { h.Set("Cache-Control", "max-age=60, private") }},
+		{"no-cache", 0, func(h http.Header) { h.Set("Cache-Control", `no-cache="Set-Cookie"`) }},
+		{"404", http.StatusNotFound, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &page{body: "body", header: tc.header}
+			p.status.Store(tc.status)
+			h := serve(t, newCache(t), &httpcache.Options{}, p)
+			for range 2 {
+				if w := get(h, http.MethodGet, "/"); w.Body.String() != "body" {
+					t.Fatalf("body %q", w.Body.String())
+				}
+			}
+			if p.runs.Load() != 2 {
+				t.Fatalf("handler ran %d times, want 2: the response must not be stored", p.runs.Load())
+			}
+		})
+	}
+}
+
+func TestLargeBodyIsSentWholeAndNotStored(t *testing.T) {
+	p := &page{body: strings.Repeat("x", 100)}
+	h := serve(t, newCache(t), &httpcache.Options{MaxBodyBytes: 10}, p)
+
+	for range 2 {
+		if w := get(h, http.MethodGet, "/"); w.Body.Len() != 100 {
+			t.Fatalf("sent %d bytes, want all 100", w.Body.Len())
+		}
+	}
+	if p.runs.Load() != 2 {
+		t.Fatal("a body over MaxBodyBytes was stored")
+	}
+}
+
+func TestCacheIfDecidesStatuses(t *testing.T) {
+	p := &page{body: "no such product"}
+	p.status.Store(http.StatusNotFound)
+	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+		TTL:     time.Minute,
+		CacheIf: func(r httpcache.Response) bool { return r.Status == 200 || r.Status == 404 },
+	}}, p)
+
+	get(h, http.MethodGet, "/p/1")
+	if w := get(h, http.MethodGet, "/p/1"); w.Code != http.StatusNotFound || p.runs.Load() != 1 {
+		t.Fatalf("got %d after %d runs; CacheIf allowed 404", w.Code, p.runs.Load())
+	}
+}
+
+func TestRequestsThatBypassTheCache(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		header []string
+	}{
+		{"POST", http.MethodPost, nil},
+		{"Range", http.MethodGet, []string{"Range", "bytes=0-1"}},
+		{"Authorization", http.MethodGet, []string{"Authorization", "Bearer t"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &page{body: "body"}
+			h := serve(t, newCache(t), &httpcache.Options{}, p)
+			for range 2 {
+				get(h, tc.method, "/", tc.header...)
+			}
+			if p.runs.Load() != 2 {
+				t.Fatalf("handler ran %d times, want 2", p.runs.Load())
+			}
+		})
+	}
+}
+
+func TestOwnKeyCachesAuthorizedRequests(t *testing.T) {
+	p := &page{body: "my orders"}
+	h := serve(t, newCache(t), &httpcache.Options{
+		Key: func(r *http.Request) string { return r.Header.Get("Authorization") + " " + r.URL.Path },
+	}, p)
+
+	get(h, http.MethodGet, "/orders", "Authorization", "Bearer ann")
+	get(h, http.MethodGet, "/orders", "Authorization", "Bearer ann")
+	get(h, http.MethodGet, "/orders", "Authorization", "Bearer bob")
+	if p.runs.Load() != 2 {
+		t.Fatalf("handler ran %d times, want one per user", p.runs.Load())
+	}
+}
+
+func TestRequestCacheControlIsIgnored(t *testing.T) {
+	p := &page{body: "catalog"}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	get(h, http.MethodGet, "/")
+	get(h, http.MethodGet, "/", "Cache-Control", "no-cache", "Pragma", "no-cache")
+	if p.runs.Load() != 1 {
+		t.Fatal("a client header made the handler run again")
+	}
+}
+
+func TestHead(t *testing.T) {
+	p := &page{body: "catalog"}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+
+	w := get(h, http.MethodHead, "/")
+	if w.Code != http.StatusOK || w.Body.Len() != 0 || p.method.Load() != http.MethodGet {
+		t.Fatalf("HEAD miss: %d, %d bytes, handler ran as %v; want 200, no body, GET",
+			w.Code, w.Body.Len(), p.method.Load())
+	}
+	if w := get(h, http.MethodGet, "/"); w.Body.String() != "catalog" || p.runs.Load() != 1 {
+		t.Fatalf("GET after HEAD: %q after %d runs; HEAD must store the GET response", w.Body.String(), p.runs.Load())
+	}
+	if w := get(h, http.MethodHead, "/"); w.Body.Len() != 0 || w.Header().Get("X-Cache") != "hit" {
+		t.Fatalf("HEAD hit: %d bytes, X-Cache %q", w.Body.Len(), w.Header().Get("X-Cache"))
+	}
+}
+
+func TestStaleIfErrorDoesNotHideAnswersThatAreNotStored(t *testing.T) {
+	p := &page{body: "product"}
+	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{StaleIfError: time.Hour}}, p)
+
+	get(h, http.MethodGet, "/p/1")
+	p.status.Store(http.StatusNotFound) // the product was deleted: a real answer, not a failure
+	if w := get(h, http.MethodGet, "/p/1"); w.Code != http.StatusNotFound {
+		t.Fatalf("got %d; a 404 must reach the client, not the stored 200", w.Code)
+	}
+}

@@ -81,6 +81,10 @@ A random spread of TTLs, so that entries stored together do not expire together.
 A name given to entries so that all of them can be invalidated together.
 _Avoid_: group
 
+**Response cache**:
+A cache of whole HTTP responses of a handler, answered without running the handler.
+_Avoid_: page cache, HTTP cache
+
 **Near cache**:
 A small cache in process memory in front of a shared backend.
 _Avoid_: L1, local cache, client-side cache
