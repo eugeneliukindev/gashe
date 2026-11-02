@@ -32,7 +32,8 @@ processes that share one Redis.
 - Distributed locks with extension, sliding and fixed rate limits, an in-process circuit breaker.
 - Backends: an in-memory LRU with TTL, Redis (single node, Sentinel or Cluster) in a separate
   module, a two-level near cache (memory in front of Redis), key prefixes for a shared Redis.
-- Pluggable `Codec`: JSON by default, gzip for large values.
+- Pluggable `Codec`: JSON by default, gzip for large values, raw bytes, MessagePack in a separate
+  module.
 - Hooks for errors the cache works around (`OnError`) and for hit and miss counts (`OnResult`).
 - When the cache itself fails, your code keeps working.
 - No global state and no third-party dependencies in the core module; Go 1.23 to the newest release.
@@ -732,6 +733,18 @@ c := gashe.New(backend, gashe.Options{Codec: gashe.Gzip{Inner: gashe.JSON{}}})
 
 A compressed value is no longer a plain number, so `Incr` does not work on it.
 
+Two more codecs make values smaller without compression:
+
+- `github.com/eugeneliukindev/gashe/msgpack` is a separate module with `msgpack.Codec{}`, based on
+  [vmihailenco/msgpack v5](https://github.com/vmihailenco/msgpack). MessagePack is binary: it is
+  smaller than JSON and faster to decode. It works inside `Gzip` too: `gashe.Gzip{Inner: msgpack.Codec{}}`.
+- `gashe.Raw{}` stores `[]byte` and `string` as they are, without the quotes and base64 of JSON, and
+  hands other types to `Inner` (JSON by default). `GetOrLoad` stores its result inside a record of
+  its own, so `Raw` helps only `Get`, `Set` and the other basic calls, for example for a page that
+  is already rendered.
+
+Values in MessagePack are binary too, so `Incr` does not work on them either.
+
 **Example.** A rendered category page of a few hundred kilobytes, stored compressed.
 
 ```go
@@ -1099,13 +1112,14 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 ## Development
 
-The repository holds three modules. Run every command in each of them.
+The repository holds four modules. Run every command in each of them.
 
 | Module | Holds | Dependencies |
 |---|---|---|
 | `.` | `gashe`, `gashe/memory`, `gashe/nearcache`, `gashe/backendtest` | none |
 | `redis/` | `gashe/redis` | go-redis v9 |
 | `redis/integration/` | tests of `gashe/redis` against a real Redis | testcontainers-go, Docker |
+| `msgpack/` | `gashe/msgpack` | vmihailenco/msgpack v5 |
 
 The integration module is separate so that testcontainers never reaches users of `gashe/redis`.
 Its tests start `redis:7.0.0` in Docker by themselves and fail if Docker is not available. Set
@@ -1122,7 +1136,7 @@ golangci-lint run    # golangci-lint v2, config in .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # the oldest supported Go
 ```
 
-`redis/go.mod` and `redis/integration/go.mod` replace the gashe modules with local copies; remove
-the `replace` lines and require tagged versions before publishing the Redis module.
+`redis/go.mod`, `redis/integration/go.mod` and `msgpack/go.mod` replace the gashe modules with local
+copies; remove the `replace` lines and require tagged versions before publishing them.
 
 Domain terms are defined in `GLOSSARY.md`.

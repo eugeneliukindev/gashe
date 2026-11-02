@@ -32,7 +32,8 @@ go get github.com/eugeneliukindev/gashe/redis # бэкенд Redis, зависи
   процесса.
 - Бэкенды: LRU в памяти с TTL, Redis (один узел, Sentinel или Cluster) в отдельном модуле,
   двухуровневый near cache (память перед Redis), префиксы ключей для общего Redis.
-- Сменный `Codec`: по умолчанию JSON, gzip для больших значений.
+- Сменный `Codec`: по умолчанию JSON, gzip для больших значений, сырые байты, MessagePack в
+  отдельном модуле.
 - Хуки для ошибок, которые кеш обошел (`OnError`), и для подсчета попаданий и промахов (`OnResult`).
 - Если сломался сам кеш, ваш код продолжает работать.
 - Без глобального состояния и без сторонних зависимостей в основном модуле; Go от 1.23 до самой
@@ -739,6 +740,18 @@ c := gashe.New(backend, gashe.Options{Codec: gashe.Gzip{Inner: gashe.JSON{}}})
 
 Сжатое значение больше не простое число, поэтому `Incr` с ним не работает.
 
+Еще два кодека уменьшают значения без сжатия:
+
+- `github.com/eugeneliukindev/gashe/msgpack` - отдельный модуль с `msgpack.Codec{}` на основе
+  [vmihailenco/msgpack v5](https://github.com/vmihailenco/msgpack). MessagePack двоичный: он меньше
+  JSON и быстрее декодируется. Он работает и внутри `Gzip`: `gashe.Gzip{Inner: msgpack.Codec{}}`.
+- `gashe.Raw{}` хранит `[]byte` и `string` как есть, без кавычек и base64 из JSON, а остальные типы
+  отдает в `Inner` (по умолчанию JSON). `GetOrLoad` хранит результат внутри своей записи, поэтому
+  `Raw` помогает только `Get`, `Set` и другим базовым вызовам, например для уже отрендеренной
+  страницы.
+
+Значения в MessagePack тоже двоичные, поэтому `Incr` и с ними не работает.
+
 **Пример.** Отрендеренная страница категории на несколько сотен килобайт хранится в сжатом виде.
 
 ```go
@@ -1109,13 +1122,14 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 ## Разработка
 
-В репозитории три модуля. Выполняйте каждую команду в каждом из них.
+В репозитории четыре модуля. Выполняйте каждую команду в каждом из них.
 
 | Модуль | Что содержит | Зависимости |
 |---|---|---|
 | `.` | `gashe`, `gashe/memory`, `gashe/nearcache`, `gashe/backendtest` | нет |
 | `redis/` | `gashe/redis` | go-redis v9 |
 | `redis/integration/` | тесты `gashe/redis` на настоящем Redis | testcontainers-go, Docker |
+| `msgpack/` | `gashe/msgpack` | vmihailenco/msgpack v5 |
 
 Интеграционный модуль отдельный, чтобы testcontainers никогда не попал к пользователям
 `gashe/redis`. Его тесты сами поднимают `redis:7.0.0` в Docker и падают, если Docker недоступен.
@@ -1132,7 +1146,7 @@ golangci-lint run    # golangci-lint v2, конфиг в .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # самая старая поддерживаемая версия Go
 ```
 
-`redis/go.mod` и `redis/integration/go.mod` подменяют модули gashe локальными копиями; перед
-публикацией модуля Redis уберите строки `replace` и укажите версии с тегами.
+`redis/go.mod`, `redis/integration/go.mod` и `msgpack/go.mod` подменяют модули gashe локальными
+копиями; перед публикацией уберите строки `replace` и укажите версии с тегами.
 
 Термины предметной области описаны в `GLOSSARY.md`.
