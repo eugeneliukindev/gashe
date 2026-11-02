@@ -1,7 +1,5 @@
 # gashe API reference
 
-English | [Russian](REFERENCE.ru.md)
-
 Every exported function, method, type and field: what it takes and what it returns. When to use
 which strategy is explained in the [README](README.md#strategies). The same text is in the doc
 comments, so `go doc github.com/eugeneliukindev/gashe.GetOrLoad` shows it too.
@@ -32,7 +30,7 @@ These parameters mean the same in every call.
 |---|---|---|
 | `ctx` | `context.Context` | Cancels the call and carries its deadline. |
 | `c` | `*gashe.Cache` | The cache to work with. |
-| `key` | `string` | The key of the entry, without `Policy.Prefix` (see [Keys](README.md#keys)). |
+| `key` | `string` | The key of the entry, without `Policy.Prefix` (see [Keys and TTL](README.md#keys-and-ttl)). |
 | `keys` | `[]string` or `...string` | Several keys. |
 | `ttl` | `time.Duration` | How long the entry lives. In the basic API 0 means "never expires" and a negative value returns `ErrInvalidTTL`; locks and `Expire` need a positive one. |
 | `pattern` | `string` | A Redis glob: `*`, `?`, `[abc]`, `[^a]`, `[a-z]`, `\` to escape. |

@@ -12,7 +12,7 @@ import (
 )
 
 // TestReferenceListsEveryExport fails when an exported name of a package is missing from
-// REFERENCE.md or REFERENCE.ru.md, so the reference does not fall behind the code.
+// REFERENCE.md, so the reference does not fall behind the code.
 func TestReferenceListsEveryExport(t *testing.T) {
 	dirs := []string{".", "backend/memory", "backend/nearcache", "backend/redis", "codec/msgpack", "backendtest"}
 	names := make([]string, 0, 200) // about the size of the public API
@@ -22,8 +22,8 @@ func TestReferenceListsEveryExport(t *testing.T) {
 	if len(names) < 50 {
 		t.Fatalf("found only %d exports; the parser missed packages", len(names))
 	}
-	for _, doc := range []string{"REFERENCE.md", "REFERENCE.ru.md"} {
-		raw, err := os.ReadFile(doc) //nolint:gosec // one of two fixed file names
+	for _, doc := range []string{"REFERENCE.md"} {
+		raw, err := os.ReadFile(doc) //nolint:gosec // a fixed file name
 		if err != nil {
 			t.Fatal(err)
 		}
