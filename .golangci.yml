@@ -39,7 +39,7 @@ linters:
         # Always returns nil; it exists to satisfy gashe.Backend.
         - (*github.com/eugeneliukindev/gashe/backend/memory.Backend).Close
     gomoddirectives:
-      # The integration module is never published and tests the local copies of the gashe modules.
+      # The examples module is never published and builds against the local copies of the gashe modules.
       replace-local: true
     lll:
       line-length: 120
@@ -94,6 +94,14 @@ linters:
           # and a nil result with a nil error is exactly what condition tests need.
           - unparam
           - nilnil
+      # Examples print, use literal durations and errors, and have loaders that never fail:
+      # that is their point, not a defect.
+      - path: ^examples/
+        linters:
+          - forbidigo
+          - mnd
+          - err113
+          - unparam
       # backendtest functions are subtest bodies run by t.Run, not helpers; t.Helper would hide
       # the failing line.
       - path: ^backendtest/
