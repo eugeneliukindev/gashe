@@ -1,5 +1,7 @@
 # gashe
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg)](https://pkg.go.dev/github.com/eugeneliukindev/gashe)
+
 [English](README.md) | Русский
 
 Кеширование для Go-сервисов, которые работают в нескольких процессах: сохраняет результаты дорогих
@@ -9,6 +11,7 @@
 ```bash
 go get github.com/eugeneliukindev/gashe
 go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, зависит от go-redis v9
+go get github.com/eugeneliukindev/gashe/codec/msgpack # кодек MessagePack, по желанию
 ```
 
 Нужен Go 1.23 или новее.
@@ -1316,8 +1319,21 @@ golangci-lint run    # golangci-lint v2, конфиг в .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # самая старая поддерживаемая версия Go
 ```
 
-`backend/redis/go.mod`, `backend/redis/integration/go.mod` и `codec/msgpack/go.mod` подменяют
-модули gashe локальными копиями; перед публикацией уберите строки `replace` и укажите версии с тегами.
+`backend/redis` и `codec/msgpack` зависят от выпущенной версии корневого модуля. Чтобы менять корень
+и другой модуль вместе, один раз создайте workspace; `go.work` не коммитится:
+
+```bash
+go work init . ./backend/redis ./backend/redis/integration ./codec/msgpack
+```
+
+Интеграционный модуль никогда не публикуется, поэтому его `go.mod` подменяет модули gashe
+локальными копиями и всегда тестирует код репозитория.
+
+Чтобы выпустить версию, сначала поставьте тег на корень (`v0.2.0`), затем поднимите версию, от
+которой зависят остальные модули, и поставьте им теги с путем папки впереди:
+`backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`.
+
+Код распространяется под [лицензией MIT](LICENSE).
 
 Термины предметной области описаны в `GLOSSARY.md`. `REFERENCE.md` и `REFERENCE.ru.md` перечисляют
 публичное API; тест падает, если в них нет какого-то экспортируемого имени.

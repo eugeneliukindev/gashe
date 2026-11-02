@@ -1,5 +1,7 @@
 # gashe
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg)](https://pkg.go.dev/github.com/eugeneliukindev/gashe)
+
 English | [Russian](README.ru.md)
 
 Caching for Go services that run as many processes: store results of expensive calls, keep
@@ -9,6 +11,7 @@ circuit breakers, all around one `*gashe.Cache`.
 ```bash
 go get github.com/eugeneliukindev/gashe
 go get github.com/eugeneliukindev/gashe/backend/redis # Redis backend, depends on go-redis v9
+go get github.com/eugeneliukindev/gashe/codec/msgpack # MessagePack codec, optional
 ```
 
 Requires Go 1.23 or newer.
@@ -1304,8 +1307,20 @@ golangci-lint run    # golangci-lint v2, config in .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # the oldest supported Go
 ```
 
-`backend/redis/go.mod`, `backend/redis/integration/go.mod` and `codec/msgpack/go.mod` replace the
-gashe modules with local copies; remove the `replace` lines and require tagged versions before publishing them.
+`backend/redis` and `codec/msgpack` require a released version of the root module. To change the
+root and another module together, create a workspace once; `go.work` is not committed:
+
+```bash
+go work init . ./backend/redis ./backend/redis/integration ./codec/msgpack
+```
+
+The integration module is never published, so its `go.mod` replaces the gashe modules with the
+local copies and always tests the code of the repository.
+
+To release, tag the root first (`v0.2.0`), then raise the version the other modules require, and
+tag them with their directory in front: `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`.
+
+The code is under the [MIT license](LICENSE).
 
 Domain terms are defined in `GLOSSARY.md`. `REFERENCE.md` and `REFERENCE.ru.md` list the public API;
 a test fails when an exported name is missing from them.
