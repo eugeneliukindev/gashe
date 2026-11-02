@@ -8,7 +8,7 @@
 
 ```bash
 go get github.com/eugeneliukindev/gashe
-go get github.com/eugeneliukindev/gashe/redis # бэкенд Redis, зависит от go-redis v9
+go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, зависит от go-redis v9
 ```
 
 Нужен Go 1.23 или новее.
@@ -89,7 +89,7 @@ import (
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/memory"
+	"github.com/eugeneliukindev/gashe/backend/memory"
 )
 
 type User struct {
@@ -169,7 +169,7 @@ c := gashe.New(mem, gashe.Options{
 
 ### В памяти
 
-`github.com/eugeneliukindev/gashe/memory` хранит записи в памяти процесса: LRU фиксированного
+`github.com/eugeneliukindev/gashe/backend/memory` хранит записи в памяти процесса: LRU фиксированного
 размера, где у каждой записи может быть свой TTL. Истекшие записи никогда не возвращаются; они
 удаляются при чтении и фоновой чисткой каждые `PurgeInterval`. Байты копируются при записи и при
 чтении, поэтому изменение значения после `Set` или `Get` никогда не меняет кеш. У каждого процесса
@@ -187,7 +187,7 @@ c := gashe.New(mem, gashe.Options{
 
 ### Redis
 
-`github.com/eugeneliukindev/gashe/redis` - отдельный модуль поверх
+`github.com/eugeneliukindev/gashe/backend/redis` - отдельный модуль поверх
 [go-redis v9](https://github.com/redis/go-redis), поэтому основной модуль остается без зависимостей.
 Клиент go-redis вы создаете и закрываете сами: бэкенд им не владеет. Таймауты, размер пула, TLS,
 Sentinel и Cluster - это опции go-redis.
@@ -197,7 +197,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/eugeneliukindev/gashe"
-	gasheredis "github.com/eugeneliukindev/gashe/redis"
+	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 )
 
 client := goredis.NewUniversalClient(&goredis.UniversalOptions{
@@ -226,7 +226,7 @@ c := gashe.New(gasheredis.New(client), gashe.Options{})
 
 ### Двухуровневый (near cache)
 
-`github.com/eugeneliukindev/gashe/nearcache` ставит небольшой кеш в памяти перед общим бэкендом.
+`github.com/eugeneliukindev/gashe/backend/nearcache` ставит небольшой кеш в памяти перед общим бэкендом.
 См. [Горячие ключи и сетевые обращения](#горячие-ключи-и-сетевые-обращения-near-cache).
 
 ### Свой бэкенд
@@ -676,7 +676,7 @@ func (s *Service) WarmUp(ctx context.Context, ids []string) {
 всегда используют общий бэкенд.
 
 ```go
-import "github.com/eugeneliukindev/gashe/nearcache"
+import "github.com/eugeneliukindev/gashe/backend/nearcache"
 
 local := memory.New(memory.Options{MaxEntries: 10_000})
 defer local.Close()
@@ -742,7 +742,7 @@ c := gashe.New(backend, gashe.Options{Codec: gashe.Gzip{Inner: gashe.JSON{}}})
 
 Еще два кодека уменьшают значения без сжатия:
 
-- `github.com/eugeneliukindev/gashe/msgpack` - отдельный модуль с `msgpack.Codec{}` на основе
+- `github.com/eugeneliukindev/gashe/codec/msgpack` - отдельный модуль с `msgpack.Codec{}` на основе
   [vmihailenco/msgpack v5](https://github.com/vmihailenco/msgpack). MessagePack двоичный: он меньше
   JSON и быстрее декодируется. Он работает и внутри `Gzip`: `gashe.Gzip{Inner: msgpack.Codec{}}`.
 - `gashe.Raw{}` хранит `[]byte` и `string` как есть, без кавычек и base64 из JSON, а остальные типы
@@ -1126,13 +1126,13 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 | Модуль | Что содержит | Зависимости |
 |---|---|---|
-| `.` | `gashe`, `gashe/memory`, `gashe/nearcache`, `gashe/backendtest` | нет |
-| `redis/` | `gashe/redis` | go-redis v9 |
-| `redis/integration/` | тесты `gashe/redis` на настоящем Redis | testcontainers-go, Docker |
-| `msgpack/` | `gashe/msgpack` | vmihailenco/msgpack v5 |
+| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest` | нет |
+| `backend/redis/` | `gashe/backend/redis` | go-redis v9 |
+| `backend/redis/integration/` | тесты `gashe/backend/redis` на настоящем Redis | testcontainers-go, Docker |
+| `codec/msgpack/` | `gashe/codec/msgpack` | vmihailenco/msgpack v5 |
 
 Интеграционный модуль отдельный, чтобы testcontainers никогда не попал к пользователям
-`gashe/redis`. Его тесты сами поднимают `redis:7.0.0` в Docker и падают, если Docker недоступен.
+`gashe/backend/redis`. Его тесты сами поднимают `redis:7.0.0` в Docker и падают, если Docker недоступен.
 Задайте `GASHE_REDIS_IMAGE`, чтобы прогнать их на другом сервере, например
 `GASHE_REDIS_IMAGE=valkey/valkey:8 go test ./...`.
 
@@ -1146,7 +1146,7 @@ golangci-lint run    # golangci-lint v2, конфиг в .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # самая старая поддерживаемая версия Go
 ```
 
-`redis/go.mod`, `redis/integration/go.mod` и `msgpack/go.mod` подменяют модули gashe локальными
-копиями; перед публикацией уберите строки `replace` и укажите версии с тегами.
+`backend/redis/go.mod`, `backend/redis/integration/go.mod` и `codec/msgpack/go.mod` подменяют
+модули gashe локальными копиями; перед публикацией уберите строки `replace` и укажите версии с тегами.
 
 Термины предметной области описаны в `GLOSSARY.md`.

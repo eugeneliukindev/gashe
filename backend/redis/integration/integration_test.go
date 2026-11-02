@@ -13,9 +13,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/memory"
-	"github.com/eugeneliukindev/gashe/nearcache"
-	gasheredis "github.com/eugeneliukindev/gashe/redis"
+	"github.com/eugeneliukindev/gashe/backend/memory"
+	"github.com/eugeneliukindev/gashe/backend/nearcache"
+	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 	"github.com/eugeneliukindev/gashe/backendtest"
 )
 

@@ -10,7 +10,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/eugeneliukindev/gashe"
-	gasheredis "github.com/eugeneliukindev/gashe/redis"
+	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 )
 
 // Tests against a real Redis live in the integration module next to this one.

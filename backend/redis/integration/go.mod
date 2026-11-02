@@ -1,12 +1,12 @@
 // Integration tests for the Redis backend. A separate module, so testcontainers never reaches
-// users of github.com/eugeneliukindev/gashe/redis.
-module github.com/eugeneliukindev/gashe/redis/integration
+// users of github.com/eugeneliukindev/gashe/backend/redis.
+module github.com/eugeneliukindev/gashe/backend/redis/integration
 
 go 1.25.0
 
 require (
 	github.com/eugeneliukindev/gashe v0.0.0
-	github.com/eugeneliukindev/gashe/redis v0.0.0
+	github.com/eugeneliukindev/gashe/backend/redis v0.0.0
 	github.com/redis/go-redis/v9 v9.0.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 )
@@ -66,6 +66,6 @@ require (
 )
 
 replace (
-	github.com/eugeneliukindev/gashe => ../../
-	github.com/eugeneliukindev/gashe/redis => ../
+	github.com/eugeneliukindev/gashe => ../../../
+	github.com/eugeneliukindev/gashe/backend/redis => ../
 )

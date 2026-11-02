@@ -1,4 +1,4 @@
-module github.com/eugeneliukindev/gashe/redis
+module github.com/eugeneliukindev/gashe/backend/redis
 
 go 1.23
 
@@ -13,4 +13,4 @@ require (
 )
 
 // Until the root module is tagged, build against the local copy.
-replace github.com/eugeneliukindev/gashe => ../
+replace github.com/eugeneliukindev/gashe => ../../

@@ -34,9 +34,9 @@ linters:
     errcheck:
       exclude-functions:
         # Always returns nil; it exists to satisfy gashe.Backend.
-        - (*github.com/eugeneliukindev/gashe/memory.Backend).Close
+        - (*github.com/eugeneliukindev/gashe/backend/memory.Backend).Close
     gomoddirectives:
-      # redis/go.mod points at the local root module until the root is tagged.
+      # backend/redis/go.mod and the other modules point at the local root module until the root is tagged.
       replace-local: true
     lll:
       line-length: 120

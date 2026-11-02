@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/memory"
+	"github.com/eugeneliukindev/gashe/backend/memory"
 )
 
 type User struct {

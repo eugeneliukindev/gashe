@@ -8,7 +8,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/eugeneliukindev/gashe/nearcache"
+	"github.com/eugeneliukindev/gashe/backend/nearcache"
 )
 
 func TestLocalCopyExpires(t *testing.T) {

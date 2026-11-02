@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/memory"
-	"github.com/eugeneliukindev/gashe/msgpack"
+	"github.com/eugeneliukindev/gashe/backend/memory"
+	"github.com/eugeneliukindev/gashe/codec/msgpack"
 )
 
 type user struct {

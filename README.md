@@ -8,7 +8,7 @@ circuit breakers, all around one `*gashe.Cache`.
 
 ```bash
 go get github.com/eugeneliukindev/gashe
-go get github.com/eugeneliukindev/gashe/redis # Redis backend, depends on go-redis v9
+go get github.com/eugeneliukindev/gashe/backend/redis # Redis backend, depends on go-redis v9
 ```
 
 Requires Go 1.23 or newer.
@@ -88,7 +88,7 @@ import (
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/memory"
+	"github.com/eugeneliukindev/gashe/backend/memory"
 )
 
 type User struct {
@@ -168,7 +168,7 @@ backend: close the backend where you created it.
 
 ### In-memory
 
-`github.com/eugeneliukindev/gashe/memory` keeps entries in process memory: a fixed-size LRU where
+`github.com/eugeneliukindev/gashe/backend/memory` keeps entries in process memory: a fixed-size LRU where
 every entry may have its own TTL. Expired entries are never returned; they are removed when they are
 read and by a background purge every `PurgeInterval`. Stored bytes are copied in and out, so
 changing a value after `Set` or `Get` never changes the cache. Each process has its own memory
@@ -186,7 +186,7 @@ Patterns in `Keys`, `All` and `DeleteMatch` use Redis glob syntax: `*`, `?`, `[a
 
 ### Redis
 
-`github.com/eugeneliukindev/gashe/redis` is a separate module on top of
+`github.com/eugeneliukindev/gashe/backend/redis` is a separate module on top of
 [go-redis v9](https://github.com/redis/go-redis), so the core module stays dependency-free. You build
 the go-redis client yourself and close it yourself: the backend does not own it. Timeouts, pool
 size, TLS, Sentinel and Cluster are go-redis options.
@@ -196,7 +196,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/eugeneliukindev/gashe"
-	gasheredis "github.com/eugeneliukindev/gashe/redis"
+	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 )
 
 client := goredis.NewUniversalClient(&goredis.UniversalOptions{
@@ -224,7 +224,7 @@ Notes:
 
 ### Two-level (near cache)
 
-`github.com/eugeneliukindev/gashe/nearcache` puts a small memory cache in front of a shared backend.
+`github.com/eugeneliukindev/gashe/backend/nearcache` puts a small memory cache in front of a shared backend.
 See [Hot keys and network round trips](#hot-keys-and-network-round-trips-near-cache).
 
 ### Your own backend
@@ -670,7 +670,7 @@ for `LocalTTL`; writes and deletes go to the shared backend and drop the local c
 counters and TTLs always use the shared backend.
 
 ```go
-import "github.com/eugeneliukindev/gashe/nearcache"
+import "github.com/eugeneliukindev/gashe/backend/nearcache"
 
 local := memory.New(memory.Options{MaxEntries: 10_000})
 defer local.Close()
@@ -735,7 +735,7 @@ A compressed value is no longer a plain number, so `Incr` does not work on it.
 
 Two more codecs make values smaller without compression:
 
-- `github.com/eugeneliukindev/gashe/msgpack` is a separate module with `msgpack.Codec{}`, based on
+- `github.com/eugeneliukindev/gashe/codec/msgpack` is a separate module with `msgpack.Codec{}`, based on
   [vmihailenco/msgpack v5](https://github.com/vmihailenco/msgpack). MessagePack is binary: it is
   smaller than JSON and faster to decode. It works inside `Gzip` too: `gashe.Gzip{Inner: msgpack.Codec{}}`.
 - `gashe.Raw{}` stores `[]byte` and `string` as they are, without the quotes and base64 of JSON, and
@@ -1116,12 +1116,12 @@ The repository holds four modules. Run every command in each of them.
 
 | Module | Holds | Dependencies |
 |---|---|---|
-| `.` | `gashe`, `gashe/memory`, `gashe/nearcache`, `gashe/backendtest` | none |
-| `redis/` | `gashe/redis` | go-redis v9 |
-| `redis/integration/` | tests of `gashe/redis` against a real Redis | testcontainers-go, Docker |
-| `msgpack/` | `gashe/msgpack` | vmihailenco/msgpack v5 |
+| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest` | none |
+| `backend/redis/` | `gashe/backend/redis` | go-redis v9 |
+| `backend/redis/integration/` | tests of `gashe/backend/redis` against a real Redis | testcontainers-go, Docker |
+| `codec/msgpack/` | `gashe/codec/msgpack` | vmihailenco/msgpack v5 |
 
-The integration module is separate so that testcontainers never reaches users of `gashe/redis`.
+The integration module is separate so that testcontainers never reaches users of `gashe/backend/redis`.
 Its tests start `redis:7.0.0` in Docker by themselves and fail if Docker is not available. Set
 `GASHE_REDIS_IMAGE` to run them against another server, for example
 `GASHE_REDIS_IMAGE=valkey/valkey:8 go test ./...`.
@@ -1136,7 +1136,7 @@ golangci-lint run    # golangci-lint v2, config in .golangci.yml
 GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # the oldest supported Go
 ```
 
-`redis/go.mod`, `redis/integration/go.mod` and `msgpack/go.mod` replace the gashe modules with local
-copies; remove the `replace` lines and require tagged versions before publishing them.
+`backend/redis/go.mod`, `backend/redis/integration/go.mod` and `codec/msgpack/go.mod` replace the
+gashe modules with local copies; remove the `replace` lines and require tagged versions before publishing them.
 
 Domain terms are defined in `GLOSSARY.md`.

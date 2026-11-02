@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
+	"github.com/eugeneliukindev/gashe/backend/memory"
+	"github.com/eugeneliukindev/gashe/backend/nearcache"
 	"github.com/eugeneliukindev/gashe/backendtest"
-	"github.com/eugeneliukindev/gashe/memory"
-	"github.com/eugeneliukindev/gashe/nearcache"
 )
 
 func newMemory(t *testing.T) *memory.Backend {
