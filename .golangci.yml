@@ -36,7 +36,7 @@ linters:
         # Always returns nil; it exists to satisfy gashe.Backend.
         - (*github.com/eugeneliukindev/gashe/backend/memory.Backend).Close
     gomoddirectives:
-      # backend/redis/go.mod and the other modules point at the local root module until the root is tagged.
+      # The integration module is never published and tests the local copies of the gashe modules.
       replace-local: true
     lll:
       line-length: 120
