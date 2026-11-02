@@ -31,12 +31,10 @@ func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease
 		if err != nil || ok {
 			return lease, err
 		}
-		timer := time.NewTimer(c.lockPoll)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return nil, ctx.Err()
-		case <-timer.C:
+		case <-time.After(c.lockPoll): // since Go 1.23 an unfired timer is garbage collected
 		}
 	}
 }

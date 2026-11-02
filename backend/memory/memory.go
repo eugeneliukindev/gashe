@@ -4,6 +4,7 @@ package memory
 
 import (
 	"bytes"
+	"cmp"
 	"container/list"
 	"context"
 	"errors"
@@ -50,9 +51,8 @@ type Backend struct {
 	items      map[string]*list.Element
 	lru        *list.List // front is the most recently used entry
 
-	stop      chan struct{}
-	done      chan struct{}
-	closeOnce sync.Once
+	stop func() // stops the background purge; safe to call more than once
+	done chan struct{}
 }
 
 type entry struct {
@@ -69,31 +69,27 @@ func New(o Options) *Backend {
 	if o.MaxEntries < 0 || o.MaxBytes < 0 {
 		panic("memory: negative MaxEntries or MaxBytes")
 	}
-	if o.MaxEntries == 0 {
-		o.MaxEntries = defaultMaxEntries
-	}
-	if o.PurgeInterval == 0 {
-		o.PurgeInterval = defaultPurgeInterval
-	}
+	stop := make(chan struct{})
 	m := &Backend{
-		maxEntries: o.MaxEntries,
+		maxEntries: cmp.Or(o.MaxEntries, defaultMaxEntries),
 		maxBytes:   o.MaxBytes,
 		items:      make(map[string]*list.Element),
 		lru:        list.New(),
-		stop:       make(chan struct{}),
+		stop:       sync.OnceFunc(func() { close(stop) }),
 		done:       make(chan struct{}),
 	}
-	if o.PurgeInterval < 0 {
+	interval := cmp.Or(o.PurgeInterval, defaultPurgeInterval)
+	if interval < 0 {
 		close(m.done)
 		return m
 	}
-	go m.purgeEvery(o.PurgeInterval)
+	go m.purgeEvery(interval, stop)
 	return m
 }
 
 // Close stops the background purge. Entries stay readable. It is safe to call more than once.
 func (m *Backend) Close() error {
-	m.closeOnce.Do(func() { close(m.stop) })
+	m.stop()
 	<-m.done
 	return nil
 }
@@ -285,11 +281,7 @@ func (m *Backend) TTL(_ context.Context, key string) (time.Duration, error) {
 func (m *Backend) Unlock(_ context.Context, key string, owner []byte) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e := m.live(key)
-	if e == nil {
-		return false, nil
-	}
-	if !bytes.Equal(e.data, owner) {
+	if e := m.live(key); e == nil || !bytes.Equal(e.data, owner) {
 		return false, nil
 	}
 	m.remove(m.items[key])
@@ -322,19 +314,19 @@ func (m *Backend) Len() int {
 func (m *Backend) Clear(context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.items = make(map[string]*list.Element)
+	clear(m.items)
 	m.lru.Init()
 	m.used = 0
 	return nil
 }
 
-func (m *Backend) purgeEvery(interval time.Duration) {
+func (m *Backend) purgeEvery(interval time.Duration, stop <-chan struct{}) {
 	defer close(m.done)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-m.stop:
+		case <-stop:
 			return
 		case <-ticker.C:
 			m.purge()

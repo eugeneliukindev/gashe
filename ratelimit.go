@@ -1,6 +1,7 @@
 package gashe
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -94,11 +95,7 @@ func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
 		return nil
 	}
 	if n == int64(l.Calls)+1 {
-		ban := l.BanFor
-		if ban == 0 {
-			ban = l.Per
-		}
-		if _, err := c.backend.Expire(ctx, key, ban); err != nil {
+		if _, err := c.backend.Expire(ctx, key, cmp.Or(l.BanFor, l.Per)); err != nil {
 			c.onError(ctx, fmt.Errorf("gashe: rate limit ban %q: %w", key, err))
 		}
 	}

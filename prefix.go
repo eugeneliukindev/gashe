@@ -10,7 +10,8 @@ import (
 // WithPrefix returns a Backend that keeps every key of b under prefix, for several services or
 // environments sharing one Redis. Scan yields keys without the prefix.
 func WithPrefix(b Backend, prefix string) Backend {
-	return prefixBackend{Backend: b, prefix: prefix, pattern: escapeGlob(prefix)}
+	escape := strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`)
+	return prefixBackend{Backend: b, prefix: prefix, pattern: escape.Replace(prefix)}
 }
 
 type prefixBackend struct {
@@ -100,16 +101,4 @@ func (p prefixBackend) keys(keys []string) []string {
 		out[i] = p.prefix + k
 	}
 	return out
-}
-
-// escapeGlob escapes the characters Redis glob patterns treat specially.
-func escapeGlob(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if strings.ContainsRune(`*?[]\`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }

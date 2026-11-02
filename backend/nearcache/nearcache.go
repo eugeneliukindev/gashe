@@ -4,9 +4,11 @@
 package nearcache
 
 import (
+	"cmp"
 	"context"
 	"iter"
-	"sync"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -44,9 +46,8 @@ type Backend struct {
 	ttl    time.Duration
 	bus    Bus
 
-	stop      context.CancelFunc
-	done      chan struct{}
-	closeOnce sync.Once
+	stop context.CancelFunc // safe to call more than once
+	done chan struct{}
 }
 
 var _ gashe.Backend = (*Backend)(nil)
@@ -58,15 +59,19 @@ func New(local, shared gashe.Backend, o Options) *Backend {
 	if o.LocalTTL < 0 {
 		panic("nearcache: negative LocalTTL")
 	}
-	if o.LocalTTL == 0 {
-		o.LocalTTL = defaultLocalTTL
+	b := &Backend{
+		local:  local,
+		shared: shared,
+		ttl:    cmp.Or(o.LocalTTL, defaultLocalTTL),
+		bus:    o.Bus,
+		stop:   func() {},
+		done:   make(chan struct{}),
 	}
-	b := &Backend{local: local, shared: shared, ttl: o.LocalTTL, bus: o.Bus, stop: func() {}, done: make(chan struct{})}
 	if b.bus == nil {
 		close(b.done)
 		return b
 	}
-	ctx, stop := context.WithCancel(context.Background()) //nolint:gosec // Close calls stop
+	ctx, stop := context.WithCancel(context.Background())
 	b.stop = stop
 	go func() {
 		defer close(b.done)
@@ -126,11 +131,7 @@ func (b *Backend) Set(ctx context.Context, key string, value []byte, ttl time.Du
 
 // SetMany implements gashe.Backend.
 func (b *Backend) SetMany(ctx context.Context, values map[string][]byte, ttl time.Duration) error {
-	keys := make([]string, 0, len(values))
-	for k := range values {
-		keys = append(keys, k)
-	}
-	defer b.drop(ctx, keys...)
+	defer b.drop(ctx, slices.Collect(maps.Keys(values))...)
 	return b.shared.SetMany(ctx, values, ttl)
 }
 
@@ -209,7 +210,7 @@ func (b *Backend) Ping(ctx context.Context) error { return b.shared.Ping(ctx) }
 // Close implements gashe.Backend. It stops listening to the Bus and waits for it; it does not
 // close the two backends: whoever created them closes them.
 func (b *Backend) Close() error {
-	b.closeOnce.Do(b.stop)
+	b.stop()
 	<-b.done
 	return nil
 }

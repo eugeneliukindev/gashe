@@ -1,6 +1,7 @@
 package gashe
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"iter"
@@ -46,9 +47,6 @@ func New(b Backend, o Options) *Cache {
 	if o.LockPollInterval < 0 {
 		panic("gashe: negative LockPollInterval")
 	}
-	if o.LockPollInterval == 0 {
-		o.LockPollInterval = defaultLockPoll
-	}
 	if o.Codec == nil {
 		o.Codec = JSON{}
 	}
@@ -63,7 +61,7 @@ func New(b Backend, o Options) *Cache {
 		codec:    o.Codec,
 		onError:  o.OnError,
 		onResult: o.OnResult,
-		lockPoll: o.LockPollInterval,
+		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),
 	}
 }
 
