@@ -85,6 +85,10 @@ _Avoid_: group
 A small cache in process memory in front of a shared backend.
 _Avoid_: L1, local cache, client-side cache
 
+**Bus**:
+The channel through which near caches of different processes tell each other which keys changed.
+_Avoid_: backplane, broadcast
+
 **Cache rule**:
 A rule that decides whether a loader result is worth storing.
 _Avoid_: condition, filter, predicate

@@ -495,13 +495,27 @@ func New(local, shared gashe.Backend, o Options) *Backend
 
 type Options struct {
 	LocalTTL time.Duration
+	Bus      Bus
+}
+
+type Bus interface {
+	Publish(ctx context.Context, keys []string) error
+	Subscribe(ctx context.Context, changed func(keys []string)) error
 }
 ```
 
 `New` returns a backend that reads through `local` (usually `memory`) in front of `shared` (usually
-Redis). Writes and deletes go to `shared` and drop the local copy. `LocalTTL` is how long a local
-copy lives, 0 means 5 seconds. `Backend` implements `gashe.Backend`; its `Close` closes neither
-backend.
+Redis). Writes and deletes go to `shared` and drop the local copy. `Backend` implements
+`gashe.Backend`; its `Close` stops listening to the `Bus` and closes neither backend.
+
+| Field | Zero value | Meaning |
+|---|---|---|
+| `LocalTTL` | 5 seconds | How long a local copy lives. |
+| `Bus` | other processes see a change after `LocalTTL` | Tells the near caches of other processes which keys changed, so they drop their copies at once. |
+
+`Bus` carries only key names. `Publish` sends them; nil means every key. `Subscribe` calls `changed`
+with the keys others published, and `changed(nil)` when messages may have been lost; it returns when
+`ctx` is done. `gasheredis.NewBus` is one over Redis pub/sub.
 
 ## Package gashe/backend/redis
 
@@ -509,12 +523,20 @@ backend.
 
 ```go
 func New(client goredis.UniversalClient) *Backend
+
+func NewBus(client goredis.UniversalClient, channel string) *Bus
+func (b *Bus) Publish(ctx context.Context, keys []string) error
+func (b *Bus) Subscribe(ctx context.Context, changed func(keys []string)) error
 ```
 
-Returns a backend over a go-redis v9 client: a single node, Sentinel or Cluster. You own the client
-and close it; `Backend.Close` does nothing. `Backend` implements `gashe.Backend`. Errors are wrapped as
-`gashe/redis: <op>: <error>`; a missing key becomes `gashe.ErrNotFound`, a wrong type
+`New` returns a backend over a go-redis v9 client: a single node, Sentinel or Cluster. You own the
+client and close it; `Backend.Close` does nothing. `Backend` implements `gashe.Backend`. Errors are
+wrapped as `gashe/redis: <op>: <error>`; a missing key becomes `gashe.ErrNotFound`, a wrong type
 `gashe.ErrWrongType`.
+
+`NewBus` returns a `nearcache.Bus` over Redis pub/sub on `channel`; use one channel per set of
+processes that share the same keys. It panics on an empty channel. After every (re)subscription it
+reports `changed(nil)`, and it retries every second while Redis is down.
 
 ## Package gashe/codec/msgpack
 

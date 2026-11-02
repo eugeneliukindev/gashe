@@ -515,17 +515,26 @@ A hot key is read thousands of times a second, each read a network round trip to
 `nearcache` keeps a copy in process memory for `LocalTTL`; writes and deletes go to Redis and drop
 the local copy. Locks, counters and TTLs always use Redis.
 
+With a `Bus`, a pod that changes a key tells the others, and they drop their copies at once instead
+of after `LocalTTL`. Only the key name is sent; the next read takes the new value from Redis.
+`InvalidateTags` becomes instant on every pod too.
+
 ```go
 local := memory.New(memory.Options{MaxBytes: 64 << 20})
 defer local.Close()
-c := gashe.New(nearcache.New(local, gasheredis.New(client), nearcache.Options{LocalTTL: 5 * time.Second}),
-	gashe.Options{})
+near := nearcache.New(local, gasheredis.New(client), nearcache.Options{
+	LocalTTL: time.Minute,
+	Bus:      gasheredis.NewBus(client, "orders:invalidate"), // one channel per service
+})
+defer near.Close() // stops listening to the bus
+c := gashe.New(near, gashe.Options{})
 ```
 
 > [!WARNING]
-> Every pod keeps its own copy: other pods may answer with an old value, and see an invalidated
-> tag, up to `LocalTTL` later. With 50 pods the local cache takes RAM 50 times; bound it with
-> `MaxBytes`.
+> Every pod keeps its own copy, so with 50 pods the local cache takes RAM 50 times: bound it with
+> `MaxBytes`. The bus sees only changes made through gashe; a key changed by `redis-cli` or another
+> service stays stale up to `LocalTTL`. While a pod is disconnected from Redis it may miss
+> messages; it drops all its copies when it reconnects.
 
 ### Storage
 

@@ -6,6 +6,7 @@ package nearcache
 import (
 	"context"
 	"iter"
+	"sync"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -19,6 +20,20 @@ type Options struct {
 	// long another process may keep answering with a value this process already changed.
 	// 0 means 5 seconds.
 	LocalTTL time.Duration
+	// Bus, when set, tells the near caches of other processes which keys this one changed, so they
+	// drop their copies at once instead of after LocalTTL. backend/redis provides one over
+	// pub/sub. nil means other processes see a change only after LocalTTL.
+	Bus Bus
+}
+
+// Bus carries "these keys changed" messages between the near caches of all processes. Only key
+// names travel; a process that needs the new value reads it from the shared backend.
+type Bus interface {
+	// Publish tells the other processes that keys changed. nil means every key.
+	Publish(ctx context.Context, keys []string) error
+	// Subscribe calls changed with the keys other processes published, and changed(nil) whenever
+	// messages may have been lost, such as after a reconnect. It returns when ctx is done.
+	Subscribe(ctx context.Context, changed func(keys []string)) error
 }
 
 // Backend reads through local, then shared; writes and deletes go to shared and drop the local
@@ -27,12 +42,18 @@ type Backend struct {
 	local  gashe.Backend
 	shared gashe.Backend
 	ttl    time.Duration
+	bus    Bus
+
+	stop      context.CancelFunc
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 var _ gashe.Backend = (*Backend)(nil)
 
 // New returns a near cache Backend. local is usually a memory.Backend, shared a Redis backend; both
-// are owned by the caller, and Close closes neither. It panics on a negative LocalTTL.
+// are owned by the caller, and Close closes neither. With a Bus, New starts listening to it and
+// Close stops. It panics on a negative LocalTTL.
 func New(local, shared gashe.Backend, o Options) *Backend {
 	if o.LocalTTL < 0 {
 		panic("nearcache: negative LocalTTL")
@@ -40,7 +61,18 @@ func New(local, shared gashe.Backend, o Options) *Backend {
 	if o.LocalTTL == 0 {
 		o.LocalTTL = defaultLocalTTL
 	}
-	return &Backend{local: local, shared: shared, ttl: o.LocalTTL}
+	b := &Backend{local: local, shared: shared, ttl: o.LocalTTL, bus: o.Bus, stop: func() {}, done: make(chan struct{})}
+	if b.bus == nil {
+		close(b.done)
+		return b
+	}
+	ctx, stop := context.WithCancel(context.Background()) //nolint:gosec // Close calls stop
+	b.stop = stop
+	go func() {
+		defer close(b.done)
+		_ = b.bus.Subscribe(ctx, func(keys []string) { b.changed(ctx, keys) })
+	}()
+	return b
 }
 
 // Get implements gashe.Backend. A value found in shared is copied to local for LocalTTL.
@@ -126,9 +158,10 @@ func (b *Backend) DeleteMany(ctx context.Context, keys ...string) error {
 	return b.shared.DeleteMany(ctx, keys...)
 }
 
-// DeleteMatch implements gashe.Backend.
+// DeleteMatch implements gashe.Backend. Other processes drop all their local copies.
 func (b *Backend) DeleteMatch(ctx context.Context, pattern string) error {
 	_ = b.local.DeleteMatch(ctx, pattern)
+	defer b.publish(ctx, nil)
 	return b.shared.DeleteMatch(ctx, pattern)
 }
 
@@ -173,10 +206,34 @@ func (b *Backend) ExtendLock(ctx context.Context, key string, owner []byte, ttl 
 // Ping implements gashe.Backend. It pings shared.
 func (b *Backend) Ping(ctx context.Context) error { return b.shared.Ping(ctx) }
 
-// Close implements gashe.Backend. It does nothing: whoever created the two backends closes them.
-func (*Backend) Close() error { return nil }
+// Close implements gashe.Backend. It stops listening to the Bus and waits for it; it does not
+// close the two backends: whoever created them closes them.
+func (b *Backend) Close() error {
+	b.closeOnce.Do(b.stop)
+	<-b.done
+	return nil
+}
 
-// drop removes the local copies of keys after a write.
+// drop removes the local copies of keys after a write and tells the other processes.
 func (b *Backend) drop(ctx context.Context, keys ...string) {
+	if len(keys) == 0 {
+		return
+	}
 	_ = b.local.DeleteMany(ctx, keys...) // a stale local copy lives at most LocalTTL
+	b.publish(ctx, keys)
+}
+
+func (b *Backend) publish(ctx context.Context, keys []string) {
+	if b.bus != nil {
+		_ = b.bus.Publish(ctx, keys) // the write succeeded; other copies then live at most LocalTTL
+	}
+}
+
+// changed drops the local copies other processes reported; nil drops all of them.
+func (b *Backend) changed(ctx context.Context, keys []string) {
+	if keys == nil {
+		_ = b.local.DeleteMatch(ctx, "*")
+		return
+	}
+	_ = b.local.DeleteMany(ctx, keys...)
 }
