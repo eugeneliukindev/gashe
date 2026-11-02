@@ -1,0 +1,116 @@
+version: "2"
+
+run:
+  # Lint against the oldest supported Go so linters do not suggest newer features.
+  go: "1.23"
+
+linters:
+  default: all
+  disable:
+    # Imports are already limited by go.mod: the root module has no dependencies at all.
+    - depguard
+    # Options structs are designed so that unset fields mean defaults.
+    - exhaustruct
+    - exhaustruct_v5
+    # Same as depguard: dependencies are policed by go.mod, not by an allowlist.
+    - gomodguard
+    - gomodguard_v2
+    # Blank-line rules fight gofumpt and add no safety.
+    - nlreturn
+    - wsl
+    - wsl_v5
+    # Short names such as c, v, k and b are idiomatic in small scopes.
+    - varnamelen
+    # Inline "if err := f(); err != nil" is idiomatic Go.
+    - noinlineerr
+    # Tests run inside synctest bubbles, where t.Parallel is not allowed.
+    - paralleltest
+    - tparallel
+    # Backend is one complete contract on purpose; see docs/adr/0001.
+    - interfacebloat
+    # Backend errors pass through Cache unchanged; they are wrapped once, in each backend.
+    - wrapcheck
+  settings:
+    errcheck:
+      exclude-functions:
+        # Always returns nil; it exists to satisfy gashe.Backend.
+        - (*github.com/eugeneliukindev/gashe/memory.Backend).Close
+    gomoddirectives:
+      # redis/go.mod points at the local root module until the root is tagged.
+      replace-local: true
+    lll:
+      line-length: 120
+    govet:
+      enable-all: true
+      disable:
+        # Field order follows meaning, not padding.
+        - fieldalignment
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: unused-parameter
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        # Conflicts with nonamedreturns, which is kept.
+        - unnamedResult
+    ireturn:
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        # Strategies return the caller's own type V.
+        - generic
+        # Cache.Backend is an accessor for the configured backend.
+        - github.com/eugeneliukindev/gashe.Backend
+    funlen:
+      lines: 70
+      statements: 45
+    mnd:
+      ignored-numbers:
+        - "10" # decimal base
+        - "64" # bits in an int64
+  exclusions:
+    rules:
+      # Tests are long tables of literal cases; size and literal rules only add noise there.
+      # backendtest is a test suite shipped as a package, so the same applies.
+      - path: (_test\.go|^backendtest/)
+        linters:
+          - funlen
+          - maintidx
+          - gocognit
+          - cyclop
+          - mnd
+          - dupl
+          - err113
+          - gochecknoglobals
+          - goconst
+          # Test loaders must match the strategy signature even when a result is fixed,
+          # and a nil result with a nil error is exactly what condition tests need.
+          - unparam
+          - nilnil
+      # backendtest functions are subtest bodies run by t.Run, not helpers; t.Helper would hide
+      # the failing line.
+      - path: ^backendtest/
+        linters:
+          - thelper
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        # All gashe modules group their own imports the same way.
+        - prefix(github.com/eugeneliukindev/gashe)
+    golines:
+      max-len: 120
