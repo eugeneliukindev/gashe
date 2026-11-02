@@ -16,14 +16,35 @@ the API. The root module and `backend/redis` and `codec/msgpack` are released wi
 - `backend/redis`: `NewBus`, a `nearcache.Bus` over Redis pub/sub. It drops all local copies after
   every reconnect, since messages may have been lost, and works on a Cluster.
 - `httpcache`: a middleware that caches whole HTTP responses of a handler through `GetOrLoad`,
-  with `ETag` and `304`, and serves the last good page on a 5xx with `StaleIfError`.
+  with `ETag`, `304` and `Cache-Status` (RFC 9211), and serves the last good page on a 5xx with
+  `StaleIfError`.
+- `Policy.StaleIfSlow` and `ResultStaleIfSlow`: when the loader is slower than this, the call
+  answers with the stale result and the load finishes in the background, one per key.
+- `WithBreaker`: a backend wrapper that stops calling a failing backend for a while, so a cache
+  that is down costs no timeout on every call.
+- Entries keep the shape of their type (`t`): after a deploy that changes the type, old entries are
+  misses instead of decoding into empty fields. Entries from 0.1.0 are read as they are.
 
 ### Changed
 
+- The keys the cache keeps for itself live under `Options.Namespace`, `gashe:` by default:
+  `gashe:load:<key>` and `gashe:refresh:<key>` instead of `<key>:load` and `<key>:refresh`,
+  `gashe:rate:sliding:` and `gashe:rate:fixed:` instead of `srl:` and `rate_limit:`. After the
+  upgrade, rate limit counters start from zero; tag counters keep their keys unless you set a
+  namespace.
+- `Options.OnResult` receives an `Outcome` with the key, the `Result` and how long the loader ran:
+  `func(ctx context.Context, o gashe.Outcome)` instead of `func(ctx, key string, r Result)`.
+- Results whose types do not explain them are named in signatures, as `SetIfAbsent` returning
+  `(stored bool, err error)`; calls do not change.
 - `nearcache.Backend.Close` stops listening to the `Bus` and waits for it. It still closes neither
   backend.
 - The documentation is one shorter README; development notes moved to `CONTRIBUTING.md`, and the
   Russian translation was removed.
+
+### Fixed
+
+- A tag counter that the backend evicted read as generation 0, which made entries invalidated before
+  the eviction valid again. A missing counter now starts at a random generation.
 
 ## [0.1.0] - 2026-11-02
 

@@ -14,104 +14,35 @@ go get github.com/eugeneliukindev/gashe/codec/msgpack # MessagePack codec, optio
 
 Go 1.23 or newer. The core module has no third-party dependencies and no global state.
 
-## Example
+## Two ways to use it
 
-Four parts: a **backend** where entries live, **`gashe.Options`** for the whole cache, a
-**`gashe.Policy`** for each kind of data, and the calls. `db`, `payments` and `clientIP` stand for
-your own code.
+Both run on one `*gashe.Cache` and take a `gashe.Policy`: how long a result is fresh, and what to
+do when the source is slow or down.
 
 ```go
-package main
+c := gashe.New(gasheredis.New(client), gashe.Options{})
 
-import (
-	"context"
-	"errors"
-	"fmt"
-	"log/slog"
-	"time"
-
-	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/backend/memory"
-)
-
-type User struct {
-	ID   string
-	Name string
+cachedUsers := gashe.Policy[User]{
+	TTL:          10 * time.Minute, // fresh for 10 minutes
+	StaleIfError: time.Hour,        // the database is down: answer the old user for up to an hour
+	LockOnMiss:   5 * time.Second,  // a cold key loads once for all pods
 }
+```
 
-var errNoUser = errors.New("user not found")
+**Call it from your code** when you decide what to cache and under which key: `GetOrLoad`,
+`GetOrLoadMany` and `Reload`, plus `InvalidateTags`, `Lock`, `RateLimit` and `CircuitBreaker`. See
+[Direct calls](#direct-calls).
 
-// A Policy says how one kind of data is cached. Define it once, next to the code that loads it.
-var cachedUsers = gashe.Policy[User]{
-	Prefix:               "user:",          // stored under "user:<id>"
-	TTL:                  10 * time.Minute, // fresh for 10 minutes
-	Jitter:               0.1,              // spread expiry by up to 10%, so users do not expire together
-	StaleWhileRevalidate: time.Minute,      // the minute after: answer the old user, reload it in the background
-	StaleIfError:         time.Hour,        // the database is down: answer the old user for up to an hour
-	LockOnMiss:           5 * time.Second,  // a cold key: one process loads it, the others wait for the result
-	Negative: gashe.Negative{ // "no such user" is cached too, so unknown ids do not reach the database
-		If:  func(err error) bool { return errors.Is(err, errNoUser) },
-		Err: errNoUser,
-		TTL: time.Minute,
-	},
-	Tags: []string{"users"}, // c.InvalidateTags(ctx, "users") drops every user at once
-}
+```go
+u, err := gashe.GetOrLoad(ctx, c, "user:42", cachedUsers, loadUser) // loadUser runs on a miss only
+```
 
-// GetOrLoadMany takes the plain options only.
-var cachedUserList = gashe.Policy[User]{Prefix: "user:", TTL: 10 * time.Minute, Tags: []string{"users"}}
+**Wrap a handler** to cache whole HTTP responses without changing it, with `ETag`, `304` and
+`Cache-Status`. See [HTTP middleware](#http-middleware).
 
-func main() {
-	ctx := context.Background()
-
-	// The backend is where entries live: memory for one process, Redis to share them between
-	// processes: gasheredis.New(goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})).
-	backend := memory.New(memory.Options{MaxBytes: 256 << 20})
-	defer backend.Close()
-
-	// Options say how the whole Cache behaves. Every field is optional.
-	c := gashe.New(backend, gashe.Options{
-		OnError:  func(ctx context.Context, err error) { slog.WarnContext(ctx, "cache", "error", err) },
-		OnResult: func(ctx context.Context, key string, r gashe.Result) { /* count hits for metrics */ },
-	})
-	defer c.Shutdown(ctx) // let background reloads finish before the backend closes
-
-	// One value: from the cache, or from the loader, which is then stored.
-	u, err := gashe.GetOrLoad(ctx, c, "42", cachedUsers, func(ctx context.Context) (User, error) {
-		return db.User(ctx, "42")
-	})
-	fmt.Println(u, err)
-
-	// Many values: one cache read, then one loader call for the missing ones.
-	list, err := gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, cachedUserList,
-		func(ctx context.Context, missing []string) (map[string]User, error) {
-			return db.Users(ctx, missing)
-		})
-	fmt.Println(list, err)
-
-	// After a write: reload one user, or drop every user at once.
-	if _, err := gashe.Reload(ctx, c, "42", cachedUsers, func(ctx context.Context) (User, error) {
-		return db.User(ctx, "42")
-	}); err != nil {
-		fmt.Println(err)
-	}
-	if err := c.InvalidateTags(ctx, "users"); err != nil {
-		fmt.Println(err)
-	}
-
-	// Protecting dependencies: a rate limit, a circuit breaker, a lock.
-	if err := c.RateLimit(ctx, "api:"+clientIP, gashe.PerMinute(100)); errors.Is(err, gashe.ErrRateLimited) {
-		return // answer 429
-	}
-	if done, err := c.CircuitBreaker("payments", gashe.BreakerOptions{
-		FailurePercent: 50, MinCalls: 20, Window: time.Minute, OpenFor: 30 * time.Second,
-	}); err == nil { // gashe.ErrCircuitOpen while the payment API keeps failing
-		done(payments.Charge(ctx))
-	}
-	if lease, ok, err := c.TryLock(ctx, "job:daily-report", 10*time.Minute); err == nil && ok {
-		defer lease.Unlock(ctx)
-		// only one process runs the daily report
-	}
-}
+```go
+cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute}})
+mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
 ```
 
 ## Contents
@@ -121,19 +52,19 @@ func main() {
   [your own](#your-own-backend)
 - [Keys and TTL](#keys-and-ttl)
 - [Basic API](#basic-api)
-- [Strategies](#strategies)
+- [Direct calls](#direct-calls)
   - Caching: [cache-aside](#cache-aside), [stale-while-revalidate](#stale-while-revalidate),
-    [stale-if-error](#stale-if-error), [negative caching](#negative-caching),
-    [HTTP responses](#whole-http-responses)
+    [stale-if-error](#stale-if-error), [negative caching](#negative-caching)
   - Invalidation: [by tag](#invalidation-by-tag), [other ways](#other-ways-to-invalidate)
   - Load on the source: [stampede inside a process](#cache-stampede-inside-a-process),
     [stampede across processes](#cache-stampede-across-processes), [batch loading](#batch-loading),
     [TTL jitter](#ttl-jitter), [near cache](#near-cache)
-  - Storage: [key prefixes](#key-prefixes), [large values](#large-values)
+  - Storage: [key prefixes](#key-prefixes), [type changes](#type-changes), [large values](#large-values)
   - Protecting dependencies: [distributed lock](#distributed-lock), [rate limiting](#rate-limiting),
     [circuit breaker](#circuit-breaker)
   - Operations: [cache failure](#cache-failure), [monitoring](#monitoring),
     [graceful shutdown](#graceful-shutdown), [known limits](#known-limits)
+- [HTTP middleware](#http-middleware)
 - [Errors](#errors)
 - [Testing your code](#testing-your-code)
 
@@ -152,8 +83,9 @@ defer mem.Close()
 c := gashe.New(mem, gashe.Options{
 	Codec:            gashe.JSON{},          // the default
 	OnError:          onError,               // errors the cache works around instead of returning
-	OnResult:         onResult,              // how every GetOrLoad was answered, for metrics
+	OnResult:         onResult,              // how every GetOrLoad was answered and how long it loaded
 	LockPollInterval: 20 * time.Millisecond, // how often Lock and LockOnMiss check; 0 means 100ms
+	Namespace:        "orders:gashe:",       // where the cache keeps its own keys; "" means "gashe:"
 })
 defer c.Shutdown(ctx) // runs before mem.Close: waits for background reloads
 ```
@@ -190,7 +122,7 @@ defer client.Close()
 c := gashe.New(gasheredis.New(client), gashe.Options{})
 ```
 
-- Every entry is a plain Redis string; [Strategies](#strategies) show what each one stores.
+- Every entry is a plain Redis string; [Direct calls](#direct-calls) show what each one stores.
   Read them with `redis-cli`, but do not write `GetOrLoad` entries by hand: the format is internal.
   `DEL` is always safe.
 - On a Cluster, multi-key calls go one key at a time, and `Keys`, `All` and `DeleteMatch` visit
@@ -229,8 +161,11 @@ cachedUsers := gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"}          
 gashe.GetOrLoad(ctx, c, "42", cachedUsers, load) // stored as "orders:prod:users:v2:42"
 ```
 
-Prefixes are used as is, separator included. The library keeps its own keys under `gashe:tag:`,
-`srl:`, `rate_limit:` and next to an entry as `<key>:load` and `<key>:refresh`.
+Prefixes are used as is, separator included. The cache keeps its own keys under
+`Options.Namespace`, `gashe:` by default: `gashe:tag:<tag>`, `gashe:load:<key>` and
+`gashe:refresh:<key>` for the locks of an entry, `gashe:rate:sliding:<key>:<window>` and
+`gashe:rate:fixed:<key>` for rate limits. Change the namespace when these could collide with your
+keys or when Redis ACLs grant keys by pattern.
 
 In `GetOrLoad`, `TTL` is how long a result is fresh; the entry is kept `TTL` plus the longer of
 `StaleWhileRevalidate` and `StaleIfError`. In the basic API a TTL of 0 means "never expires" and a
@@ -266,9 +201,9 @@ Patterns are Redis globs: `*`, `?`, `[abc]`, `[^a]`, `[a-z]`, `\` to escape. Val
 the codec can encode; with JSON, exported fields only. `GetOrLoad` returns the value as it reads
 back from the cache, so a field that is lost shows up on the first call, not only on a hit.
 
-## Strategies
+## Direct calls
 
-Each section names a problem caches run into and the option that solves it. Most are fields of one
+Each section names a problem caches run into and the call or option that solves it. Most are fields of one
 `gashe.Policy[V]` and can be combined. Over `memory` everything stays inside one process; over Redis
 it is shared by every process that uses that Redis, unless a section says otherwise. Most
 sections end with what the example stores in Redis. `loadUser`, `s.repo` and the like stand for
@@ -279,8 +214,9 @@ your own code.
 | The same expensive call again and again | [`GetOrLoad`](#cache-aside) |
 | Every request waits when a popular key expires | [`StaleWhileRevalidate`](#stale-while-revalidate) |
 | The database is down and the cache is empty | [`StaleIfError`](#stale-if-error) |
+| The database is slow, and every request waits for it | [`StaleIfSlow`](#stale-if-error) |
 | Lookups of missing ids always reach the database | [`Negative`](#negative-caching) |
-| A heavy page is rendered on every request | [`httpcache`](#whole-http-responses) |
+| A heavy page is rendered on every request | [`httpcache`](#http-middleware) |
 | One change makes many entries stale | [`Tags`, `InvalidateTags`](#invalidation-by-tag) |
 | A cold key: a thousand identical queries | built in for one process, [`LockOnMiss`](#cache-stampede-across-processes) for all pods |
 | N+1 queries on a list page | [`GetOrLoadMany`](#batch-loading) |
@@ -289,6 +225,8 @@ your own code.
 | Work must run once at a time across pods | [`Lock`, `TryLock`](#distributed-lock) |
 | A client calls far too often | [`RateLimit`](#rate-limiting) |
 | A failing dependency drags the service down | [`CircuitBreaker`](#circuit-breaker) |
+| Redis is down, and every request waits for its timeout | [`WithBreaker`](#cache-failure) |
+| A deploy changed a cached type | built in: [shapes](#type-changes) |
 
 If the cache itself fails, `GetOrLoad` serves from the loader and reports the error to `OnError`.
 
@@ -314,28 +252,29 @@ after the request has ended. Three more fields fit most cases:
 ```go
 gashe.Policy[[]Item]{TTL: time.Minute, CacheIf: func(v []Item) bool { return len(v) > 0 }} // skip empty results
 gashe.Policy[Token]{TTLFunc: func(t Token) time.Duration { return time.Until(t.ExpiresAt) - time.Minute }}
-gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"} // stores "users:v2:42"; change it when User changes
+gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"} // stores "users:v2:42"
 ```
 
 Stored as one string under `user:42` for an hour: `at` is when the result stops being fresh,
-`v` is the result.
+`v` is the result, `t` is the shape of `User` (see [type changes](#type-changes)).
 
 ```
-{"at":"2026-11-02T16:21:48.62510671+03:00","v":{"ID":42,"Name":"Ann","Email":"ann@example.com"}}
+{"at":"2026-11-02T21:42:44.923656871+03:00","v":{"ID":42,"Name":"Ann","Email":"ann@example.com"},"t":12739442919671864151}
 ```
 
 #### Stale-while-revalidate
 
-A popular key expires, and every request waits for the slow loader. With `StaleWhileRevalidate`
-(RFC 5861), for this long after `TTL` the stale result is answered at once while one caller
-reloads it in the background; with Redis, one caller across all processes.
+A popular key expires, and every request waits for the slow loader. `StaleWhileRevalidate` works as
+the directive of [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-3): for this long after
+`TTL` the stale result is answered at once while one caller reloads it in the background; with
+Redis, one caller across all processes.
 
 ```go
 var cachedFeeds = gashe.Policy[[]Item]{TTL: 5 * time.Minute, StaleWhileRevalidate: 30 * time.Minute}
 ```
 
 Stored like a cache-aside entry, but for `TTL + StaleWhileRevalidate` (35 minutes). While one
-process reloads it, `feed:u1:refresh` holds the random id of that process, such as
+process reloads it, `gashe:refresh:feed:u1` holds the random id of that process, such as
 `f4fefbc6731d4abccff956cae8ca012f`, for at most a minute.
 
 > [!CAUTION]
@@ -345,9 +284,10 @@ process reloads it, `feed:u1:refresh` holds the random id of that process, such 
 
 #### Stale-if-error
 
-The database or an API is down, and expired entries leave nothing to answer with. With
-`StaleIfError` (RFC 5861), for this long after `TTL` a stale result answers a loader error; the
-error goes to `OnError`. `StaleIf` picks which errors count.
+The database or an API is down, and expired entries leave nothing to answer with. `StaleIfError`
+works as the directive of [RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-4): for this
+long after `TTL` a stale result answers a loader error; the error goes to `OnError`. `StaleIf`
+picks which errors count.
 
 ```go
 var cachedRates = gashe.Policy[Rates]{
@@ -358,6 +298,15 @@ var cachedRates = gashe.Policy[Rates]{
 ```
 
 Stored for `TTL + StaleIfError` (6 hours and a minute), though fresh only for the minute in `at`.
+
+A source that is slow rather than down is covered by `StaleIfSlow`: when the loader takes longer,
+the call answers with the stale result at once (`ResultStaleIfSlow`), and the load goes on in the
+background and stores what it gets. While it runs, other calls also get the stale result instead of
+starting more loads, with Redis across all pods.
+
+```go
+var cachedRates = gashe.Policy[Rates]{TTL: time.Minute, StaleIfError: 6 * time.Hour, StaleIfSlow: 200 * time.Millisecond}
+```
 
 > [!WARNING]
 > An answer can be up to `TTL + StaleIfError` old. Do not use it where a stale answer is wrong
@@ -383,38 +332,12 @@ var cachedUsers = gashe.Policy[User]{
 Stored under `user:999` for `Negative.TTL`, as an entry with `"neg":true`:
 
 ```
-{"at":"2026-11-02T15:22:19.930721677+03:00","v":{"ID":0,"Name":"","Email":""},"neg":true}
+{"at":"2026-11-02T20:43:14.923731132+03:00","v":{"ID":0,"Name":"","Email":""},"neg":true,"t":12739442919671864151}
 ```
 
 > [!WARNING]
 > Data created after a negative answer stays "not found" until `Negative.TTL` ends. Keep it short,
 > or `Delete` the key when you create the data.
-
-#### Whole HTTP responses
-
-A page or a JSON response is the same for everyone but costly to render on every request.
-`httpcache` caches whole responses of a handler: a hit sends the stored status, headers and body
-without calling the handler. It runs on `GetOrLoad`, so every `Policy` field works for pages: a
-5xx with `StaleIfError` gets the last good page, `LockOnMiss` renders a cold page once for all pods.
-
-```go
-cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-	Prefix:       "http:",
-	TTL:          time.Minute,
-	StaleIfError: time.Hour,
-	Tags:         []string{"catalog"}, // c.InvalidateTags(ctx, "catalog") after an edit
-}})
-mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
-```
-
-Only `GET` and `HEAD` are cached, keyed by host, path and query. Responses get an `ETag`, and a
-matching `If-None-Match` gets `304` without a body; `X-Cache` says `hit` or `miss`. Request
-`Cache-Control` is ignored, so clients cannot make the handler run on every request.
-
-> [!CAUTION]
-> A response must be the same for everyone who gets its key. A response with `Set-Cookie`, `Vary`
-> or `Cache-Control: private` is never stored, and requests with `Authorization` skip the cache.
-> If a page depends on a cookie, set `Key` and put the user in it, or do not wrap that route.
 
 ### Invalidation
 
@@ -434,12 +357,29 @@ err = c.InvalidateTags(ctx, "user:42") // after the write, not before
 An entry stores the generations of its tags in `g`, in the order of `Tags`:
 
 ```
-{"at":"2026-11-02T16:21:50.147958692+03:00","v":[{"ID":7}],"g":[0,0]}
+{"at":"2026-11-02T21:42:44.923741491+03:00","v":[{"ID":7}],"g":[2979883199008293202,1244849662261960931],"t":7073818895893918877}
 ```
 
-A tag is a counter under `gashe:tag:<tag>`, created on its first invalidation and never expiring:
-after one `InvalidateTags(ctx, "user:42")`, `gashe:tag:user:42` holds `1`. Entries with an older `g`
-are misses and expire by their TTL.
+A tag is a counter under `gashe:tag:<tag>` that starts at a random number on first use and never
+expires: `InvalidateTags(ctx, "user:42")` raises `gashe:tag:user:42` from `2979883199008293202` to
+`...203`. Entries with an older `g` are misses and expire by their TTL. If Redis evicts a counter, it
+starts again at a new random number, so evicted counters never bring invalidated entries back.
+
+Tags also close the race where a slow read stores an old value after a write: the read takes the
+generations before it loads, so its late entry is stored with the old `g` and is a miss at once.
+For data that must not be stale after a write, give each item its own tag and invalidate it after
+the write:
+
+```go
+cachedUser := func(id string) gashe.Policy[User] {
+	return gashe.Policy[User]{TTL: time.Hour, Tags: []string{"user:" + id}}
+}
+u, err := gashe.GetOrLoad(ctx, c, "user:"+id, cachedUser(id), loadUser)
+// after UPDATE users ... WHERE id = $1:
+err = c.InvalidateTags(ctx, "user:"+id)
+```
+
+The price is one more key read per lookup.
 
 > [!NOTE]
 > Tag counters never expire: every tag name is one small key forever. Tags per user are fine;
@@ -453,8 +393,12 @@ c.Delete(ctx, "user:42")
 c.DeleteMatch(ctx, "user:*")                      // scans the whole backend: avoid on a large Redis
 ```
 
-To drop everything of one kind after a code change, change its `Prefix`. Every key then misses at
-once: expect the load of a cold cache after such a deploy.
+`Delete` leaves the race above open: a read that loaded before the write can store its old value
+after the `Delete`. Use a tag where that matters.
+
+To drop everything of one kind, change its `Prefix`. Every key then misses at once: expect the load
+of a cold cache after such a deploy. A changed type does not need it, see
+[type changes](#type-changes).
 
 ### Load on the source
 
@@ -474,7 +418,7 @@ is the longest the lock is held, in case its holder dies.
 var cachedStats = gashe.Policy[Stats]{TTL: 10 * time.Minute, LockOnMiss: time.Minute}
 ```
 
-While one pod loads, `stats:2026-11-02:load` holds the random id of that pod for at most
+While one pod loads, `gashe:load:stats:2026-11-02` holds the random id of that pod for at most
 `LockOnMiss`; it is deleted once the result is stored.
 
 > [!WARNING]
@@ -551,6 +495,21 @@ c := gashe.New(gashe.WithPrefix(gasheredis.New(client), "orders:staging:"), gash
 
 Every key is stored with the prefix: `order:1` becomes `orders:staging:order:1`.
 
+#### Type changes
+
+A deploy renames a field of a cached type, and `encoding/json` reads old entries without an error,
+leaving the new field empty until they expire. Built in: every entry keeps `t`, a hash of the shape
+of its type (exported field names, json tags and types), and an entry of another shape is a miss
+that loads again. Only types that changed reload; changing values does not change the shape.
+
+```go
+type User struct{ Name string }     // stored with "t":1273...
+type User struct{ FullName string } // after the deploy: another shape, so old entries are misses
+```
+
+Entries stored by gashe v0.1.0 have no `t` and are read as they are, so an upgrade does not empty
+the cache.
+
 #### Large values
 
 Big values take memory in Redis and network on every read. `Gzip` compresses what another codec
@@ -577,13 +536,8 @@ lease, ok, err := c.TryLock(ctx, "job:reindex", time.Minute) // Lock waits inste
 if err != nil || !ok {
 	return err // Redis is down, or another pod holds it
 }
-defer lease.Unlock(ctx) // releases it only if it is still yours
-for more() {
-	work()
-	if err := lease.Extend(ctx, time.Minute); err != nil {
-		return err // gashe.ErrLockLost: stop, another pod may have started
-	}
-}
+defer lease.Unlock(ctx)              // releases it only if it is still yours
+err = lease.Extend(ctx, time.Minute) // for long work; gashe.ErrLockLost if it expired
 ```
 
 Stored under `job:reindex`: the random id of the holder, such as
@@ -608,8 +562,8 @@ if errors.Is(err, gashe.ErrRateLimited) {
 ```
 
 A sliding window stores a plain counter per span of `Per`, such as `3` under
-`srl:api-key:k1:29893701`, each for twice `Per`. A fixed window is one counter under
-`rate_limit:login:1.2.3.4`; the first call over the limit sets its TTL to `BanFor`.
+`gashe:rate:sliding:api-key:k1:29893701`, each for twice `Per`. A fixed window is one counter under
+`gashe:rate:fixed:login:1.2.3.4`; the first call over the limit sets its TTL to `BanFor`.
 
 `SlidingWindow` is an estimate and can let slightly more through under bursts; `FixedWindow` can
 let up to twice `Calls` through around the border of two windows.
@@ -622,15 +576,13 @@ counts calls of the last `Window`; once `FailurePercent` of them fail, it refuse
 memory: each pod judges the dependency by its own calls, and Redis holds nothing.
 
 ```go
-var payments = gashe.BreakerOptions{FailurePercent: 50, MinCalls: 10, Window: 30 * time.Second,
-	OpenFor: 15 * time.Second, HalfOpenCalls: 1}
-
-done, err := c.CircuitBreaker("payments-api", payments)
+done, err := c.CircuitBreaker("payments-api", gashe.BreakerOptions{
+	FailurePercent: 50, MinCalls: 10, Window: 30 * time.Second, OpenFor: 15 * time.Second,
+})
 if err != nil {
-	return ErrPaymentsUnavailable // answer at once instead of waiting for a timeout
+	return err // gashe.ErrCircuitOpen: answer at once instead of waiting for a timeout
 }
-err = provider.Charge(ctx, p)
-done(err) // report once: nil or the error
+done(provider.Charge(ctx, p)) // report once: nil or the error
 ```
 
 > [!WARNING]
@@ -645,18 +597,37 @@ Built in: if the backend fails, `GetOrLoad` returns the loader result without st
 `RateLimit` lets the call through, and the error goes to `OnError`. Bound how long a slow Redis can
 hold a request with go-redis `ReadTimeout` and `WriteTimeout`.
 
+When Redis is down, every call still waits for that timeout before it goes to the loader.
+`WithBreaker` stops calling a failing backend for a while: calls then fail at once with
+`ErrCircuitOpen`, and `GetOrLoad` goes straight to the loader. Misses do not count as failures,
+and `Ping` always reaches Redis.
+
+```go
+backend := gashe.WithBreaker(gasheredis.New(client), gashe.BreakerOptions{
+	FailurePercent: 50, MinCalls: 20, Window: 10 * time.Second, OpenFor: 5 * time.Second, HalfOpenCalls: 1,
+})
+c := gashe.New(backend, gashe.Options{})
+```
+
 > [!WARNING]
 > With Redis down, `LockOnMiss` no longer holds other pods back, and every pod sends its misses to
 > the database. Put a `CircuitBreaker` in front of the database for that case.
 
 #### Monitoring
 
-`OnResult` receives how every `GetOrLoad` was answered: hit, miss, stale-while-revalidate,
-stale-if-error or negative-hit. It sees the calls of this process; sum the metrics of all pods.
+`OnResult` receives an `Outcome` for every `GetOrLoad` and every key of `GetOrLoadMany`: the
+key, how it was answered (hit, miss, stale-while-revalidate, stale-if-error, stale-if-slow or
+negative-hit) and how long the loader ran, 0 on a hit. It sees the calls of this process; sum the
+metrics of all pods.
 
 ```go
 c := gashe.New(backend, gashe.Options{
-	OnResult: func(ctx context.Context, key string, r gashe.Result) { results.WithLabelValues(r.String()).Inc() },
+	OnResult: func(ctx context.Context, o gashe.Outcome) {
+		results.WithLabelValues(o.Result.String()).Inc()
+		if o.Load > 0 {
+			loads.Observe(o.Load.Seconds()) // what a miss costs: pick TTLs by it
+		}
+	},
 	OnError:  func(ctx context.Context, err error) { slog.WarnContext(ctx, "cache degraded", "error", err) },
 })
 ```
@@ -676,12 +647,50 @@ _ = client.Close()
 
 #### Known limits
 
-- **Cache-aside race.** A read can load an old value, a write can update the database and delete
-  the key, and then the read stores its old value until its TTL ends. Keep TTLs of data that
-  changes often short, or invalidate its tag after the write.
+- **Cache-aside race with `Delete`.** A read can load an old value, a write can update the
+  database and delete the key, and then the read stores its old value until its TTL ends. Tags do
+  not have this race, see [invalidation by tag](#invalidation-by-tag).
 - **Locks are advisory**, see [distributed lock](#distributed-lock).
 - **Clocks.** Freshness compares the clock of the reading process with the time the writer stored.
   Keep clocks in sync (NTP).
+
+## HTTP middleware
+
+`httpcache` caches whole responses of a handler: a hit sends the stored status, headers and body
+without calling the handler. It runs on `GetOrLoad`, so every `Policy` field works for pages: a 5xx
+with `StaleIfError` gets the last good page, `LockOnMiss` renders a cold page once for all pods.
+
+```go
+cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+	Prefix:       "http:",
+	TTL:          time.Minute,
+	StaleIfError: time.Hour,
+	Tags:         []string{"catalog"}, // c.InvalidateTags(ctx, "catalog") after an edit
+}})
+mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
+```
+
+It follows the HTTP standards a shared cache must:
+
+- **What is stored**, as [RFC 9111](https://www.rfc-editor.org/rfc/rfc9111#section-3) asks of a
+  shared cache: only `GET` and `HEAD` without `Range`, never responses with `Set-Cookie`, `Vary` or
+  `Cache-Control` `no-store`, `private` or `no-cache`, and never requests with `Authorization`
+  unless your `Key` includes the user. Hop-by-hop headers are not stored
+  ([RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1)).
+- **Conditional requests**: every response gets an `ETag`, and a matching `If-None-Match` gets
+  `304 Not Modified` without a body, with the weak comparison of
+  [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2).
+- **`Cache-Status`** ([RFC 9211](https://www.rfc-editor.org/rfc/rfc9211)) says how the request was
+  handled: `gashe; hit`, `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss`, `gashe; fwd=method`
+  or `gashe; fwd=request`. A hit also gets `Age`.
+
+Two rules are stricter on purpose: request `Cache-Control` and `Pragma` are ignored, so clients
+cannot make the handler run on every request, and how long a page is fresh comes from `Policy`, not
+from `max-age`.
+
+> [!CAUTION]
+> A response must be the same for everyone who gets its key. If a page depends on a cookie, set
+> `Key` and put the user in it, or do not wrap that route.
 
 ## Errors
 

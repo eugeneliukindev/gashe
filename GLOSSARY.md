@@ -58,6 +58,14 @@ _Avoid_: refresh window, early expiration
 The time after TTL in which a stale result answers a loader failure.
 _Avoid_: fallback window, failover, soft expiration
 
+**Stale-if-slow**:
+The time a call waits for a slow loader before a stale result answers, while the load goes on in the background.
+_Avoid_: soft timeout
+
+**Shape**:
+The form of a cached type: its field names, tags and types. An entry of another shape is a miss.
+_Avoid_: schema, version
+
 **Lock on miss**:
 A lock taken only when a key is missing, so that one process loads it while the others wait for its result.
 _Avoid_: miss lock
