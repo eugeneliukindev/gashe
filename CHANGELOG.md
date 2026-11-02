@@ -40,6 +40,8 @@ the API. The root module and `backend/redis` and `codec/msgpack` are released wi
   backend.
 - The documentation is one shorter README; development notes moved to `CONTRIBUTING.md`, and the
   Russian translation was removed.
+- `REFERENCE.md` was removed: the API reference is pkg.go.dev, built from the doc comments. The
+  glossary and the images moved to `docs/`.
 
 ### Fixed
 

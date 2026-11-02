@@ -47,5 +47,5 @@ tag the root first (`v0.2.0`), raise the version the other modules require, and 
 their directory in front: `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`. Copy the section into
 the GitHub release of the tag.
 
-Domain terms are defined in [GLOSSARY.md](GLOSSARY.md). `REFERENCE.md` lists the public API; a test
-fails when an exported name is missing from it.
+Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
+comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.

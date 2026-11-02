@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="200" alt="The gashe gopher, its cheeks full of cached data">
+  <img src="docs/assets/logo.svg" width="200" alt="The gashe gopher, its cheeks full of cached data">
 </p>
 
 <h1 align="center">gashe</h1>
@@ -770,10 +770,9 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 
 ## More
 
-- [API reference](https://pkg.go.dev/github.com/eugeneliukindev/gashe) on pkg.go.dev, and
-  [REFERENCE.md](REFERENCE.md) in the repository.
+- [API reference](https://pkg.go.dev/github.com/eugeneliukindev/gashe) on pkg.go.dev.
 - [Changelog](CHANGELOG.md) of every release.
-- [Glossary](GLOSSARY.md) of the terms used here, and [Contributing](CONTRIBUTING.md).
+- [Glossary](docs/GLOSSARY.md) of the terms used here, and [Contributing](CONTRIBUTING.md).
 
 Under the [MIT license](LICENSE). The gopher in the logo is based on the Go gopher by
 [Renee French](https://reneefrench.blogspot.com/), licensed under
