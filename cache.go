@@ -35,6 +35,7 @@ type Cache struct {
 	lockPoll time.Duration
 	calls    group
 	breakers breakers
+	bg       background
 }
 
 // New returns a Cache over b. It panics if b is nil or LockPollInterval is negative.

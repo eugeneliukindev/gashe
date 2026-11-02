@@ -203,17 +203,22 @@ func (l *loading[V]) storeNegative(ctx context.Context) {
 }
 
 // refreshInBackground reloads the key in the background unless another caller already holds the
-// refresh lock. The reload gets the lock's duration as its deadline.
+// refresh lock or the cache is shutting down. The reload gets the lock's duration as its deadline.
 func (l *loading[V]) refreshInBackground(ctx context.Context) {
+	if !l.c.bg.start() {
+		return // the cache is shutting down
+	}
 	ttl := min(l.o.StaleWhileRevalidate, maxRefreshLock)
 	lease, ok, err := l.c.TryLock(ctx, l.key+refreshLockSuffix, ttl)
 	if err != nil {
 		l.c.onError(ctx, fmt.Errorf("gashe: refresh lock %q: %w", l.key, err))
 	}
 	if !ok {
+		l.c.bg.wg.Done()
 		return
 	}
 	go func() {
+		defer l.c.bg.wg.Done()
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), ttl)
 		defer cancel()
 		defer l.unlock(bg, lease)
