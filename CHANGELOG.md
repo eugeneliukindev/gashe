@@ -6,7 +6,9 @@ Notable changes of every release, newest first. The format follows
 the API. The root module and `backend/redis` and `codec/msgpack` are released with their own tags
 (`v0.2.0`, `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`); a section names the module it is about.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-11-02
+
+Released as `v0.2.0` and `backend/redis/v0.2.0`; `codec/msgpack` stays at `v0.1.0`.
 
 ### Added
 
@@ -75,5 +77,5 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[0.2.0]: https://github.com/eugeneliukindev/gashe/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.1.0
