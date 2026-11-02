@@ -27,6 +27,8 @@ go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, за
 - Защита от cache stampede внутри процесса (автоматически) и между процессами (`LockOnMiss`).
 - Stale-while-revalidate (`StaleWhileRevalidate`) и stale-if-error (`StaleIfError`) в одной записи.
 - Отрицательное кеширование ответов "не найдено", разброс TTL против массового истечения.
+- Пакетная загрузка списков (`GetOrLoadMany`): одно чтение кеша и один вызов загрузчика для всех
+  недостающих ключей.
 - Инвалидация по тегам за O(1) (`Tags`, `InvalidateTags`), без обхода бэкенда.
 - Распределенные локи с продлением, скользящий и фиксированный лимиты, circuit breaker в памяти
   процесса.
@@ -57,6 +59,7 @@ go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, за
   - [Нагрузка на источник](#нагрузка-на-источник)
     - [Cache stampede внутри процесса](#cache-stampede-внутри-процесса)
     - [Cache stampede между процессами](#cache-stampede-между-процессами)
+    - [N+1 запросов на списках (пакетная загрузка)](#n1-запросов-на-списках-пакетная-загрузка)
     - [Cache avalanche (разброс TTL)](#cache-avalanche-разброс-ttl)
     - [Горячие ключи и сетевые обращения (near cache)](#горячие-ключи-и-сетевые-обращения-near-cache)
   - [Хранение](#хранение)
@@ -69,6 +72,7 @@ go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, за
   - [Эксплуатация](#эксплуатация)
     - [Отказ кеша](#отказ-кеша)
     - [Доля попаданий и мониторинг](#доля-попаданий-и-мониторинг)
+    - [Корректная остановка](#корректная-остановка)
   - [Известные ограничения](#известные-ограничения)
 - [Инвалидация](#инвалидация)
   - [Инвалидация по тегам](#инвалидация-по-тегам)
@@ -79,6 +83,10 @@ go get github.com/eugeneliukindev/gashe/backend/redis # бэкенд Redis, за
 
 ## Пример
 
+У библиотеки четыре части: **бэкенд**, где живут записи, **`gashe.Options`** для всего кеша,
+**`gashe.Policy`** для каждого вида данных и сами вызовы. Пример ниже использует их все; `db`,
+`payments` и `clientIP` - это ваш код.
+
 ```go
 package main
 
@@ -86,6 +94,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -93,46 +102,97 @@ import (
 )
 
 type User struct {
-	ID   int
+	ID   string
 	Name string
 }
 
-// users описывает, как кешировать пользователей; задается один раз.
+var errNoUser = errors.New("user not found")
+
+// Policy говорит, как кешируется один вид данных. Задайте ее один раз рядом с кодом загрузки.
 var users = gashe.Policy[User]{
-	TTL:            time.Hour,      // свежий в течение часа
-	StaleIfError: 24 * time.Hour, // если база лежит, отвечать устаревшим пользователем до суток
+	Prefix:               "user:",          // хранится под "user:<id>"
+	TTL:                  10 * time.Minute, // свежий 10 минут
+	Jitter:               0.1,              // разброс истечения до 10%, чтобы пользователи не истекали разом
+	StaleWhileRevalidate: time.Minute,      // минуту после: отвечать старым, обновлять в фоне
+	StaleIfError:         time.Hour,        // база лежит: отвечать старым до часа
+	LockOnMiss:           5 * time.Second,  // холодный ключ: грузит один процесс, остальные ждут
+	Negative: gashe.Negative{ // "нет такого" тоже кешируется, и чужие id не доходят до базы
+		If:  func(err error) bool { return errors.Is(err, errNoUser) },
+		Err: errNoUser,
+		TTL: time.Minute,
+	},
+	Tags: []string{"users"}, // c.InvalidateTags(ctx, "users") сбрасывает всех пользователей сразу
 }
 
-func loadUser(ctx context.Context, id int) (User, error) {
-	return User{ID: id, Name: "Ann"}, nil // в реальном коде - запрос в базу
-}
+// GetOrLoadMany принимает только простые опции.
+var userList = gashe.Policy[User]{Prefix: "user:", TTL: 10 * time.Minute, Tags: []string{"users"}}
 
 func main() {
 	ctx := context.Background()
 
-	mem := memory.New(memory.Options{MaxEntries: 10_000})
-	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{})
+	// Бэкенд - место, где живут записи: memory для одного процесса, Redis, чтобы делить их между
+	// процессами: gasheredis.New(goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})).
+	backend := memory.New(memory.Options{MaxBytes: 256 << 20})
+	defer backend.Close()
 
-	// Кеширование: из кеша, если там есть, иначе loadUser.
-	u, err := gashe.GetOrLoad(ctx, c, "user:42", users, func(ctx context.Context) (User, error) {
-		return loadUser(ctx, 42)
+	// Options говорят, как ведет себя весь Cache. Все поля необязательны.
+	c := gashe.New(backend, gashe.Options{
+		OnError:  func(ctx context.Context, err error) { slog.WarnContext(ctx, "cache", "error", err) },
+		OnResult: func(ctx context.Context, key string, r gashe.Result) { /* считать попадания для метрик */ },
+	})
+	defer c.Shutdown(ctx) // дать фоновым обновлениям закончиться до закрытия бэкенда
+
+	// Одно значение: из кеша или из загрузчика, и тогда оно сохраняется.
+	u, err := gashe.GetOrLoad(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+		return db.User(ctx, "42")
 	})
 	fmt.Println(u, err)
 
-	// Лимит перед дорогим вызовом.
-	if err := c.RateLimit(ctx, "user:42", gashe.PerMinute(100)); err != nil {
-		fmt.Println(err) // gashe.ErrRateLimited
+	// Много значений: одно чтение кеша, потом один вызов загрузчика для недостающих.
+	list, err := gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, userList,
+		func(ctx context.Context, missing []string) (map[string]User, error) {
+			return db.Users(ctx, missing)
+		})
+	fmt.Println(list, err)
+
+	// После записи: обновить одного пользователя или сбросить всех сразу.
+	if _, err := gashe.Reload(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+		return db.User(ctx, "42")
+	}); err != nil {
+		fmt.Println(err)
+	}
+	if err := c.InvalidateTags(ctx, "users"); err != nil {
+		fmt.Println(err)
 	}
 
-	// Базовое API.
-	_ = c.Set(ctx, "key", 90, 2*time.Hour)
-	var n int
-	if err := c.Get(ctx, "key", &n); errors.Is(err, gashe.ErrNotFound) {
-		fmt.Println("miss")
+	// Защита зависимостей: rate limit, circuit breaker, лок.
+	if err := c.RateLimit(ctx, "api:"+clientIP, gashe.PerMinute(100)); errors.Is(err, gashe.ErrRateLimited) {
+		return // ответить 429
+	}
+	if done, err := c.CircuitBreaker("payments", gashe.BreakerOptions{
+		FailurePercent: 50, MinCalls: 20, Window: time.Minute, OpenFor: 30 * time.Second,
+	}); err == nil { // gashe.ErrCircuitOpen, пока платежный API падает
+		done(payments.Charge(ctx))
+	}
+	if lease, ok, err := c.TryLock(ctx, "job:daily-report", 10*time.Minute); err == nil && ok {
+		defer lease.Unlock(ctx)
+		// ежедневный отчет делает только один процесс
 	}
 }
 ```
+
+| Часть | Что это | Где задается |
+|---|---|---|
+| Бэкенд: `memory.New`, `gasheredis.New`, `nearcache.New` | где живут записи, а значит, какие процессы их делят | один раз при старте |
+| `gashe.Options` | хуки ошибок и метрик, кодек, опрос локов | один раз, в `gashe.New` |
+| `gashe.Policy[V]` | TTL и стратегии для одного вида данных | переменная пакета на каждый вид, передается в каждый вызов |
+| `gashe.GetOrLoad`, `GetOrLoadMany`, `Reload` | кеширование | там, где вы загружаете данные |
+| `c.InvalidateTags`, `c.Delete` | инвалидация | после записи |
+| `c.Lock`, `c.TryLock`, `c.RateLimit`, `c.CircuitBreaker` | защита зависимостей | вокруг работы, которую они охраняют |
+| `c.Get`, `c.Set`, ... | базовое API, как map с TTL | где угодно |
+| `c.Shutdown` | ждет фоновые обновления | в конце `main` |
+
+Каждая опция описана в [Настройке](#настройка) и [Стратегиях](#стратегии).
 
 ## Настройка
 
@@ -163,7 +223,8 @@ c := gashe.New(mem, gashe.Options{
 | `LockPollInterval` | Как часто `Lock` и `LockOnMiss` проверяют, освободился ли занятый лок. Уменьшайте для локов, которые держат миллисекунды, увеличивайте для долгих задач, чтобы меньше нагружать Redis. 0 значит 100 мс. |
 
 Создайте один `Cache` при старте и используйте его везде; он безопасен для одновременного
-использования. Бэкенд он не закрывает: закрывайте бэкенд там, где создали.
+использования. Бэкенд он не закрывает: закрывайте бэкенд там, где создали, после `c.Shutdown`
+(см. [Корректная остановка](#корректная-остановка)).
 
 ## Бэкенды
 
@@ -249,21 +310,23 @@ func TestContract(t *testing.T) {
 
 ## Между процессами
 
-Что работает между вашими процессами, решает бэкенд, а не метод: с общим бэкендом вроде Redis
-данные, локи, лимиты и теги общие для всех процессов, которые его используют; с бэкендом в
-памяти все остается внутри одного процесса. Две вещи всегда остаются внутри одного процесса, какой
-бы ни был бэкенд.
+Что общее, решает бэкенд, а не метод. Ниже **все процессы** - это все процессы, которые используют
+тот же Redis (или другой общий бэкенд), а **этот процесс** - только процесс, где выполняется вызов.
+У стратегий в [Стратегиях](#стратегии) есть такая же строка **Область**.
 
-| Возможность | Область | Условие |
+| Возможность | С Redis | С `memory` |
 |---|---|---|
-| Данные `GetOrLoad`, `Get`, `Set` | между процессами | общий бэкенд |
-| `LockOnMiss`, единственная фоновая перезагрузка `StaleWhileRevalidate` | между процессами | общий бэкенд |
-| `Lock`, `TryLock`, `Lease.Extend` | между процессами | общий бэкенд |
-| `RateLimit` | между процессами | общий бэкенд |
-| `Tags`, `InvalidateTags` | между процессами | общий бэкенд; через `nearcache` другие процессы видят инвалидацию в течение `LocalTTL` |
-| Схлопывание одновременных вызовов `GetOrLoad` | один процесс | всегда |
-| `CircuitBreaker` | один процесс | всегда |
-| Бэкенд в памяти, локальный уровень `nearcache` | один процесс | всегда |
+| Результаты `GetOrLoad`, `GetOrLoadMany`, `Get`, `Set` | все процессы | этот процесс |
+| Отрицательные ответы (`Negative`) | все процессы | этот процесс |
+| Единственное фоновое обновление `StaleWhileRevalidate` | одно на все процессы | одно на процесс |
+| `LockOnMiss`: один загрузчик для холодного ключа | один на все процессы | один на процесс |
+| `Lock`, `TryLock`, `Lease.Extend` | все процессы | этот процесс |
+| `RateLimit` | один лимит на все процессы | свой лимит в каждом процессе |
+| `Tags`, `InvalidateTags` | все процессы; через `nearcache` - в течение `LocalTTL` | этот процесс |
+| Схлопывание одновременных вызовов `GetOrLoad` | этот процесс | этот процесс |
+| `CircuitBreaker` | этот процесс | этот процесс |
+| `OnResult`, `OnError`, `Shutdown` | этот процесс | этот процесс |
+| Локальный уровень `nearcache` | этот процесс | - |
 
 ## Базовое API
 
@@ -419,6 +482,9 @@ u, err := gashe.GetOrLoad(ctx, c, "user:42", users, func(ctx context.Context) (U
   u, err := gashe.GetOrLoad(ctx, c, "42", users, loadUser)
   ```
 
+**Область.** Сохраненные результаты видят все процессы, которые используют тот же Redis; с `memory`
+- только этот процесс.
+
 **Пример.** Пользователь из PostgreSQL, кеш на час.
 
 ```go
@@ -452,6 +518,9 @@ var feed = gashe.Policy[Feed]{TTL: 10 * time.Minute, StaleWhileRevalidate: 2 * t
 
 С `TTL: 0` и только `StaleWhileRevalidate` каждый вызов отвечает сразу и запускает перезагрузку в фоне;
 ключ, который никто не прочитал за окно, истекает.
+
+**Область.** Устаревший ответ берется из сохраненной записи, поэтому следует за бэкендом. Фоновое
+обновление идет одно на все процессы с Redis и одно на процесс с `memory`.
 
 **Пример.** Персональная лента из медленного сервиса рекомендаций: после прогрева его больше никто не ждет.
 
@@ -490,6 +559,9 @@ var rates = gashe.Policy[Rates]{
 
 С `TTL: 0` и только `StaleIfError` загрузчик выполняется на каждом вызове, а последний удачный
 результат отвечает на его ошибки (кеш на случай отказа).
+
+**Область.** Устаревший ответ берется из сохраненной записи: с Redis им может ответить любой
+процесс, с `memory` - только этот.
 
 **Пример.** Курсы валют из внешнего HTTP API: если провайдер лежит, последние курсы отдаются до шести часов.
 
@@ -544,6 +616,9 @@ if errors.Is(err, sql.ErrNoRows) { // true и на первом вызове, и
 }
 ```
 
+**Область.** Отрицательный ответ - это сохраненная запись: с Redis он защищает базу от всех
+процессов, с `memory` - только от этого.
+
 **Пример.** 404 для несуществующего пользователя: парсер, перебирающий id, теперь бьет в кеш, а не в PostgreSQL. С pgx сравнивайте с `pgx.ErrNoRows`.
 
 ```go
@@ -589,6 +664,8 @@ func (s *Service) ProfileHandler(w http.ResponseWriter, r *http.Request) {
 процессе делят одно чтение и один запуск загрузчика. Запуск использует контекст вызова, который его
 начал; ждущий вызов возвращает свой `ctx.Err()`, если его контекст закончился раньше.
 
+**Область.** Только этот процесс, с любым бэкендом. Между процессами - см. `LockOnMiss` ниже.
+
 **Пример.** Страница товара: когда товар становится вирусным, тысячи одновременных запросов к нему выполняют один запрос в базу.
 
 ```go
@@ -618,6 +695,9 @@ func (s *Service) ProductHandler(w http.ResponseWriter, r *http.Request) {
 var reports = gashe.Policy[Report]{TTL: time.Hour, LockOnMiss: 30 * time.Second}
 ```
 
+**Область.** Все процессы, которые используют тот же Redis. С `memory` лок действует только в этом
+процессе и ничего не добавляет к автоматическому схлопыванию выше.
+
 **Пример.** Агрегат для дашборда по миллионам строк: на холодном кеше запрос выполняет один под, остальные его ждут.
 
 ```go
@@ -638,6 +718,53 @@ func (s *Service) Stats(ctx context.Context, day string) (Stats, error) {
 > Делайте `LockOnMiss` дольше самой медленной загрузки, иначе по истечении лока загрузку начнет
 > второй процесс. Ждущие вызовы ждут столько, сколько позволяет их `ctx`: давайте запросам дедлайн.
 
+#### N+1 запросов на списках (пакетная загрузка)
+
+**Проблема.** Страница показывает 50 товаров. Если грузить их по одному через `GetOrLoad`, это 50
+обращений к кешу и, на холодном кеше, 50 запросов к базе.
+
+**Решение.** `gashe.GetOrLoadMany` читает все ключи одним вызовом бэкенда и вызывает загрузчик один
+раз с ключами, которых не было, чтобы он получил их одним запросом. То, что вернул загрузчик,
+сохраняется одним вызовом; ключей, которые он не вернул, нет в результате, и они не сохраняются.
+
+```go
+products, err := gashe.GetOrLoadMany(ctx, c, ids, catalog,
+	func(ctx context.Context, missing []string) (map[string]Product, error) {
+		return s.repo.ProductsByID(ctx, missing) // найденные товары по id
+	})
+```
+
+Он читает и пишет те же записи, что и `GetOrLoad` с той же политикой, поэтому оба могут отдавать
+одни и те же ключи. Поддерживаются `TTL`, `TTLFunc`, `Jitter`, `Tags`, `CacheIf` и `Prefix`.
+
+**Область.** Сохраненные результаты видят все процессы с Redis и только этот процесс с `memory`.
+Сами вызовы не объединяются даже внутри одного процесса.
+
+**Пример.** Страница корзины: товары корзины, один SQL-запрос для тех, которых нет в кеше.
+
+```go
+var catalog = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.1, Prefix: "product:"}
+
+func (s *Service) CartProducts(ctx context.Context, ids []string) (map[string]Product, error) {
+	return gashe.GetOrLoadMany(ctx, s.cache, ids, catalog, func(ctx context.Context, missing []string) (map[string]Product, error) {
+		found, err := s.repo.Products(ctx, missing) // SELECT ... WHERE id = ANY($1)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]Product, len(found))
+		for _, p := range found {
+			out[p.ID] = p
+		}
+		return out, nil
+	})
+}
+```
+
+> [!NOTE]
+> `StaleWhileRevalidate`, `StaleIfError`, `LockOnMiss` и `Negative` работают по одному ключу, и с
+> ними `GetOrLoadMany` возвращает `ErrInvalidOptions`; используйте политику без них. Одновременные
+> вызовы тоже не объединяются: два запроса одного и того же холодного списка оба вызовут загрузчик.
+
 #### Cache avalanche (разброс TTL)
 
 **Проблема.** Много ключей записано одновременно (после деплоя, прогрева, пакетной задачи) и
@@ -648,6 +775,8 @@ func (s *Service) Stats(ctx context.Context, day string) (Stats, error) {
 ```go
 var products = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.1} // от 54 до 66 минут
 ```
+
+**Область.** Каждая сохраненная запись получает свой разброс, где бы она ни хранилась.
 
 **Пример.** Прогрев каталога товаров при старте: без `Jitter` весь он истек бы в одну и ту же минуту через час.
 
@@ -686,6 +815,8 @@ c := gashe.New(backend, gashe.Options{})
 
 Цена - устаревание: другой процесс может до `LocalTTL` отвечать значением, которое этот процесс уже
 изменил, и инвалидация тега доходит до других процессов тоже в течение `LocalTTL`. Делайте его коротким.
+
+**Область.** Локальный уровень у каждого процесса свой; общий уровень видят все процессы.
 
 **Пример.** Feature flags, которые читаются на каждом запросе: с `nearcache` каждый под спрашивает о них Redis примерно раз в `LocalTTL`.
 
@@ -808,6 +939,9 @@ if !ok {
 - Если бэкенд упал, `Lock` и `TryLock` возвращают его ошибку: выполнять ли работу без лока - решать
   вам.
 
+**Область.** Все процессы, которые используют тот же Redis. С `memory` лок действует только внутри
+этого процесса.
+
 **Пример.** Перестройка поискового индекса из cron, который запускается на каждом поде: перестраивает один под, остальные пропускают.
 
 ```go
@@ -840,7 +974,7 @@ func (s *Service) RebuildIndex(ctx context.Context) error {
 выдерживает.
 
 **Решение.** `RateLimit` засчитывает вызов для ключа и возвращает `gashe.ErrRateLimited`, когда ключ
-превысил лимит. Лимит общий для всех процессов. Вызывайте его перед работой, которую он защищает.
+превысил лимит. Вызывайте его перед работой, которую он защищает.
 
 ```go
 if err := c.RateLimit(ctx, "user:"+id, gashe.PerMinute(100)); err != nil {
@@ -856,6 +990,9 @@ err := c.RateLimit(ctx, "login:"+ip, gashe.FixedWindow{Calls: 5, Per: time.Minut
   прошлого отрезка шли равномерно. Отказанные вызовы не засчитываются.
 - `gashe.FixedWindow{Calls, Per, BanFor}`: не больше `Calls` вызовов на отрезок `Per`, который начинается с
   первого вызова; первый вызов сверх лимита блокирует ключ на `BanFor` (по умолчанию `Per`).
+
+**Область.** С Redis - один лимит на все процессы. С `memory` каждый процесс считает только свои
+вызовы: при 10 подах настоящий лимит в 10 раз выше.
 
 **Пример.** Middleware для HTTP: 600 запросов в минуту на API-ключ, дальше 429.
 
@@ -907,6 +1044,8 @@ done(err) // сообщить, как прошло: nil или ошибка
 
 Вызывайте `done` один раз. Вызов, о котором вы не сообщили, не учитывается. Для одного ключа
 используйте одни и те же опции.
+
+**Область.** У каждого процесса свой breaker, с любым бэкендом.
 
 **Пример.** Вызовы платежного провайдера: пока он падает, оплата отвечает сразу, а не висит на таймаутах.
 
@@ -968,6 +1107,8 @@ c := gashe.New(gasheredis.New(client), gashe.Options{
 
 **Решение.** `OnResult` получает, как был отвечен каждый вызов `GetOrLoad`.
 
+**Область.** `OnResult` видит вызовы этого процесса; складывайте метрики всех подов.
+
 ```go
 c := gashe.New(backend, gashe.Options{
 	OnResult: func(ctx context.Context, key string, r gashe.Result) {
@@ -982,6 +1123,30 @@ c := gashe.New(backend, gashe.Options{
 > [!WARNING]
 > `OnResult` и `OnError` выполняются синхронно на каждом вызове. Делайте их быстрыми: считайте, не
 > пишите в сеть или в медленный лог на пути запроса.
+
+#### Корректная остановка
+
+**Проблема.** `StaleWhileRevalidate` обновляет запись в фоне. Когда сервис останавливается, такое
+обновление может еще идти: оно обрывается на середине или пишет в уже закрытый бэкенд.
+
+**Решение.** Вызовите `c.Shutdown(ctx)` перед закрытием бэкенда. Он перестает запускать фоновые
+обновления и ждет уже запущенные, пока не завершится `ctx`. Кеш продолжает отвечать; устаревшие
+результаты просто больше не обновляются.
+
+**Область.** Фоновые обновления этого процесса.
+
+**Пример.** Конец `main`: перестать принимать запросы, дать обновлениям закончиться, потом закрыть
+Redis.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+_ = srv.Shutdown(ctx) // HTTP-сервер
+if err := c.Shutdown(ctx); err != nil {
+	slog.Warn("background reloads did not finish", "error", err)
+}
+_ = client.Close()
+```
 
 ### Известные ограничения
 
@@ -1034,6 +1199,9 @@ o, err := gashe.GetOrLoad(ctx, c, "orders:42", orders, loadOrders)
 c.InvalidateTags(ctx, "user:42") // теперь обе записи - промахи
 c.InvalidateTags(ctx, "orders")  // теперь каждая запись заказов - промах
 ```
+
+**Область.** С Redis инвалидацию сразу видят все процессы, через `nearcache` - в течение `LocalTTL`.
+С `memory` - только этот процесс.
 
 **Пример.** После UPDATE в PostgreSQL все закешированное о пользователе загружается заново: профиль, страница заказов, настройки.
 
@@ -1117,7 +1285,7 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 5. Один объект вокруг `Cache`, итераторы. Готово.
 6. Отрицательное кеширование, разброс TTL, теги, `OnResult`, продление лока, breaker в памяти
    процесса, префиксы, gzip, двухуровневый near cache. Готово.
-7. Пакетная загрузка многих ключей сразу.
+7. Пакетная загрузка многих ключей сразу (`GetOrLoadMany`), корректная остановка. Готово.
 8. Мгновенная инвалидация near cache через Redis pub/sub.
 
 ## Разработка

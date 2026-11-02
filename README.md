@@ -28,6 +28,7 @@ processes that share one Redis.
 - Cache stampede protection inside a process (automatic) and across processes (`LockOnMiss`).
 - Stale-while-revalidate (`StaleWhileRevalidate`) and stale-if-error (`StaleIfError`), in one entry.
 - Negative caching for "not found" answers, TTL jitter against mass expiry.
+- Batch loading of lists (`GetOrLoadMany`): one cache read and one loader call for all missing keys.
 - Tag invalidation in O(1) (`Tags`, `InvalidateTags`), without scanning the backend.
 - Distributed locks with extension, sliding and fixed rate limits, an in-process circuit breaker.
 - Backends: an in-memory LRU with TTL, Redis (single node, Sentinel or Cluster) in a separate
@@ -56,6 +57,7 @@ processes that share one Redis.
   - [Load on the source](#load-on-the-source)
     - [Cache stampede inside a process](#cache-stampede-inside-a-process)
     - [Cache stampede across processes](#cache-stampede-across-processes)
+    - [N+1 queries on lists (batch loading)](#n1-queries-on-lists-batch-loading)
     - [Cache avalanche (TTL jitter)](#cache-avalanche-ttl-jitter)
     - [Hot keys and network round trips (near cache)](#hot-keys-and-network-round-trips-near-cache)
   - [Storage](#storage)
@@ -68,6 +70,7 @@ processes that share one Redis.
   - [Operations](#operations)
     - [Cache failure](#cache-failure)
     - [Hit ratio and monitoring](#hit-ratio-and-monitoring)
+    - [Graceful shutdown](#graceful-shutdown)
   - [Known limits](#known-limits)
 - [Cache Invalidation](#cache-invalidation)
   - [Invalidating by tag](#invalidating-by-tag)
@@ -78,6 +81,10 @@ processes that share one Redis.
 
 ## Usage Example
 
+The library has four parts: a **backend** where entries live, **`gashe.Options`** for the whole
+cache, a **`gashe.Policy`** for each kind of data, and the calls. The example below uses all of
+them; `db`, `payments` and `clientIP` stand for your own code.
+
 ```go
 package main
 
@@ -85,6 +92,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -92,46 +100,97 @@ import (
 )
 
 type User struct {
-	ID   int
+	ID   string
 	Name string
 }
 
-// users says how users are cached; define it once.
+var errNoUser = errors.New("user not found")
+
+// A Policy says how one kind of data is cached. Define it once, next to the code that loads it.
 var users = gashe.Policy[User]{
-	TTL:            time.Hour,      // fresh for an hour
-	StaleIfError: 24 * time.Hour, // if the database is down, answer with the stale user for a day
+	Prefix:               "user:",          // stored under "user:<id>"
+	TTL:                  10 * time.Minute, // fresh for 10 minutes
+	Jitter:               0.1,              // spread expiry by up to 10%, so users do not expire together
+	StaleWhileRevalidate: time.Minute,      // the minute after: answer the old user, reload it in the background
+	StaleIfError:         time.Hour,        // the database is down: answer the old user for up to an hour
+	LockOnMiss:           5 * time.Second,  // a cold key: one process loads it, the others wait for the result
+	Negative: gashe.Negative{ // "no such user" is cached too, so unknown ids do not reach the database
+		If:  func(err error) bool { return errors.Is(err, errNoUser) },
+		Err: errNoUser,
+		TTL: time.Minute,
+	},
+	Tags: []string{"users"}, // c.InvalidateTags(ctx, "users") drops every user at once
 }
 
-func loadUser(ctx context.Context, id int) (User, error) {
-	return User{ID: id, Name: "Ann"}, nil // a database call in real code
-}
+// GetOrLoadMany takes the plain options only.
+var userList = gashe.Policy[User]{Prefix: "user:", TTL: 10 * time.Minute, Tags: []string{"users"}}
 
 func main() {
 	ctx := context.Background()
 
-	mem := memory.New(memory.Options{MaxEntries: 10_000})
-	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{})
+	// The backend is where entries live: memory for one process, Redis to share them between
+	// processes: gasheredis.New(goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})).
+	backend := memory.New(memory.Options{MaxBytes: 256 << 20})
+	defer backend.Close()
 
-	// Caching: from the cache if it is there, otherwise loadUser.
-	u, err := gashe.GetOrLoad(ctx, c, "user:42", users, func(ctx context.Context) (User, error) {
-		return loadUser(ctx, 42)
+	// Options say how the whole Cache behaves. Every field is optional.
+	c := gashe.New(backend, gashe.Options{
+		OnError:  func(ctx context.Context, err error) { slog.WarnContext(ctx, "cache", "error", err) },
+		OnResult: func(ctx context.Context, key string, r gashe.Result) { /* count hits for metrics */ },
+	})
+	defer c.Shutdown(ctx) // let background reloads finish before the backend closes
+
+	// One value: from the cache, or from the loader, which is then stored.
+	u, err := gashe.GetOrLoad(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+		return db.User(ctx, "42")
 	})
 	fmt.Println(u, err)
 
-	// A rate limit before an expensive call.
-	if err := c.RateLimit(ctx, "user:42", gashe.PerMinute(100)); err != nil {
-		fmt.Println(err) // gashe.ErrRateLimited
+	// Many values: one cache read, then one loader call for the missing ones.
+	list, err := gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, userList,
+		func(ctx context.Context, missing []string) (map[string]User, error) {
+			return db.Users(ctx, missing)
+		})
+	fmt.Println(list, err)
+
+	// After a write: reload one user, or drop every user at once.
+	if _, err := gashe.Reload(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+		return db.User(ctx, "42")
+	}); err != nil {
+		fmt.Println(err)
+	}
+	if err := c.InvalidateTags(ctx, "users"); err != nil {
+		fmt.Println(err)
 	}
 
-	// The basic API.
-	_ = c.Set(ctx, "key", 90, 2*time.Hour)
-	var n int
-	if err := c.Get(ctx, "key", &n); errors.Is(err, gashe.ErrNotFound) {
-		fmt.Println("miss")
+	// Protecting dependencies: a rate limit, a circuit breaker, a lock.
+	if err := c.RateLimit(ctx, "api:"+clientIP, gashe.PerMinute(100)); errors.Is(err, gashe.ErrRateLimited) {
+		return // answer 429
+	}
+	if done, err := c.CircuitBreaker("payments", gashe.BreakerOptions{
+		FailurePercent: 50, MinCalls: 20, Window: time.Minute, OpenFor: 30 * time.Second,
+	}); err == nil { // gashe.ErrCircuitOpen while the payment API keeps failing
+		done(payments.Charge(ctx))
+	}
+	if lease, ok, err := c.TryLock(ctx, "job:daily-report", 10*time.Minute); err == nil && ok {
+		defer lease.Unlock(ctx)
+		// only one process runs the daily report
 	}
 }
 ```
+
+| Part | What it is | Where you set it |
+|---|---|---|
+| Backend: `memory.New`, `gasheredis.New`, `nearcache.New` | where entries live, and so which processes share them | once at startup |
+| `gashe.Options` | error and metrics hooks, codec, lock polling | once, in `gashe.New` |
+| `gashe.Policy[V]` | TTL and the strategies for one kind of data | a package variable per kind, passed to every call |
+| `gashe.GetOrLoad`, `GetOrLoadMany`, `Reload` | caching | where you load data |
+| `c.InvalidateTags`, `c.Delete` | invalidation | after writes |
+| `c.Lock`, `c.TryLock`, `c.RateLimit`, `c.CircuitBreaker` | protecting dependencies | around the work they guard |
+| `c.Get`, `c.Set`, ... | the basic API, like a map with TTL | anywhere |
+| `c.Shutdown` | waits for background reloads | at the end of `main` |
+
+Every option is explained in [Configuration](#configuration) and [Strategies](#strategies).
 
 ## Configuration
 
@@ -162,7 +221,8 @@ c := gashe.New(mem, gashe.Options{
 | `LockPollInterval` | How often `Lock` and `LockOnMiss` check whether a busy lock is free. Lower it for locks held for milliseconds, raise it for long jobs to load Redis less. 0 means 100ms. |
 
 Create one `Cache` at startup and share it; it is safe for concurrent use. It does not close the
-backend: close the backend where you created it.
+backend: close the backend where you created it, after `c.Shutdown` (see
+[Graceful shutdown](#graceful-shutdown)).
 
 ## Available Backends
 
@@ -246,21 +306,23 @@ func TestContract(t *testing.T) {
 
 ## Across processes
 
-What works across your processes is decided by the backend, not by the method: with a shared
-backend such as Redis, data, locks, limits and tags are shared by every process that uses it;
-with the in-memory backend, everything stays inside one process. Two things always stay inside
-one process, whatever the backend.
+What is shared is decided by the backend, not by the method. Below, **all processes** means every
+process that uses the same Redis (or another shared backend), and **this process** means only the
+process where the call runs. Strategies in [Strategies](#strategies) have the same **Scope** line.
 
-| Feature | Scope | Condition |
+| Feature | With Redis | With `memory` |
 |---|---|---|
-| Data of `GetOrLoad`, `Get`, `Set` | across processes | a shared backend |
-| `LockOnMiss`, the single background reload of `StaleWhileRevalidate` | across processes | a shared backend |
-| `Lock`, `TryLock`, `Lease.Extend` | across processes | a shared backend |
-| `RateLimit` | across processes | a shared backend |
-| `Tags`, `InvalidateTags` | across processes | a shared backend; through `nearcache`, other processes see an invalidation within `LocalTTL` |
-| Sharing of concurrent `GetOrLoad` calls | one process | always |
-| `CircuitBreaker` | one process | always |
-| The memory backend, the local level of `nearcache` | one process | always |
+| Results of `GetOrLoad`, `GetOrLoadMany`, `Get`, `Set` | all processes | this process |
+| Negative answers (`Negative`) | all processes | this process |
+| The one background reload of `StaleWhileRevalidate` | one for all processes | one per process |
+| `LockOnMiss`: one loader for a cold key | one for all processes | one per process |
+| `Lock`, `TryLock`, `Lease.Extend` | all processes | this process |
+| `RateLimit` | one limit for all processes | a separate limit in each process |
+| `Tags`, `InvalidateTags` | all processes; through `nearcache` within `LocalTTL` | this process |
+| Sharing of concurrent `GetOrLoad` calls | this process | this process |
+| `CircuitBreaker` | this process | this process |
+| `OnResult`, `OnError`, `Shutdown` | this process | this process |
+| The local level of `nearcache` | this process | - |
 
 ## Basic API
 
@@ -412,6 +474,9 @@ Three optional fields of `Policy` fit most cases; the next sections add the rest
   u, err := gashe.GetOrLoad(ctx, c, "42", users, loadUser)
   ```
 
+**Scope.** Stored results are seen by every process that uses the same Redis; with `memory`, by this
+process only.
+
 **Example.** A user from PostgreSQL, cached for an hour.
 
 ```go
@@ -445,6 +510,9 @@ var feed = gashe.Policy[Feed]{TTL: 10 * time.Minute, StaleWhileRevalidate: 2 * t
 
 With `TTL: 0` and only `StaleWhileRevalidate`, every call answers at once and triggers a background
 reload; a key nobody reads within the window expires.
+
+**Scope.** The stale answer comes from the stored entry, so it follows the backend. The background
+reload runs once for all processes with Redis, and once per process with `memory`.
 
 **Example.** A personal feed from a slow recommendation service: once warm, nobody waits for it again.
 
@@ -484,6 +552,9 @@ var rates = gashe.Policy[Rates]{
 
 With `TTL: 0` and only `StaleIfError`, the loader runs on every call, and the last good result
 answers its errors (a failover cache).
+
+**Scope.** The stale answer comes from the stored entry: every process can answer with it with
+Redis, only this process with `memory`.
 
 **Example.** Exchange rates from an external HTTP API: if the provider is down, the last rates are served for up to six hours.
 
@@ -538,6 +609,9 @@ if errors.Is(err, sql.ErrNoRows) { // true on the first call and on cached ones
 }
 ```
 
+**Scope.** A negative answer is a stored entry: with Redis it protects the database from all
+processes, with `memory` from this process only.
+
 **Example.** A 404 for a missing user: a scraper walking ids now hits the cache, not PostgreSQL. With pgx, match `pgx.ErrNoRows` instead.
 
 ```go
@@ -583,6 +657,8 @@ effect.
 share one lookup and one loader run. The run uses the context of the call that started it; a
 waiting call returns its own `ctx.Err()` if its context ends first.
 
+**Scope.** This process only, with any backend. Across processes see `LockOnMiss` below.
+
 **Example.** A product page: when one product goes viral, thousands of concurrent requests for it run one query.
 
 ```go
@@ -612,6 +688,9 @@ holder dies. The lock is taken only on a miss, never on a hit.
 var reports = gashe.Policy[Report]{TTL: time.Hour, LockOnMiss: 30 * time.Second}
 ```
 
+**Scope.** All processes that use the same Redis. With `memory` the lock covers this process only
+and adds nothing to the automatic sharing above.
+
 **Example.** A dashboard aggregate over millions of rows: on a cold cache, one pod runs the query, the others wait for it.
 
 ```go
@@ -632,6 +711,53 @@ func (s *Service) Stats(ctx context.Context, day string) (Stats, error) {
 > Make `LockOnMiss` longer than the slowest load, or a second process starts loading when the lock
 > expires. Waiting calls wait as long as their `ctx` allows: give requests a deadline.
 
+#### N+1 queries on lists (batch loading)
+
+**Problem.** A page shows 50 products. Loading them one by one with `GetOrLoad` costs 50 round
+trips to the cache and, on a cold cache, 50 queries to the database.
+
+**Solution.** `gashe.GetOrLoadMany` reads all keys in one backend call and calls the loader once
+with the keys that were missing, so it can fetch them in one query. What the loader returns is
+stored in one call; keys it leaves out are absent from the result and are not stored.
+
+```go
+products, err := gashe.GetOrLoadMany(ctx, c, ids, catalog,
+	func(ctx context.Context, missing []string) (map[string]Product, error) {
+		return s.repo.ProductsByID(ctx, missing) // the products found, by id
+	})
+```
+
+It reads and writes the same entries as `GetOrLoad` with the same policy, so both can serve the
+same keys. It supports `TTL`, `TTLFunc`, `Jitter`, `Tags`, `CacheIf` and `Prefix`.
+
+**Scope.** Stored results are seen by every process with Redis, by this process only with `memory`.
+The calls themselves are not shared, even inside one process.
+
+**Example.** The cart page: the products of the cart, one SQL query for those not cached.
+
+```go
+var catalog = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.1, Prefix: "product:"}
+
+func (s *Service) CartProducts(ctx context.Context, ids []string) (map[string]Product, error) {
+	return gashe.GetOrLoadMany(ctx, s.cache, ids, catalog, func(ctx context.Context, missing []string) (map[string]Product, error) {
+		found, err := s.repo.Products(ctx, missing) // SELECT ... WHERE id = ANY($1)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]Product, len(found))
+		for _, p := range found {
+			out[p.ID] = p
+		}
+		return out, nil
+	})
+}
+```
+
+> [!NOTE]
+> `StaleWhileRevalidate`, `StaleIfError`, `LockOnMiss` and `Negative` work per key and make
+> `GetOrLoadMany` return `ErrInvalidOptions`; use a policy without them. Concurrent calls are not
+> shared either: two requests for the same cold list both call the loader.
+
 #### Cache avalanche (TTL jitter)
 
 **Problem.** Many keys are stored at the same time (after a deploy, a warm-up, a batch job) and
@@ -642,6 +768,8 @@ therefore expire in the same second, and the database gets all of their loads at
 ```go
 var products = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.1} // 54 to 66 minutes
 ```
+
+**Scope.** Each stored entry gets its own spread, wherever it is stored.
 
 **Example.** Warming the product catalog at startup: without `Jitter` all of it would expire in the same minute an hour later.
 
@@ -681,6 +809,8 @@ c := gashe.New(backend, gashe.Options{})
 The price is staleness: another process may keep answering with a value this process already
 changed for up to `LocalTTL`, and an invalidated tag reaches other processes within `LocalTTL` too. Keep it
 short.
+
+**Scope.** The local level belongs to each process; the shared level is seen by all processes.
 
 **Example.** Feature flags read on every request: with `nearcache`, each pod asks Redis about them about once per `LocalTTL`.
 
@@ -801,6 +931,9 @@ if !ok {
 - If the backend fails, `Lock` and `TryLock` return its error: whether to run without a lock is your
   call.
 
+**Scope.** All processes that use the same Redis. With `memory` the lock holds inside this process
+only.
+
 **Example.** Rebuilding the search index from a cron that runs on every pod: one pod rebuilds, the others skip.
 
 ```go
@@ -832,7 +965,7 @@ func (s *Service) RebuildIndex(ctx context.Context) error {
 can take.
 
 **Solution.** `RateLimit` counts a call for a key and returns `gashe.ErrRateLimited` once the key is
-over its limit. The limit is shared by every process. Call it before the work it guards.
+over its limit. Call it before the work it guards.
 
 ```go
 if err := c.RateLimit(ctx, "user:"+id, gashe.PerMinute(100)); err != nil {
@@ -848,6 +981,9 @@ err := c.RateLimit(ctx, "login:"+ip, gashe.FixedWindow{Calls: 5, Per: time.Minut
   span were spread evenly. Refused calls are not counted.
 - `gashe.FixedWindow{Calls, Per, BanFor}`: at most `Calls` calls per span of `Per` that starts with the
   first call; the first call over the limit blocks the key for `BanFor` (default `Per`).
+
+**Scope.** With Redis, one limit for all processes. With `memory`, each process counts only its own
+calls: with 10 pods the real limit is 10 times higher.
 
 **Example.** An HTTP middleware: 600 requests a minute per API key, then 429.
 
@@ -899,6 +1035,8 @@ done(err) // report how it went: nil or the error
 ```
 
 Call `done` once. A call you never report is not counted. Use the same options for the same key.
+
+**Scope.** Each process has its own breaker, with any backend.
 
 **Example.** Calls to a payment provider: while it is failing, checkout answers at once instead of hanging on timeouts.
 
@@ -960,6 +1098,8 @@ back or refreshes.
 
 **Solution.** `OnResult` receives how every `GetOrLoad` call was answered.
 
+**Scope.** `OnResult` sees the calls of this process; sum the metrics of all pods.
+
 ```go
 c := gashe.New(backend, gashe.Options{
 	OnResult: func(ctx context.Context, key string, r gashe.Result) {
@@ -974,6 +1114,29 @@ c := gashe.New(backend, gashe.Options{
 > [!WARNING]
 > `OnResult` and `OnError` run synchronously on every call. Keep them fast: count, do not write to
 > a network or a slow log on the request path.
+
+#### Graceful shutdown
+
+**Problem.** `StaleWhileRevalidate` reloads in the background. When the service stops, such a
+reload may still be running: it is cut off halfway or writes to a backend that is already closed.
+
+**Solution.** Call `c.Shutdown(ctx)` before closing the backend. It stops starting background
+reloads and waits for the running ones until `ctx` is done. The cache keeps answering; stale
+results are just no longer reloaded.
+
+**Scope.** The background reloads of this process.
+
+**Example.** The end of `main`: stop taking requests, let reloads finish, then close Redis.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+_ = srv.Shutdown(ctx) // the HTTP server
+if err := c.Shutdown(ctx); err != nil {
+	slog.Warn("background reloads did not finish", "error", err)
+}
+_ = client.Close()
+```
 
 ### Known limits
 
@@ -1026,6 +1189,9 @@ o, err := gashe.GetOrLoad(ctx, c, "orders:42", orders, loadOrders)
 c.InvalidateTags(ctx, "user:42") // both entries are misses now
 c.InvalidateTags(ctx, "orders")  // every orders entry is a miss now
 ```
+
+**Scope.** With Redis, every process sees the invalidation at once, through `nearcache` within
+`LocalTTL`. With `memory`, only this process.
 
 **Example.** After an UPDATE in PostgreSQL, everything cached about the user reloads: profile, orders page, settings.
 
@@ -1107,7 +1273,7 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 5. One object around `Cache`, iterators. Done.
 6. Negative caching, jitter, tags, `OnResult`, lock extension, an in-process breaker, prefixes,
    gzip, a two-level near cache. Done.
-7. Batch loading of many keys at once.
+7. Batch loading of many keys at once (`GetOrLoadMany`), graceful shutdown. Done.
 8. Instant invalidation of near caches through Redis pub/sub.
 
 ## Development
