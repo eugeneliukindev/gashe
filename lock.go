@@ -41,16 +41,16 @@ func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease
 
 // TryLock takes the lock key for ttl if it is free; the bool is false when someone else holds it.
 // The lock is shared by every process that uses the same backend.
-func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (*Lease, bool, error) {
+func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (lease *Lease, ok bool, err error) {
 	if ttl <= 0 {
 		return nil, false, ErrInvalidTTL
 	}
 	id := make([]byte, ownerBytes)
-	if _, err := rand.Read(id); err != nil {
+	if _, err = rand.Read(id); err != nil {
 		return nil, false, fmt.Errorf("gashe: lock %q: %w", key, err)
 	}
 	owner := []byte(hex.EncodeToString(id))
-	ok, err := c.backend.SetIfAbsent(ctx, key, owner, ttl)
+	ok, err = c.backend.SetIfAbsent(ctx, key, owner, ttl)
 	if err != nil || !ok {
 		return nil, false, err
 	}

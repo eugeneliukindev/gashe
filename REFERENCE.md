@@ -228,7 +228,7 @@ What `Options.OnResult` receives. `String` returns `"hit"`, `"miss"`, `"stale-wh
 
 ```go
 func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error
-func (c *Cache) Delete(ctx context.Context, key string) (bool, error)
+func (c *Cache) Delete(ctx context.Context, key string) (existed bool, err error)
 func (c *Cache) DeleteMany(ctx context.Context, keys ...string) error
 func (c *Cache) DeleteMatch(ctx context.Context, pattern string) error
 ```
@@ -244,7 +244,7 @@ func (c *Cache) DeleteMatch(ctx context.Context, pattern string) error
 
 ```go
 func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease, error)
-func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (*Lease, bool, error)
+func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (lease *Lease, ok bool, err error)
 func (c *Cache) IsLocked(ctx context.Context, key string) (bool, error)
 func (l *Lease) Extend(ctx context.Context, ttl time.Duration) error
 func (l *Lease) Unlock(ctx context.Context) error
@@ -332,16 +332,16 @@ Works like a map with TTL. Values are encoded with `Options.Codec`; keys are use
 ```go
 func (c *Cache) Get(ctx context.Context, key string, dst any) error
 func (c *Cache) Set(ctx context.Context, key string, v any, ttl time.Duration) error
-func (c *Cache) SetIfAbsent(ctx context.Context, key string, v any, ttl time.Duration) (bool, error)
-func (c *Cache) SetIfPresent(ctx context.Context, key string, v any, ttl time.Duration) (bool, error)
+func (c *Cache) SetIfAbsent(ctx context.Context, key string, v any, ttl time.Duration) (stored bool, err error)
+func (c *Cache) SetIfPresent(ctx context.Context, key string, v any, ttl time.Duration) (stored bool, err error)
 func (c *Cache) GetMany(ctx context.Context, keys ...string) ([]Value, error)
 func (c *Cache) SetMany(ctx context.Context, values map[string]any, ttl time.Duration) error
 func (c *Cache) Keys(ctx context.Context, pattern string) iter.Seq2[string, error]
 func (c *Cache) All(ctx context.Context, pattern string) iter.Seq2[Value, error]
 func (c *Cache) Exists(ctx context.Context, key string) (bool, error)
-func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error)
-func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
-func (c *Cache) TTL(ctx context.Context, key string) (time.Duration, error)
+func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error)
+func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) (existed bool, err error)
+func (c *Cache) TTL(ctx context.Context, key string) (left time.Duration, err error)
 func (c *Cache) Ping(ctx context.Context) error
 func (c *Cache) Backend() Backend
 ```
@@ -404,18 +404,18 @@ type Backend interface {
 	GetMany(ctx context.Context, keys ...string) ([][]byte, error)
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	SetMany(ctx context.Context, values map[string][]byte, ttl time.Duration) error
-	SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
-	SetIfPresent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
-	Delete(ctx context.Context, key string) (bool, error)
+	SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (stored bool, err error)
+	SetIfPresent(ctx context.Context, key string, value []byte, ttl time.Duration) (stored bool, err error)
+	Delete(ctx context.Context, key string) (existed bool, err error)
 	DeleteMany(ctx context.Context, keys ...string) error
 	DeleteMatch(ctx context.Context, pattern string) error
 	Scan(ctx context.Context, pattern string) iter.Seq2[string, error]
 	Exists(ctx context.Context, key string) (bool, error)
-	Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error)
-	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
-	TTL(ctx context.Context, key string) (time.Duration, error)
-	Unlock(ctx context.Context, key string, owner []byte) (bool, error)
-	ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error)
+	Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error)
+	Expire(ctx context.Context, key string, ttl time.Duration) (existed bool, err error)
+	TTL(ctx context.Context, key string) (left time.Duration, err error)
+	Unlock(ctx context.Context, key string, owner []byte) (released bool, err error)
+	ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (extended bool, err error)
 	Ping(ctx context.Context) error
 	Close() error
 }

@@ -23,6 +23,9 @@ linters:
     - varnamelen
     # Inline "if err := f(); err != nil" is idiomatic Go.
     - noinlineerr
+    # Named results document what each value means, as in io.Reader and strings.Cut; nakedret
+    # still keeps bare returns out.
+    - nonamedreturns
     # Tests run inside synctest bubbles, where t.Parallel is not allowed.
     - paralleltest
     - tparallel
@@ -55,9 +58,6 @@ linters:
         - diagnostic
         - performance
         - style
-      disabled-checks:
-        # Conflicts with nonamedreturns, which is kept.
-        - unnamedResult
     ireturn:
       allow:
         - anon

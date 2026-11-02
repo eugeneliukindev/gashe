@@ -131,7 +131,7 @@ func TestCloseStopsListening(t *testing.T) {
 }
 
 // versions returns a loader that answers 1, 2, ... and counts its runs.
-func versions() (*atomic.Int32, func(context.Context) (int, error)) {
+func versions() (calls *atomic.Int32, load func(context.Context) (int, error)) {
 	var n atomic.Int32
 	return &n, func(context.Context) (int, error) { return int(n.Add(1)), nil }
 }

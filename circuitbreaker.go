@@ -86,26 +86,37 @@ type bucket struct {
 	failures int
 }
 
+// breakerState is the phase a breaker is in.
+type breakerState int
+
+const (
+	// breakerClosed lets every call through and counts failures.
+	breakerClosed breakerState = iota
+	// breakerOpen refuses every call until OpenFor ends.
+	breakerOpen
+	// breakerHalfOpen lets HalfOpenCalls test calls through.
+	breakerHalfOpen
+)
+
+func (b *breaker) state(now time.Time) breakerState {
+	switch {
+	case now.Before(b.openUntil):
+		return breakerOpen
+	case now.Before(b.trialUntil):
+		return breakerHalfOpen
+	}
+	return breakerClosed
+}
+
 func (b *breaker) allow(o BreakerOptions, now time.Time) (DoneFunc, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if now.Before(b.openUntil) {
+	switch b.state(now) {
+	case breakerOpen:
 		return nil, ErrCircuitOpen
-	}
-	if now.Before(b.trialUntil) {
-		if b.trialsLeft == 0 {
-			return nil, ErrCircuitOpen
-		}
-		b.trialsLeft--
-		return func(err error) {
-			b.mu.Lock()
-			defer b.mu.Unlock()
-			if failed(o, err) {
-				b.trip(o, time.Now())
-				return
-			}
-			b.trialUntil = time.Time{} // the dependency works again: closed
-		}, nil
+	case breakerHalfOpen:
+		return b.trial(o)
+	case breakerClosed:
 	}
 	width := max(o.Window/breakerBuckets, 1)
 	n := now.UnixNano() / int64(width)
@@ -120,6 +131,24 @@ func (b *breaker) allow(o BreakerOptions, now time.Time) (DoneFunc, error) {
 		if b.overLimit(o, n) {
 			b.trip(o, time.Now())
 		}
+	}, nil
+}
+
+// trial lets one test call through while trials are left; its outcome closes or reopens the
+// breaker. b.mu is held.
+func (b *breaker) trial(o BreakerOptions) (DoneFunc, error) {
+	if b.trialsLeft == 0 {
+		return nil, ErrCircuitOpen
+	}
+	b.trialsLeft--
+	return func(err error) {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if failed(o, err) {
+			b.trip(o, time.Now())
+			return
+		}
+		b.trialUntil = time.Time{} // the dependency works again: closed
 	}, nil
 }
 

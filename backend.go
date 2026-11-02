@@ -24,11 +24,11 @@ type Backend interface {
 	// SetMany stores all values with the same TTL.
 	SetMany(ctx context.Context, values map[string][]byte, ttl time.Duration) error
 	// SetIfAbsent stores value only if key has no live entry and reports whether it did.
-	SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
+	SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (stored bool, err error)
 	// SetIfPresent stores value only if key has a live entry and reports whether it did.
-	SetIfPresent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
+	SetIfPresent(ctx context.Context, key string, value []byte, ttl time.Duration) (stored bool, err error)
 	// Delete removes key and reports whether it existed.
-	Delete(ctx context.Context, key string) (bool, error)
+	Delete(ctx context.Context, key string) (existed bool, err error)
 	// DeleteMany removes all keys.
 	DeleteMany(ctx context.Context, keys ...string) error
 	// DeleteMatch removes every key that matches pattern.
@@ -40,15 +40,15 @@ type Backend interface {
 	Exists(ctx context.Context, key string) (bool, error)
 	// Incr adds by to the integer under key, creating it from 0 if absent, and returns the result.
 	// ttl applies only when the entry is created.
-	Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error)
+	Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error)
 	// Expire sets a new TTL (ttl > 0) for key and reports whether the key existed.
-	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	Expire(ctx context.Context, key string, ttl time.Duration) (existed bool, err error)
 	// TTL returns the time key has left, or NoExpiry.
-	TTL(ctx context.Context, key string) (time.Duration, error)
+	TTL(ctx context.Context, key string) (left time.Duration, err error)
 	// Unlock removes key only if it holds owner and reports whether it did.
-	Unlock(ctx context.Context, key string, owner []byte) (bool, error)
+	Unlock(ctx context.Context, key string, owner []byte) (released bool, err error)
 	// ExtendLock sets a new TTL (ttl > 0) for key only if it holds owner and reports whether it did.
-	ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error)
+	ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (extended bool, err error)
 	// Ping checks that the backend is reachable.
 	Ping(ctx context.Context) error
 	// Close releases resources the backend owns.

@@ -87,7 +87,7 @@ func (c *Cache) Set(ctx context.Context, key string, v any, ttl time.Duration) e
 }
 
 // SetIfAbsent stores v only if key has no live entry and reports whether it did.
-func (c *Cache) SetIfAbsent(ctx context.Context, key string, v any, ttl time.Duration) (bool, error) {
+func (c *Cache) SetIfAbsent(ctx context.Context, key string, v any, ttl time.Duration) (stored bool, err error) {
 	raw, err := c.encode(key, v, ttl)
 	if err != nil {
 		return false, err
@@ -96,7 +96,7 @@ func (c *Cache) SetIfAbsent(ctx context.Context, key string, v any, ttl time.Dur
 }
 
 // SetIfPresent stores v only if key has a live entry and reports whether it did.
-func (c *Cache) SetIfPresent(ctx context.Context, key string, v any, ttl time.Duration) (bool, error) {
+func (c *Cache) SetIfPresent(ctx context.Context, key string, v any, ttl time.Duration) (stored bool, err error) {
 	raw, err := c.encode(key, v, ttl)
 	if err != nil {
 		return false, err
@@ -175,7 +175,7 @@ func (c *Cache) All(ctx context.Context, pattern string) iter.Seq2[Value, error]
 }
 
 // Delete removes key and reports whether it existed.
-func (c *Cache) Delete(ctx context.Context, key string) (bool, error) {
+func (c *Cache) Delete(ctx context.Context, key string) (existed bool, err error) {
 	return c.backend.Delete(ctx, key)
 }
 
@@ -196,7 +196,7 @@ func (c *Cache) Exists(ctx context.Context, key string) (bool, error) {
 
 // Incr adds by to the integer under key, creating it from 0 if absent, and returns the result.
 // ttl applies only when the entry is created. The stored integer reads back with Get.
-func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error) {
 	if ttl < 0 {
 		return 0, ErrInvalidTTL
 	}
@@ -204,7 +204,7 @@ func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duratio
 }
 
 // Expire sets a new TTL for key and reports whether the key existed. ttl must be positive.
-func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) (existed bool, err error) {
 	if ttl <= 0 {
 		return false, ErrInvalidTTL
 	}
@@ -212,7 +212,7 @@ func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) (bool
 }
 
 // TTL returns the time key has left, or NoExpiry. A miss returns ErrNotFound.
-func (c *Cache) TTL(ctx context.Context, key string) (time.Duration, error) {
+func (c *Cache) TTL(ctx context.Context, key string) (left time.Duration, err error) {
 	return c.backend.TTL(ctx, key)
 }
 

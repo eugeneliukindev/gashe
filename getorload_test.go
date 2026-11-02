@@ -42,8 +42,8 @@ func (s cached[V]) Reload(ctx context.Context, key string, load func(context.Con
 	return gashe.Reload(ctx, s.c, key, s.o, load)
 }
 
-func counter(v user) (*int, func(context.Context) (user, error)) {
-	calls := new(int)
+func counter(v user) (calls *int, load func(context.Context) (user, error)) {
+	calls = new(int)
 	return calls, func(context.Context) (user, error) {
 		*calls++
 		return v, nil

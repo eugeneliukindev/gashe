@@ -55,7 +55,10 @@ func GetOrLoadMany[V any](
 
 // readMany returns the fresh results under keys and the keys that have none. An error
 // is a backend failure and is already reported.
-func (l *loading[V]) readMany(ctx context.Context, keys []string) (map[string]V, []string, error) {
+func (l *loading[V]) readMany(
+	ctx context.Context,
+	keys []string,
+) (found map[string]V, missing []string, err error) {
 	full := make([]string, len(keys), len(keys)+len(l.o.Tags))
 	for i, k := range keys {
 		full[i] = l.o.Prefix + k
@@ -66,13 +69,12 @@ func (l *loading[V]) readMany(ctx context.Context, keys []string) (map[string]V,
 		return nil, nil, err
 	}
 	l.gens = generations(raws[len(keys):])
-	found := make(map[string]V, len(keys))
-	var missing []string
+	found = make(map[string]V, len(keys))
 	now := time.Now()
 	for i, k := range keys {
 		var e entry[V]
 		if raws[i] != nil {
-			if err := l.c.decode(full[i], raws[i], &e); err != nil {
+			if err = l.c.decode(full[i], raws[i], &e); err != nil {
 				l.c.onError(ctx, err)
 			} else if !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) {
 				found[k] = e.V

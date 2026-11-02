@@ -68,7 +68,7 @@ func Reload[V any](
 		return load(ctx)
 	}
 	l.gens = gens
-	return l.loadAndStore(ctx, true)
+	return l.loadAndStore(ctx)
 }
 
 // entry is what GetOrLoad stores: the result, when it stops being fresh, the generations of its
@@ -100,18 +100,22 @@ func (l *loading[V]) get(ctx context.Context) (V, Result, error) {
 	if err == nil && e.Neg && !time.Now().Before(e.At) {
 		err = ErrNotFound // an expired negative answer is not a fallback
 	}
-	if err != nil {
-		return l.miss(ctx, errors.Is(err, ErrNotFound))
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return l.miss(ctx)
+	case err != nil:
+		v, loadErr := l.load(ctx) // the backend failed: answer without storing
+		return v, ResultMiss, loadErr
 	}
 	return l.answer(ctx, e)
 }
 
-// miss loads a key that has no usable entry; backendOK is false when the backend failed.
-func (l *loading[V]) miss(ctx context.Context, backendOK bool) (V, Result, error) {
-	if backendOK && l.o.LockOnMiss > 0 {
+// miss loads a key that has no usable entry.
+func (l *loading[V]) miss(ctx context.Context) (V, Result, error) {
+	if l.o.LockOnMiss > 0 {
 		return l.loadLocked(ctx)
 	}
-	v, err := l.loadAndStore(ctx, backendOK)
+	v, err := l.loadAndStore(ctx)
 	return v, ResultMiss, err
 }
 
@@ -128,7 +132,7 @@ func (l *loading[V]) answer(ctx context.Context, e entry[V]) (V, Result, error) 
 		l.refreshInBackground(ctx)
 		return e.V, ResultStaleWhileRevalidate, nil
 	}
-	v, err := l.loadAndStore(ctx, true)
+	v, err := l.loadAndStore(ctx)
 	if err != nil && now.Before(e.At.Add(l.o.StaleIfError)) && (l.o.StaleIf == nil || l.o.StaleIf(err)) {
 		l.c.onError(ctx, fmt.Errorf("gashe: %q answered with an old result: %w", l.key, err))
 		return e.V, ResultStaleIfError, nil
@@ -165,16 +169,16 @@ func (l *loading[V]) read(ctx context.Context) (entry[V], error) {
 	return e, nil
 }
 
-// loadAndStore calls the loader and, if the backend is fine and the result qualifies, stores it.
-func (l *loading[V]) loadAndStore(ctx context.Context, backendOK bool) (V, error) {
+// loadAndStore calls the loader and stores its result if it qualifies.
+func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 	v, err := l.load(ctx)
 	if err != nil {
-		if backendOK && l.o.Negative.If != nil && l.o.Negative.If(err) {
+		if l.o.Negative.If != nil && l.o.Negative.If(err) {
 			l.storeNegative(ctx)
 		}
 		return v, err
 	}
-	if !backendOK || (l.o.CacheIf != nil && !l.o.CacheIf(v)) {
+	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
 		return v, nil
 	}
 	fresh, ok := l.freshFor(v)
@@ -222,7 +226,7 @@ func (l *loading[V]) refreshInBackground(ctx context.Context) {
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), ttl)
 		defer cancel()
 		defer l.unlock(bg, lease)
-		if _, err := l.loadAndStore(bg, true); err != nil {
+		if _, err := l.loadAndStore(bg); err != nil {
 			l.c.onError(bg, fmt.Errorf("gashe: refresh %q: %w", l.key, err))
 		}
 	}()
@@ -238,14 +242,14 @@ func (l *loading[V]) loadLocked(ctx context.Context) (V, Result, error) {
 			return zero, 0, err
 		}
 		l.c.onError(ctx, fmt.Errorf("gashe: load lock %q: %w", l.key, err))
-		v, loadErr := l.loadAndStore(ctx, true)
+		v, loadErr := l.loadAndStore(ctx)
 		return v, ResultMiss, loadErr
 	}
 	defer l.unlock(ctx, lease)
 	if e, readErr := l.read(ctx); readErr == nil && !e.Neg && time.Now().Before(e.At.Add(l.o.StaleWhileRevalidate)) {
 		return e.V, ResultHit, nil
 	}
-	v, err := l.loadAndStore(ctx, true)
+	v, err := l.loadAndStore(ctx)
 	return v, ResultMiss, err
 }
 
