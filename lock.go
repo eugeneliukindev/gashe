@@ -9,26 +9,29 @@ import (
 )
 
 const (
-	// lockRetry is how long Lock waits between attempts to take a busy lock.
-	lockRetry  = 100 * time.Millisecond
-	ownerBytes = 16
+	// defaultLockPoll is how often Lock checks a busy lock unless Options.LockPollInterval says
+	// otherwise.
+	defaultLockPoll = 100 * time.Millisecond
+	ownerBytes      = 16
 )
 
-// UnlockFunc releases a lock taken by Lock or TryLock. It frees the lock only if it is still
-// ours, and ignores the cancellation of its ctx so that a finished request does not leave the
-// lock behind.
-type UnlockFunc func(ctx context.Context) error
+// Lease is a lock held by Lock or TryLock.
+type Lease struct {
+	c     *Cache
+	key   string
+	owner []byte
+}
 
-// Lock takes the lock key for ttl, waiting while someone else holds it, and returns a function
-// that releases it. The lock is shared by every process that uses the backend; ttl frees it in
-// case its holder dies. It returns ctx.Err() if ctx ends first.
-func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (UnlockFunc, error) {
+// Lock takes the lock key for ttl, waiting while someone else holds it and checking it every
+// Options.LockPollInterval. The lock is shared by every process that uses the same backend; ttl
+// frees it in case its holder dies. It returns ctx.Err() if ctx ends first.
+func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease, error) {
 	for {
-		unlock, ok, err := c.TryLock(ctx, key, ttl)
+		lease, ok, err := c.TryLock(ctx, key, ttl)
 		if err != nil || ok {
-			return unlock, err
+			return lease, err
 		}
-		timer := time.NewTimer(lockRetry)
+		timer := time.NewTimer(c.lockPoll)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -38,9 +41,9 @@ func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (Unlock
 	}
 }
 
-// TryLock takes the lock key for ttl if it is free and returns a function that releases it;
-// the bool is false when someone else holds the lock.
-func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (UnlockFunc, bool, error) {
+// TryLock takes the lock key for ttl if it is free; the bool is false when someone else holds it.
+// The lock is shared by every process that uses the same backend.
+func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (*Lease, bool, error) {
 	if ttl <= 0 {
 		return nil, false, ErrInvalidTTL
 	}
@@ -53,13 +56,33 @@ func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (Unl
 	if err != nil || !ok {
 		return nil, false, err
 	}
-	return func(ctx context.Context) error {
-		_, err := c.backend.Unlock(context.WithoutCancel(ctx), key, owner)
-		return err
-	}, true, nil
+	return &Lease{c: c, key: key, owner: owner}, true, nil
 }
 
 // IsLocked reports whether someone holds the lock key.
 func (c *Cache) IsLocked(ctx context.Context, key string) (bool, error) {
 	return c.backend.Exists(ctx, key)
+}
+
+// Unlock releases the lock if it is still ours. It ignores the cancellation of ctx, so that a
+// finished request does not leave the lock behind.
+func (l *Lease) Unlock(ctx context.Context) error {
+	_, err := l.c.backend.Unlock(context.WithoutCancel(ctx), l.key, l.owner)
+	return err
+}
+
+// Extend gives the lock a new ttl from now, for work that runs longer than planned. It returns
+// ErrLockLost if the lock expired and someone else may hold it.
+func (l *Lease) Extend(ctx context.Context, ttl time.Duration) error {
+	if ttl <= 0 {
+		return ErrInvalidTTL
+	}
+	ok, err := l.c.backend.ExtendLock(ctx, l.key, l.owner, ttl)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrLockLost
+	}
+	return nil
 }

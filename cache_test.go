@@ -181,8 +181,10 @@ func TestDelete(t *testing.T) {
 	if err := c.DeleteMany(ctx, "b", "c"); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := c.KeysCount(ctx); n != 0 {
-		t.Fatalf("KeysCount = %d", n)
+	for _, k := range []string{"a", "b", "c"} {
+		if ok, _ := c.Exists(ctx, k); ok {
+			t.Fatalf("%s still exists", k)
+		}
 	}
 }
 
@@ -245,4 +247,13 @@ func TestAllSkipsKeysGoneAfterScan(t *testing.T) {
 	if !slices.Equal(keys, []string{"a"}) {
 		t.Fatalf("All yielded %v, want only a", keys)
 	}
+}
+
+func TestNewPanicsOnNegativeLockPollInterval(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("no panic")
+		}
+	}()
+	gashe.New(newCache(t).Backend(), gashe.Options{LockPollInterval: -time.Second})
 }

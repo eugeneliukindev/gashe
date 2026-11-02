@@ -21,17 +21,27 @@ const (
 	deleteBatch = 100 // keys per UNLINK pipeline in DeleteMatch
 )
 
-// unlockSrc deletes the key only if it is a string holding the owner.
-const unlockSrc = `
+const (
+	// unlockSrc deletes the key only if it is a string holding the owner.
+	unlockSrc = `
 if redis.call("TYPE", KEYS[1]).ok == "string" and redis.call("GET", KEYS[1]) == ARGV[1] then
 	return redis.call("DEL", KEYS[1])
 end
 return 0`
 
+	// extendLockSrc sets a new TTL only if the key is a string holding the owner.
+	extendLockSrc = `
+if redis.call("TYPE", KEYS[1]).ok == "string" and redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0`
+)
+
 // Backend is a gashe.Backend over a go-redis client.
 type Backend struct {
-	client goredis.UniversalClient
-	unlock *goredis.Script
+	client     goredis.UniversalClient
+	unlock     *goredis.Script
+	extendLock *goredis.Script
 	// nodes returns the clients that hold keys: the client itself, or every Cluster master.
 	nodes func(ctx context.Context) ([]goredis.Cmdable, error)
 }
@@ -42,8 +52,9 @@ var _ gashe.Backend = (*Backend)(nil)
 // nothing.
 func New(client goredis.UniversalClient) *Backend {
 	b := &Backend{
-		client: client,
-		unlock: goredis.NewScript(unlockSrc),
+		client:     client,
+		unlock:     goredis.NewScript(unlockSrc),
+		extendLock: goredis.NewScript(extendLockSrc),
 	}
 	b.nodes = func(context.Context) ([]goredis.Cmdable, error) { return []goredis.Cmdable{client}, nil }
 	if cluster, ok := client.(*goredis.ClusterClient); ok {
@@ -270,84 +281,15 @@ func (b *Backend) Unlock(ctx context.Context, key string, owner []byte) (bool, e
 	return n > 0, wrap("unlock", err)
 }
 
-// SetAdd implements gashe.Backend.
-func (b *Backend) SetAdd(ctx context.Context, key string, ttl time.Duration, members ...string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	_, err := b.client.TxPipelined(ctx, func(p goredis.Pipeliner) error {
-		p.SAdd(ctx, key, toAny(members)...)
-		if ttl > 0 {
-			p.PExpire(ctx, key, ttl)
-		}
-		return nil
-	})
-	return wrap("set add", err)
-}
-
-// SetRemove implements gashe.Backend.
-func (b *Backend) SetRemove(ctx context.Context, key string, members ...string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	return wrap("set remove", b.client.SRem(ctx, key, toAny(members)...).Err())
-}
-
-// SetPop implements gashe.Backend.
-func (b *Backend) SetPop(ctx context.Context, key string, count int) ([]string, error) {
-	if count <= 0 {
-		return nil, nil
-	}
-	members, err := b.client.SPopN(ctx, key, int64(count)).Result()
-	if errors.Is(err, goredis.Nil) {
-		return nil, nil
-	}
-	return members, wrap("set pop", err)
-}
-
-// Size implements gashe.Backend. It reports MEMORY USAGE, which includes Redis overhead.
-func (b *Backend) Size(ctx context.Context, key string) (int64, error) {
-	n, err := b.client.MemoryUsage(ctx, key).Result()
-	if errors.Is(err, goredis.Nil) {
-		return 0, nil
-	}
-	return n, wrap("size", err)
-}
-
-// KeysCount implements gashe.Backend. On a Cluster it sums every master.
-func (b *Backend) KeysCount(ctx context.Context) (int64, error) {
-	nodes, err := b.nodes(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var total int64
-	for _, node := range nodes {
-		n, err := node.DBSize(ctx).Result()
-		if err != nil {
-			return 0, wrap("keys count", err)
-		}
-		total += n
-	}
-	return total, nil
+// ExtendLock implements gashe.Backend.
+func (b *Backend) ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error) {
+	n, err := b.extendLock.Run(ctx, b.client, []string{key}, owner, ttl.Milliseconds()).Int64()
+	return n > 0, wrap("extend lock", err)
 }
 
 // Ping implements gashe.Backend.
 func (b *Backend) Ping(ctx context.Context) error {
 	return wrap("ping", b.client.Ping(ctx).Err())
-}
-
-// Clear implements gashe.Backend. It runs FLUSHDB on the selected database of every node.
-func (b *Backend) Clear(ctx context.Context) error {
-	nodes, err := b.nodes(ctx)
-	if err != nil {
-		return err
-	}
-	for _, node := range nodes {
-		if err := node.FlushDB(ctx).Err(); err != nil {
-			return wrap("clear", err)
-		}
-	}
-	return nil
 }
 
 // Close implements gashe.Backend. It does nothing: whoever created the client closes it.
@@ -359,12 +301,4 @@ func nonNil(b []byte) []byte {
 		return []byte{}
 	}
 	return b
-}
-
-func toAny(ss []string) []any {
-	out := make([]any, len(ss))
-	for i, s := range ss {
-		out[i] = s
-	}
-	return out
 }

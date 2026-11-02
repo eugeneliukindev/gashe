@@ -16,7 +16,7 @@ func TestRateLimitFixedBan(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		limit := gashe.Fixed{Calls: 1, Per: time.Minute, BanFor: 10 * time.Minute}
+		limit := gashe.FixedWindow{Calls: 1, Per: time.Minute, BanFor: 10 * time.Minute}
 
 		_ = c.RateLimit(ctx, "k", limit)
 		time.Sleep(30 * time.Second)

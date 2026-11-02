@@ -12,8 +12,8 @@ var (
 	ErrWrongType = errors.New("gashe: wrong type")
 	// ErrInvalidOptions reports options that cannot work, such as a negative duration.
 	ErrInvalidOptions = errors.New("gashe: invalid options")
-	// ErrLocked reports a lock that is held by someone else.
-	ErrLocked = errors.New("gashe: locked")
+	// ErrLockLost reports a lock that expired before its holder extended it.
+	ErrLockLost = errors.New("gashe: lock lost")
 	// ErrRateLimited reports a call over its rate limit.
 	ErrRateLimited = errors.New("gashe: rate limited")
 	// ErrCircuitOpen reports a call refused by an open circuit breaker.

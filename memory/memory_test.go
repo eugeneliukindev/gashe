@@ -12,8 +12,8 @@ import (
 
 func newMemory(t *testing.T, o memory.Options) *memory.Backend {
 	t.Helper()
-	if o.CheckInterval == 0 {
-		o.CheckInterval = -1
+	if o.PurgeInterval == 0 {
+		o.PurgeInterval = -1
 	}
 	m := memory.New(o)
 	t.Cleanup(func() { _ = m.Close() })
@@ -29,7 +29,7 @@ func TestContract(t *testing.T) {
 
 func TestLRUEvictsLeastRecentlyUsed(t *testing.T) {
 	ctx := context.Background()
-	m := newMemory(t, memory.Options{Size: 2})
+	m := newMemory(t, memory.Options{MaxEntries: 2})
 	_ = m.Set(ctx, "a", []byte("1"), 0)
 	_ = m.Set(ctx, "b", []byte("1"), 0)
 	_, _ = m.Get(ctx, "a") // a is now the most recent
@@ -51,7 +51,7 @@ func TestNewPanicsOnNegativeSize(t *testing.T) {
 			t.Fatal("no panic")
 		}
 	}()
-	memory.New(memory.Options{Size: -1})
+	memory.New(memory.Options{MaxEntries: -1})
 }
 
 func TestCloseTwice(t *testing.T) {

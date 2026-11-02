@@ -16,12 +16,12 @@ import (
 func TestBackgroundPurge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		m := newMemory(t, memory.Options{CheckInterval: time.Second})
+		m := newMemory(t, memory.Options{PurgeInterval: time.Second})
 		_ = m.Set(ctx, "k", []byte("1"), 500*time.Millisecond)
 
 		time.Sleep(time.Second)
 		synctest.Wait()
-		if n, _ := m.KeysCount(ctx); n != 0 {
+		if n := m.Len(); n != 0 {
 			t.Fatalf("expired entry was not purged: %d keys", n)
 		}
 	})

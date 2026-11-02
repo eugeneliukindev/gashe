@@ -17,21 +17,36 @@ type Options struct {
 	// OnError receives errors the cache works around instead of returning them, such as a
 	// failing backend during GetOrLoad; each error names the operation and key. nil drops them.
 	OnError func(ctx context.Context, err error)
+	// OnResult receives how every GetOrLoad call was answered, with the stored key: use it to
+	// count hits and misses. nil drops them.
+	OnResult func(ctx context.Context, key string, r Result)
+	// LockPollInterval is how often Lock and LockOnMiss check whether a busy lock is free.
+	// 0 means 100ms.
+	LockPollInterval time.Duration
 }
 
 // Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits
 // and circuit breakers on top of it. It is safe for concurrent use.
 type Cache struct {
-	backend Backend
-	codec   Codec
-	onError func(ctx context.Context, err error)
-	calls   group
+	backend  Backend
+	codec    Codec
+	onError  func(ctx context.Context, err error)
+	onResult func(ctx context.Context, key string, r Result)
+	lockPoll time.Duration
+	calls    group
+	breakers breakers
 }
 
-// New returns a Cache over b. It panics if b is nil.
+// New returns a Cache over b. It panics if b is nil or LockPollInterval is negative.
 func New(b Backend, o Options) *Cache {
 	if b == nil {
 		panic("gashe: nil backend")
+	}
+	if o.LockPollInterval < 0 {
+		panic("gashe: negative LockPollInterval")
+	}
+	if o.LockPollInterval == 0 {
+		o.LockPollInterval = defaultLockPoll
 	}
 	if o.Codec == nil {
 		o.Codec = JSON{}
@@ -39,7 +54,16 @@ func New(b Backend, o Options) *Cache {
 	if o.OnError == nil {
 		o.OnError = func(context.Context, error) {}
 	}
-	return &Cache{backend: b, codec: o.Codec, onError: o.OnError}
+	if o.OnResult == nil {
+		o.OnResult = func(context.Context, string, Result) {}
+	}
+	return &Cache{
+		backend:  b,
+		codec:    o.Codec,
+		onError:  o.OnError,
+		onResult: o.OnResult,
+		lockPoll: o.LockPollInterval,
+	}
 }
 
 // Backend returns the backend the cache stores bytes in, for raw access.
@@ -193,21 +217,8 @@ func (c *Cache) TTL(ctx context.Context, key string) (time.Duration, error) {
 	return c.backend.TTL(ctx, key)
 }
 
-// Size returns the number of bytes the entry takes, or 0 for a missing key.
-func (c *Cache) Size(ctx context.Context, key string) (int64, error) {
-	return c.backend.Size(ctx, key)
-}
-
-// KeysCount returns the number of stored entries.
-func (c *Cache) KeysCount(ctx context.Context) (int64, error) {
-	return c.backend.KeysCount(ctx)
-}
-
 // Ping checks that the backend is reachable.
 func (c *Cache) Ping(ctx context.Context) error { return c.backend.Ping(ctx) }
-
-// Clear removes every entry.
-func (c *Cache) Clear(ctx context.Context) error { return c.backend.Clear(ctx) }
 
 func (c *Cache) encode(key string, v any, ttl time.Duration) ([]byte, error) {
 	if ttl < 0 {

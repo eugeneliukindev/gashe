@@ -1,4 +1,5 @@
-// Package memory is an in-process gashe.Backend: a fixed-size LRU with per-entry TTL.
+// Package memory is a gashe.Backend that lives in the memory of this process: a fixed-size LRU
+// with per-entry TTL. Other processes do not see its entries.
 package memory
 
 import (
@@ -16,21 +17,21 @@ import (
 )
 
 const (
-	defaultSize          = 1000
-	defaultCheckInterval = time.Second
+	defaultMaxEntries    = 1000
+	defaultPurgeInterval = time.Second
 )
 
 var errOverflow = errors.New("memory: increment would overflow")
 
 // Options configures a memory Backend. The zero value is ready to use.
 type Options struct {
-	// Size is the maximum number of entries; the least recently used one is evicted
-	// when it is exceeded. 0 means 1000.
-	Size int
-	// CheckInterval is how often expired entries are purged in the background.
+	// MaxEntries is the maximum number of entries, not bytes; the least recently used one is
+	// evicted when it is exceeded. 0 means 1000.
+	MaxEntries int
+	// PurgeInterval is how often expired entries are purged in the background.
 	// 0 means one second; a negative value turns the purge off. Expired entries are never
 	// returned either way.
-	CheckInterval time.Duration
+	PurgeInterval time.Duration
 }
 
 // Backend is an in-process gashe.Backend. Create it with New and stop it with Close.
@@ -47,37 +48,35 @@ type Backend struct {
 
 type entry struct {
 	key      string
-	data     any       // []byte for values, set for sets
+	data     []byte
 	expireAt time.Time // zero means no expiry
 }
 
-type set map[string]struct{}
-
 var _ gashe.Backend = (*Backend)(nil)
 
-// New returns a memory Backend and starts its background purge. It panics on a negative Size.
+// New returns a memory Backend and starts its background purge. It panics on a negative MaxEntries.
 func New(o Options) *Backend {
-	if o.Size < 0 {
-		panic("memory: negative Size")
+	if o.MaxEntries < 0 {
+		panic("memory: negative MaxEntries")
 	}
-	if o.Size == 0 {
-		o.Size = defaultSize
+	if o.MaxEntries == 0 {
+		o.MaxEntries = defaultMaxEntries
 	}
-	if o.CheckInterval == 0 {
-		o.CheckInterval = defaultCheckInterval
+	if o.PurgeInterval == 0 {
+		o.PurgeInterval = defaultPurgeInterval
 	}
 	m := &Backend{
-		size:  o.Size,
+		size:  o.MaxEntries,
 		items: make(map[string]*list.Element),
 		lru:   list.New(),
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
 	}
-	if o.CheckInterval < 0 {
+	if o.PurgeInterval < 0 {
 		close(m.done)
 		return m
 	}
-	go m.purgeEvery(o.CheckInterval)
+	go m.purgeEvery(o.PurgeInterval)
 	return m
 }
 
@@ -96,23 +95,17 @@ func (m *Backend) Get(_ context.Context, key string) ([]byte, error) {
 	if e == nil {
 		return nil, gashe.ErrNotFound
 	}
-	b, ok := e.data.([]byte)
-	if !ok {
-		return nil, gashe.ErrWrongType
-	}
-	return bytes.Clone(b), nil
+	return bytes.Clone(e.data), nil
 }
 
-// GetMany implements gashe.Backend. Entries that are not plain values read as missing.
+// GetMany implements gashe.Backend.
 func (m *Backend) GetMany(_ context.Context, keys ...string) ([][]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([][]byte, len(keys))
 	for i, key := range keys {
 		if e := m.live(key); e != nil {
-			if b, ok := e.data.([]byte); ok {
-				out[i] = bytes.Clone(b)
-			}
+			out[i] = bytes.Clone(e.data)
 		}
 	}
 	return out, nil
@@ -231,11 +224,7 @@ func (m *Backend) Incr(_ context.Context, key string, by int64, ttl time.Duratio
 		m.put(key, strconv.AppendInt(nil, by, 10), expiry(ttl))
 		return by, nil
 	}
-	b, ok := e.data.([]byte)
-	if !ok {
-		return 0, gashe.ErrWrongType
-	}
-	n, err := strconv.ParseInt(string(b), 10, 64)
+	n, err := strconv.ParseInt(string(e.data), 10, 64)
 	if err != nil {
 		return 0, gashe.ErrWrongType
 	}
@@ -281,121 +270,36 @@ func (m *Backend) Unlock(_ context.Context, key string, owner []byte) (bool, err
 	if e == nil {
 		return false, nil
 	}
-	if b, ok := e.data.([]byte); !ok || !bytes.Equal(b, owner) {
+	if !bytes.Equal(e.data, owner) {
 		return false, nil
 	}
 	m.remove(m.items[key])
 	return true, nil
 }
 
-// SetAdd implements gashe.Backend.
-func (m *Backend) SetAdd(_ context.Context, key string, ttl time.Duration, members ...string) error {
-	if len(members) == 0 {
-		return nil
-	}
+// ExtendLock implements gashe.Backend.
+func (m *Backend) ExtendLock(_ context.Context, key string, owner []byte, ttl time.Duration) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	e := m.live(key)
-	if e == nil {
-		s := make(set, len(members))
-		for _, member := range members {
-			s[member] = struct{}{}
-		}
-		m.put(key, s, expiry(ttl))
-		return nil
+	if e == nil || !bytes.Equal(e.data, owner) {
+		return false, nil
 	}
-	s, ok := e.data.(set)
-	if !ok {
-		return gashe.ErrWrongType
-	}
-	for _, member := range members {
-		s[member] = struct{}{}
-	}
-	if ttl > 0 {
-		e.expireAt = time.Now().Add(ttl)
-	}
-	return nil
-}
-
-// SetRemove implements gashe.Backend.
-func (m *Backend) SetRemove(_ context.Context, key string, members ...string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	e := m.live(key)
-	if e == nil {
-		return nil
-	}
-	s, ok := e.data.(set)
-	if !ok {
-		return gashe.ErrWrongType
-	}
-	for _, member := range members {
-		delete(s, member)
-	}
-	if len(s) == 0 {
-		m.remove(m.items[key])
-	}
-	return nil
-}
-
-// SetPop implements gashe.Backend.
-func (m *Backend) SetPop(_ context.Context, key string, count int) ([]string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	e := m.live(key)
-	if e == nil {
-		return nil, nil
-	}
-	s, ok := e.data.(set)
-	if !ok {
-		return nil, gashe.ErrWrongType
-	}
-	var out []string
-	for member := range s {
-		if len(out) == count {
-			break
-		}
-		out = append(out, member)
-		delete(s, member)
-	}
-	if len(s) == 0 {
-		m.remove(m.items[key])
-	}
-	return out, nil
-}
-
-// Size implements gashe.Backend.
-func (m *Backend) Size(_ context.Context, key string) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	e := m.live(key)
-	if e == nil {
-		return 0, nil
-	}
-	switch d := e.data.(type) {
-	case []byte:
-		return int64(len(d)), nil
-	case set:
-		n := 0
-		for member := range d {
-			n += len(member)
-		}
-		return int64(n), nil
-	}
-	return 0, nil
-}
-
-// KeysCount implements gashe.Backend. Expired entries that are not purged yet are counted.
-func (m *Backend) KeysCount(context.Context) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return int64(len(m.items)), nil
+	e.expireAt = time.Now().Add(ttl)
+	return true, nil
 }
 
 // Ping implements gashe.Backend.
 func (*Backend) Ping(context.Context) error { return nil }
 
-// Clear implements gashe.Backend.
+// Len returns the number of stored entries, expired ones that are not purged yet included.
+func (m *Backend) Len() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.items)
+}
+
+// Clear removes every entry. It is not part of gashe.Backend; it exists for tests.
 func (m *Backend) Clear(context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -446,7 +350,7 @@ func (m *Backend) live(key string) *entry {
 
 // put stores data under key, replacing any entry, and evicts the least recently used entry
 // when the size is exceeded.
-func (m *Backend) put(key string, data any, expireAt time.Time) {
+func (m *Backend) put(key string, data []byte, expireAt time.Time) {
 	if el, ok := m.items[key]; ok {
 		m.remove(el)
 	}

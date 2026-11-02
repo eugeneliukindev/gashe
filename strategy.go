@@ -8,19 +8,6 @@ import (
 	"time"
 )
 
-// timedLoad runs load and measures how long it took.
-func timedLoad[V any](ctx context.Context, load func(context.Context) (V, error)) (V, time.Duration, error) {
-	start := time.Now()
-	v, err := load(ctx)
-	return v, time.Since(start), err
-}
-
-// stamped is a stored value with the moment it stops being fresh.
-type stamped[V any] struct {
-	At time.Time `json:"at"`
-	V  V         `json:"v"`
-}
-
 // lookup returns the decoded value under key. ErrNotFound means a miss; an undecodable entry
 // counts as a miss too. Any other error is a backend failure and is already reported.
 func lookup[V any](ctx context.Context, c *Cache, key string) (V, error) {
@@ -58,14 +45,6 @@ func store[V any](ctx context.Context, c *Cache, key string, v V, ttl time.Durat
 		c.onError(ctx, fmt.Errorf("gashe: set %q: %w", key, err))
 	}
 	return out
-}
-
-// prefixed adds prefix to key as "prefix:key"; an empty prefix leaves key as it is.
-func prefixed(prefix, key string) string {
-	if prefix == "" {
-		return key
-	}
-	return prefix + ":" + key
 }
 
 // NotNil is a CacheIf rule that skips nil pointers, slices, maps, channels, functions and interfaces.

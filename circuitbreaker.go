@@ -1,30 +1,20 @@
 package gashe
 
 import (
-	"context"
 	"fmt"
-	"strconv"
+	"sync"
 	"time"
 )
 
 const (
-	breakerPrefix = "circuit_breaker:"
 	// breakerBuckets is how many counters a Window is split into; the window slides by one
 	// bucket at a time.
 	breakerBuckets = 10
-	// countersPerBucket is the total and the failures counter of a bucket.
-	countersPerBucket = 2
-	percent           = 100
-
-	openSuffix     = ":open"
-	trialSuffix    = ":trial"
-	trialsSuffix   = ":trials"
-	totalSuffix    = ":total:"
-	failuresSuffix = ":failures:"
+	percent        = 100
 )
 
 // BreakerOptions configures Cache.CircuitBreaker. FailurePercent, Window and OpenFor are
-// required.
+// required. Use the same options for the same key.
 type BreakerOptions struct {
 	// FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
 	FailurePercent int
@@ -34,162 +24,139 @@ type BreakerOptions struct {
 	Window time.Duration
 	// OpenFor is how long the open breaker refuses calls.
 	OpenFor time.Duration
-	// TrialCalls is how many test calls are let through after OpenFor: the first one that
+	// HalfOpenCalls is how many test calls are let through after OpenFor: the first one that
 	// succeeds closes the breaker, one that fails opens it again. 0 means the breaker just
 	// closes after OpenFor.
-	TrialCalls int
+	HalfOpenCalls int
 	// IsFailure decides which errors count as failures. nil means any error.
 	IsFailure func(error) bool
 }
 
 // DoneFunc reports the outcome of a call that CircuitBreaker let through: nil for success, or
-// the error the call returned. Call it exactly once.
+// the error the call returned. Call it once.
 type DoneFunc func(err error)
 
 // CircuitBreaker checks the breaker for key before a call to a dependency. It returns
 // ErrCircuitOpen while the breaker is open; otherwise it returns a DoneFunc to report how the
-// call went. The breaker is shared by every process that uses the backend. If the backend fails,
-// the breaker counts as closed and the error goes to Options.OnError.
-func (c *Cache) CircuitBreaker(ctx context.Context, key string, o BreakerOptions) (DoneFunc, error) {
-	if err := o.check(); err != nil {
-		return nil, err
-	}
-	b := &breaker{c: c, o: o, key: breakerPrefix + key, bucket: max(o.Window/breakerBuckets, 1)}
-	if b.exists(ctx, b.key+openSuffix) {
-		return nil, ErrCircuitOpen
-	}
-	bg := context.WithoutCancel(ctx)
-	if b.exists(ctx, b.key+trialSuffix) {
-		return b.trial(ctx, bg)
-	}
-	now := b.bucketOf(time.Now())
-	b.incr(ctx, b.key+totalSuffix+now, o.Window+b.bucket)
-	return func(err error) {
-		if !b.failed(err) {
-			return
-		}
-		b.incr(bg, b.key+failuresSuffix+now, o.Window+b.bucket)
-		if b.overLimit(bg) {
-			b.trip(bg)
-		}
-	}, nil
-}
-
-func (o BreakerOptions) check() error {
+// call went. The breaker lives in the memory of this process: every process judges the dependency
+// by its own calls, and checking it costs no backend round trip.
+func (c *Cache) CircuitBreaker(key string, o BreakerOptions) (DoneFunc, error) {
 	if o.FailurePercent <= 0 || o.FailurePercent >= percent || o.Window <= 0 || o.OpenFor <= 0 ||
-		o.MinCalls < 0 || o.TrialCalls < 0 {
-		return fmt.Errorf(
+		o.MinCalls < 0 || o.HalfOpenCalls < 0 {
+		return nil, fmt.Errorf(
 			"%w: CircuitBreaker needs FailurePercent 1..99, positive Window and OpenFor, "+
-				"non-negative MinCalls and TrialCalls", ErrInvalidOptions)
+				"non-negative MinCalls and HalfOpenCalls", ErrInvalidOptions)
 	}
-	return nil
+	return c.breakers.get(key).allow(o, time.Now())
 }
 
-// breaker is one CircuitBreaker check of one key.
+// breakers holds the state of every breaker key of a Cache.
+type breakers struct {
+	mu sync.Mutex
+	m  map[string]*breaker
+}
+
+func (bs *breakers) get(key string) *breaker {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	if bs.m == nil {
+		bs.m = make(map[string]*breaker)
+	}
+	b, ok := bs.m[key]
+	if !ok {
+		b = &breaker{}
+		bs.m[key] = b
+	}
+	return b
+}
+
+// breaker is the state of one key: calls and failures per bucket of time, and the open and trial
+// phases.
 type breaker struct {
-	c      *Cache
-	o      BreakerOptions
-	key    string
-	bucket time.Duration
+	mu         sync.Mutex
+	buckets    [breakerBuckets]bucket
+	openUntil  time.Time
+	trialUntil time.Time // the trial phase lasts until then; zero means none
+	trialsLeft int
 }
 
-// trial lets the call through as a trial if a trial slot is left: its outcome closes the
-// breaker or opens it again.
-func (b *breaker) trial(ctx, bg context.Context) (DoneFunc, error) {
-	if b.incr(ctx, b.key+trialsSuffix, b.o.Window) > int64(b.o.TrialCalls) {
+type bucket struct {
+	n        int64 // which bucket of time this slot counts; slots are reused around the ring
+	total    int
+	failures int
+}
+
+func (b *breaker) allow(o BreakerOptions, now time.Time) (DoneFunc, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if now.Before(b.openUntil) {
 		return nil, ErrCircuitOpen
 	}
+	if now.Before(b.trialUntil) {
+		if b.trialsLeft == 0 {
+			return nil, ErrCircuitOpen
+		}
+		b.trialsLeft--
+		return func(err error) {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			if failed(o, err) {
+				b.trip(o, time.Now())
+				return
+			}
+			b.trialUntil = time.Time{} // the dependency works again: closed
+		}, nil
+	}
+	width := max(o.Window/breakerBuckets, 1)
+	n := now.UnixNano() / int64(width)
+	b.slot(n).total++
 	return func(err error) {
-		if b.failed(err) {
-			b.trip(bg)
+		if !failed(o, err) {
 			return
 		}
-		b.close(bg)
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.slot(n).failures++
+		if b.overLimit(o, n) {
+			b.trip(o, time.Now())
+		}
 	}, nil
 }
 
-func (b *breaker) failed(err error) bool {
-	return err != nil && (b.o.IsFailure == nil || b.o.IsFailure(err))
+// slot returns the counters of bucket n, reusing the ring slot of an older bucket.
+func (b *breaker) slot(n int64) *bucket {
+	s := &b.buckets[n%breakerBuckets]
+	if s.n != n {
+		*s = bucket{n: n}
+	}
+	return s
 }
 
-// overLimit reports whether the window has enough calls and enough failures to open.
-func (b *breaker) overLimit(ctx context.Context) bool {
-	raws, err := b.c.backend.GetMany(ctx, b.bucketKeys()...)
-	if err != nil {
-		b.report(ctx, err)
-		return false
-	}
-	var total, failures int64
-	for i, raw := range raws {
-		n, _ := strconv.ParseInt(string(raw), 10, 64) // a missing bucket reads as 0
-		if i%countersPerBucket == 0 {
-			total += n
-		} else {
-			failures += n
+// overLimit reports whether the buckets of the window ending at bucket n have enough calls and
+// enough failures to open.
+func (b *breaker) overLimit(o BreakerOptions, n int64) bool {
+	var total, failures int
+	for _, s := range b.buckets {
+		if s.n > n-breakerBuckets && s.n <= n {
+			total += s.total
+			failures += s.failures
 		}
 	}
-	return total >= int64(max(b.o.MinCalls, 1)) && failures*percent >= int64(b.o.FailurePercent)*total
+	return total >= max(o.MinCalls, 1) && failures*percent >= o.FailurePercent*total
 }
 
 // trip opens the breaker, arms the trial phase that follows it and clears the counters.
-func (b *breaker) trip(ctx context.Context) {
-	if err := b.c.backend.Set(ctx, b.key+openSuffix, []byte("1"), b.o.OpenFor); err != nil {
-		b.report(ctx, err)
-	}
-	if b.o.TrialCalls > 0 {
+func (b *breaker) trip(o BreakerOptions, now time.Time) {
+	b.openUntil = now.Add(o.OpenFor)
+	b.trialUntil = time.Time{}
+	if o.HalfOpenCalls > 0 {
 		// Trials are offered for one Window after OpenFor; without them the breaker then closes.
-		if err := b.c.backend.Set(ctx, b.key+trialSuffix, []byte("1"), b.o.OpenFor+b.o.Window); err != nil {
-			b.report(ctx, err)
-		}
+		b.trialUntil = b.openUntil.Add(o.Window)
+		b.trialsLeft = o.HalfOpenCalls
 	}
-	b.deleteAll(ctx, b.bucketKeys()...)
+	b.buckets = [breakerBuckets]bucket{}
 }
 
-// close closes the breaker after a successful trial.
-func (b *breaker) close(ctx context.Context) {
-	b.deleteAll(ctx, append(b.bucketKeys(), b.key+trialSuffix)...)
-}
-
-func (b *breaker) deleteAll(ctx context.Context, keys ...string) {
-	if err := b.c.backend.DeleteMany(ctx, append(keys, b.key+trialsSuffix)...); err != nil {
-		b.report(ctx, err)
-	}
-}
-
-// bucketKeys returns the total and failures counters of the buckets the window covers,
-// in pairs: total, failures, total, failures, ...
-func (b *breaker) bucketKeys() []string {
-	now := time.Now()
-	keys := make([]string, 0, countersPerBucket*breakerBuckets)
-	for i := range breakerBuckets {
-		n := b.bucketOf(now.Add(-time.Duration(i) * b.bucket))
-		keys = append(keys, b.key+totalSuffix+n, b.key+failuresSuffix+n)
-	}
-	return keys
-}
-
-func (b *breaker) bucketOf(t time.Time) string {
-	return strconv.FormatInt(t.UnixNano()/int64(b.bucket), 10)
-}
-
-// incr adds one to the counter under key, created with ttl, and returns the result, or 0 if
-// the backend fails.
-func (b *breaker) incr(ctx context.Context, key string, ttl time.Duration) int64 {
-	n, err := b.c.backend.Incr(ctx, key, 1, ttl)
-	if err != nil {
-		b.report(ctx, err)
-	}
-	return n
-}
-
-func (b *breaker) exists(ctx context.Context, key string) bool {
-	ok, err := b.c.backend.Exists(ctx, key)
-	if err != nil {
-		b.report(ctx, err)
-	}
-	return ok
-}
-
-func (b *breaker) report(ctx context.Context, err error) {
-	b.c.onError(ctx, fmt.Errorf("gashe: circuit breaker %q: %w", b.key, err))
+func failed(o BreakerOptions, err error) bool {
+	return err != nil && (o.IsFailure == nil || o.IsFailure(err))
 }

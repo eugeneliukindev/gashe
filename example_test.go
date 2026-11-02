@@ -22,7 +22,7 @@ func ExampleGetOrLoad() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	users := gashe.CacheOptions[User]{TTL: time.Hour}
+	users := gashe.Policy[User]{TTL: time.Hour}
 	load := func(context.Context) (User, error) {
 		fmt.Println("loading user 42")
 		return User{ID: 42, Name: "Ann"}, nil
@@ -72,14 +72,13 @@ func ExampleCache_RateLimit() {
 }
 
 func ExampleCache_CircuitBreaker() {
-	ctx := context.Background()
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 	db := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: 30 * time.Second}
 
 	for _, callErr := range []error{errors.New("timeout"), nil} {
-		done, err := c.CircuitBreaker(ctx, "db", db)
+		done, err := c.CircuitBreaker("db", db)
 		if err != nil {
 			fmt.Println(err)
 			continue

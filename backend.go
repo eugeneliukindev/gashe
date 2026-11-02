@@ -47,21 +47,10 @@ type Backend interface {
 	TTL(ctx context.Context, key string) (time.Duration, error)
 	// Unlock removes key only if it holds owner and reports whether it did.
 	Unlock(ctx context.Context, key string, owner []byte) (bool, error)
-	// SetAdd adds members to the set under key. ttl > 0 sets the TTL of the set;
-	// 0 leaves it unchanged.
-	SetAdd(ctx context.Context, key string, ttl time.Duration, members ...string) error
-	// SetRemove removes members from the set under key.
-	SetRemove(ctx context.Context, key string, members ...string) error
-	// SetPop removes and returns up to count members of the set under key.
-	SetPop(ctx context.Context, key string, count int) ([]string, error)
-	// Size returns the number of bytes the entry takes, or 0 for a missing key.
-	Size(ctx context.Context, key string) (int64, error)
-	// KeysCount returns the number of stored entries.
-	KeysCount(ctx context.Context) (int64, error)
+	// ExtendLock sets a new TTL (ttl > 0) for key only if it holds owner and reports whether it did.
+	ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error)
 	// Ping checks that the backend is reachable.
 	Ping(ctx context.Context) error
-	// Clear removes every entry.
-	Clear(ctx context.Context) error
 	// Close releases resources the backend owns.
 	Close() error
 }

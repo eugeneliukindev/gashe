@@ -26,7 +26,7 @@ linters:
     # Tests run inside synctest bubbles, where t.Parallel is not allowed.
     - paralleltest
     - tparallel
-    # Backend is one complete contract on purpose; see docs/adr/0001.
+    # Backend is one complete contract on purpose: wrappers embed it and keep every method.
     - interfacebloat
     # Backend errors pass through Cache unchanged; they are wrapped once, in each backend.
     - wrapcheck

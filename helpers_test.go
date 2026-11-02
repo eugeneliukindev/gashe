@@ -21,7 +21,7 @@ type user struct {
 
 func newCache(t *testing.T) *gashe.Cache {
 	t.Helper()
-	mem := memory.New(memory.Options{CheckInterval: -1})
+	mem := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = mem.Close() })
 	return gashe.New(mem, gashe.Options{})
 }

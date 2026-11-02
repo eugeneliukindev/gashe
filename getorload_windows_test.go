@@ -17,7 +17,7 @@ import (
 func TestGetOrLoadStaleIfError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[int]{TTL: 7 * time.Minute, FallbackWindow: 3 * time.Minute})
+		s := newCached(newCache(t), gashe.Policy[int]{TTL: 7 * time.Minute, StaleIfError: 3 * time.Minute})
 		calls, load := versions()
 		failing := func(context.Context) (int, error) { return 0, errAPI }
 
@@ -43,9 +43,9 @@ func TestGetOrLoadStaleIfError(t *testing.T) {
 func TestGetOrLoadStaleWhileRevalidate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[int]{
-			TTL:           7 * time.Minute,
-			RefreshWindow: 3 * time.Minute,
+		s := newCached(newCache(t), gashe.Policy[int]{
+			TTL:                  7 * time.Minute,
+			StaleWhileRevalidate: 3 * time.Minute,
 		})
 		calls, load := versions()
 
@@ -69,7 +69,7 @@ func TestGetOrLoadRevalidatesOnceAcrossProcesses(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		opts := gashe.CacheOptions[int]{TTL: time.Minute, RefreshWindow: time.Hour}
+		opts := gashe.Policy[int]{TTL: time.Minute, StaleWhileRevalidate: time.Hour}
 		// Two strategy values over one cache stand for two processes: no in-process sharing.
 		a, b := newCached(c, opts), newCached(c, opts)
 		var calls atomic.Int32
@@ -96,7 +96,7 @@ func TestGetOrLoadDynamicMode(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		// TTL 0: never fresh; every call answers at once and refreshes in the background.
-		s := newCached(newCache(t), gashe.CacheOptions[int]{RefreshWindow: 24 * time.Hour})
+		s := newCached(newCache(t), gashe.Policy[int]{StaleWhileRevalidate: 24 * time.Hour})
 		_, load := versions()
 		for i, want := range []int{1, 1, 2, 3} {
 			if got, _ := s.Do(ctx, "k", load); got != want {
@@ -110,10 +110,10 @@ func TestGetOrLoadDynamicMode(t *testing.T) {
 func TestGetOrLoadRevalidateThenStaleIfError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[int]{
-			TTL:            time.Minute,
-			RefreshWindow:  time.Minute,
-			FallbackWindow: 10 * time.Minute,
+		s := newCached(newCache(t), gashe.Policy[int]{
+			TTL:                  time.Minute,
+			StaleWhileRevalidate: time.Minute,
+			StaleIfError:         10 * time.Minute,
 		})
 		_, load := versions()
 		_, _ = s.Do(ctx, "k", load)
@@ -129,7 +129,7 @@ func TestGetOrLoadMissLock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		opts := gashe.CacheOptions[int]{TTL: time.Hour, LockOnMiss: 10 * time.Second}
+		opts := gashe.Policy[int]{TTL: time.Hour, LockOnMiss: 10 * time.Second}
 		var calls atomic.Int32
 		slow := func(context.Context) (int, error) {
 			time.Sleep(time.Second)

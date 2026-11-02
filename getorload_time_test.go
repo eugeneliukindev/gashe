@@ -17,7 +17,7 @@ import (
 func TestGetOrLoadReloadsAfterTTL(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[user]{TTL: time.Minute})
+		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Minute})
 		calls, load := counter(user{Name: "Ann"})
 
 		_, _ = s.Do(ctx, "user:1", load)
@@ -38,7 +38,7 @@ func TestGetOrLoadTTLOf(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		s := newCached(c, gashe.CacheOptions[user]{
+		s := newCached(c, gashe.Policy[user]{
 			TTLFunc: func(u user) time.Duration {
 				if u.Name == "admin" {
 					return time.Minute
@@ -55,39 +55,10 @@ func TestGetOrLoadTTLOf(t *testing.T) {
 	})
 }
 
-func TestGetOrLoadMinLatency(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[user]{
-			TTL:         time.Hour,
-			MinLoadTime: time.Second,
-		})
-		delay := time.Duration(0)
-		calls := 0
-		load := func(context.Context) (user, error) {
-			calls++
-			time.Sleep(delay)
-			return user{Name: "Ann"}, nil
-		}
-
-		_, _ = s.Do(ctx, "fast", load)
-		_, _ = s.Do(ctx, "fast", load)
-		if calls != 2 {
-			t.Fatalf("fast result was stored: %d calls", calls)
-		}
-		delay = 2 * time.Second
-		_, _ = s.Do(ctx, "slow", load)
-		_, _ = s.Do(ctx, "slow", load)
-		if calls != 3 {
-			t.Fatalf("slow result was not stored: %d calls", calls)
-		}
-	})
-}
-
 func TestGetOrLoadSharesConcurrentLoads(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.CacheOptions[user]{TTL: time.Hour})
+		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
 		var calls atomic.Int32
 		load := func(context.Context) (user, error) {
 			calls.Add(1)
@@ -112,7 +83,7 @@ func TestGetOrLoadSharesConcurrentLoads(t *testing.T) {
 
 func TestGetOrLoadWaiterStopsOnItsContext(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newCached(newCache(t), gashe.CacheOptions[user]{TTL: time.Hour})
+		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
 		release := make(chan struct{})
 		var calls atomic.Int32
 		load := func(ctx context.Context) (user, error) {

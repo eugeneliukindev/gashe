@@ -39,9 +39,7 @@ func Run(t *testing.T, newBackend func(t *testing.T) gashe.Backend) {
 		{"IncrErrors", testIncrErrors},
 		{"ExpireAndTTL", testExpireTTL},
 		{"Unlock", testUnlock},
-		{"Sets", testSets},
-		{"WrongType", testWrongType},
-		{"SizeKeysCountClear", testSizeCountClear},
+		{"ExtendLock", testExtendLock},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) { tc.fn(t, newBackend(t)) })
@@ -162,8 +160,8 @@ func testDelete(t *testing.T, b gashe.Backend) {
 		t.Fatalf("Delete(missing) = %v, %v", ok, err)
 	}
 	must(t, b.DeleteMany(ctx, "b", "c", "missing"))
-	if n, err := b.KeysCount(ctx); err != nil || n != 0 {
-		t.Fatalf("KeysCount = %d, %v", n, err)
+	if left := scanAll(t, b, "*"); len(left) != 0 {
+		t.Fatalf("left after deletes: %v", left)
 	}
 }
 
@@ -222,7 +220,7 @@ func testScanEdgeCases(t *testing.T, b gashe.Backend) {
 		{"a*b*c", "aXXbYY", false},
 	}
 	for _, tc := range cases {
-		must(t, b.Clear(ctx))
+		must(t, b.DeleteMatch(ctx, "*"))
 		must(t, b.Set(ctx, tc.key, []byte("1"), 0))
 		if got := len(scanAll(t, b, tc.pattern)) == 1; got != tc.want {
 			t.Errorf("Scan(%q) over %q = %v, want %v", tc.pattern, tc.key, got, tc.want)
@@ -345,64 +343,22 @@ func testUnlock(t *testing.T, b gashe.Backend) {
 	}
 }
 
-func testSets(t *testing.T, b gashe.Backend) {
+func testExtendLock(t *testing.T, b gashe.Backend) {
 	ctx := context.Background()
-	must(t, b.SetAdd(ctx, "s", time.Hour, "a", "b", "c"))
-	must(t, b.SetAdd(ctx, "s", 0, "d"))
-	if ttl, _ := b.TTL(ctx, "s"); ttl <= 0 || ttl > time.Hour {
-		t.Fatalf("SetAdd with ttl 0 changed the TTL: %v", ttl)
+	if ok, err := b.ExtendLock(ctx, "lock", []byte("me"), time.Hour); err != nil || ok {
+		t.Fatalf("ExtendLock(missing) = %v, %v", ok, err)
 	}
-	must(t, b.SetRemove(ctx, "s", "b", "missing"))
-	popped, err := b.SetPop(ctx, "s", 10)
-	must(t, err)
-	slices.Sort(popped)
-	if !slices.Equal(popped, []string{"a", "c", "d"}) {
-		t.Fatalf("SetPop = %v", popped)
+	must(t, b.Set(ctx, "lock", []byte("me"), time.Minute))
+	if ok, err := b.ExtendLock(ctx, "lock", []byte("other"), time.Hour); err != nil || ok {
+		t.Fatalf("ExtendLock by a non-owner = %v, %v", ok, err)
 	}
-	if ok, _ := b.Exists(ctx, "s"); ok {
-		t.Fatal("an empty set still exists")
+	if ttl, _ := b.TTL(ctx, "lock"); ttl > time.Minute {
+		t.Fatalf("a non-owner extended the lock to %v", ttl)
 	}
-	if got, err := b.SetPop(ctx, "s", 1); err != nil || len(got) != 0 {
-		t.Fatalf("SetPop(missing) = %v, %v", got, err)
+	if ok, err := b.ExtendLock(ctx, "lock", []byte("me"), time.Hour); err != nil || !ok {
+		t.Fatalf("ExtendLock by the owner = %v, %v", ok, err)
 	}
-	must(t, b.SetAdd(ctx, "two", 0, "a", "b"))
-	if got, _ := b.SetPop(ctx, "two", 1); len(got) != 1 {
-		t.Fatalf("SetPop(count 1) = %v", got)
-	}
-}
-
-func testWrongType(t *testing.T, b gashe.Backend) {
-	ctx := context.Background()
-	must(t, b.SetAdd(ctx, "set", 0, "a"))
-	must(t, b.Set(ctx, "value", []byte("1"), 0))
-	if _, err := b.Get(ctx, "set"); !errors.Is(err, gashe.ErrWrongType) {
-		t.Fatalf("Get on a set: %v, want ErrWrongType", err)
-	}
-	if err := b.SetAdd(ctx, "value", 0, "a"); !errors.Is(err, gashe.ErrWrongType) {
-		t.Fatalf("SetAdd on a value: %v, want ErrWrongType", err)
-	}
-	got, err := b.GetMany(ctx, "set", "value")
-	must(t, err)
-	if got[0] != nil || string(got[1]) != "1" {
-		t.Fatalf("GetMany = %q; a set reads as missing", got)
-	}
-}
-
-func testSizeCountClear(t *testing.T, b gashe.Backend) {
-	ctx := context.Background()
-	must(t, b.Set(ctx, "k", []byte("abcd"), 0))
-	must(t, b.Set(ctx, "k2", []byte("x"), 0))
-	if n, err := b.Size(ctx, "k"); err != nil || n <= 0 {
-		t.Fatalf("Size = %d, %v", n, err)
-	}
-	if n, err := b.Size(ctx, "missing"); err != nil || n != 0 {
-		t.Fatalf("Size(missing) = %d, %v", n, err)
-	}
-	if n, err := b.KeysCount(ctx); err != nil || n != 2 {
-		t.Fatalf("KeysCount = %d, %v", n, err)
-	}
-	must(t, b.Clear(ctx))
-	if n, err := b.KeysCount(ctx); err != nil || n != 0 {
-		t.Fatalf("KeysCount after Clear = %d, %v", n, err)
+	if ttl, _ := b.TTL(ctx, "lock"); ttl <= time.Minute || ttl > time.Hour {
+		t.Fatalf("TTL after ExtendLock = %v, want about an hour", ttl)
 	}
 }
