@@ -129,6 +129,34 @@ func TestGetOrLoadOverRedis(t *testing.T) {
 	}
 }
 
+func TestGetOrLoadManyOverRedis(t *testing.T) {
+	ctx := context.Background()
+	c := newCache(t)
+	users := gashe.Policy[string]{TTL: time.Hour, Prefix: "user:", Tags: []string{"users"}}
+	var asked [][]string
+	load := func(_ context.Context, missing []string) (map[string]string, error) {
+		asked = append(asked, missing)
+		out := make(map[string]string, len(missing))
+		for _, k := range missing {
+			out[k] = "name " + k
+		}
+		return out, nil
+	}
+	for _, keys := range [][]string{{"1", "2"}, {"1", "2", "3"}} {
+		got, err := gashe.GetOrLoadMany(ctx, c, keys, users, load)
+		if err != nil || len(got) != len(keys) || got["1"] != "name 1" {
+			t.Fatalf("%v: %v, %v", keys, got, err)
+		}
+	}
+	if len(asked) != 2 || len(asked[1]) != 1 || asked[1][0] != "3" {
+		t.Fatalf("loader asked for %v; the second call must load only 3", asked)
+	}
+	ttl, err := c.TTL(ctx, "user:1")
+	if err != nil || ttl <= 0 || ttl > time.Hour {
+		t.Fatalf("TTL of a stored entry = %v, %v", ttl, err)
+	}
+}
+
 func TestLocksAndLimitsOverRedis(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)

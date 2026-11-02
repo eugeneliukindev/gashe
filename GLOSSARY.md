@@ -66,6 +66,10 @@ _Avoid_: miss lock
 Replacing a stored result with a new loader result before it expires.
 _Avoid_: refresh, recompute, revalidate
 
+**Batch load**:
+One loader call for all keys of a list that the cache could not answer.
+_Avoid_: bulk load, multi-load
+
 **Negative answer**:
 A cached "there is no such data" result, kept for a short while so lookups of missing data do not reach the source.
 _Avoid_: tombstone, null cache
