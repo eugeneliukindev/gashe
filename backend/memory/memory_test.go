@@ -71,12 +71,12 @@ func TestMaxBytesEvictsLeastRecentlyUsed(t *testing.T) {
 	}
 }
 
-func TestMaxBytesCountsIncr(t *testing.T) {
+func TestMaxBytesCountsIncrBy(t *testing.T) {
 	ctx := context.Background()
 	m := newMemory(t, memory.Options{MaxBytes: 6})
 	_ = m.Set(ctx, "a", []byte("1"), 0) // 2 bytes
-	_, _ = m.Incr(ctx, "n", 1, 0)       // 2 bytes
-	_, _ = m.Incr(ctx, "n", 99999, 0)   // n is now "100000": 7 bytes, alone over the limit
+	_, _ = m.IncrBy(ctx, "n", 1, 0)     // 2 bytes
+	_, _ = m.IncrBy(ctx, "n", 99999, 0) // n is now "100000": 7 bytes, alone over the limit
 
 	if _, err := m.Get(ctx, "a"); !errors.Is(err, gashe.ErrNotFound) {
 		t.Fatalf("a survived: %v", err)

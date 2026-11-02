@@ -16,9 +16,14 @@ func TestGetOrLoadRejectsInvalidOptions(t *testing.T) {
 	c := newCache(t)
 	_, load := counter(user{})
 	for _, o := range []gashe.Policy[user]{
-		{},                          // nothing would ever be stored
-		{TTL: -time.Second},         // negative duration
-		{TTL: time.Hour, Jitter: 1}, // jitter of 100% or more
+		{},                  // nothing would ever be stored
+		{TTL: -time.Second}, // negative duration
+		{TTL: "-1h"},        // negative duration as a string
+		{TTL: "1hr"},        // not a duration
+		{TTL: 3600},         // an int, not a time.Duration
+		{TTL: func(string) time.Duration { return time.Hour }},                           // a func of another type
+		{TTL: (func(user) time.Duration)(nil)},                                           // a nil func
+		{TTL: time.Hour, Jitter: 1},                                                      // jitter of 100% or more
 		{TTL: time.Hour, Negative: gashe.Negative{If: func(error) bool { return true }}}, // no Err, no TTL
 	} {
 		if _, err := gashe.GetOrLoad(ctx, c, "k", o, load); !errors.Is(err, gashe.ErrInvalidOptions) {
@@ -112,5 +117,23 @@ func TestStaleIfSlowNeedsStaleIfError(t *testing.T) {
 		func(context.Context) (int, error) { return 1, nil })
 	if !errors.Is(err, gashe.ErrInvalidOptions) {
 		t.Fatalf("err = %v, want ErrInvalidOptions", err)
+	}
+}
+
+func TestGetOrLoadTTLForms(t *testing.T) {
+	ctx := context.Background()
+	for name, ttl := range map[string]any{
+		"duration": time.Hour,
+		"string":   "1h",
+		"func":     func(user) time.Duration { return time.Hour },
+	} {
+		c := newCache(t)
+		_, load := counter(user{})
+		if _, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[user]{TTL: ttl}, load); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if left, _ := c.TTL(ctx, "k"); left <= 59*time.Minute || left > time.Hour {
+			t.Fatalf("%s: stored for %v, want 1h", name, left)
+		}
 	}
 }

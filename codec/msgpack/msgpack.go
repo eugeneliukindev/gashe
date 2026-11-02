@@ -1,7 +1,7 @@
 // Package msgpack is a gashe.Codec based on MessagePack: smaller and faster to decode than JSON.
 //
-// Values stored with it are binary, so Cache.Incr cannot read them; keep counters under keys that
-// are only touched by Incr.
+// Values stored with it are binary, so Cache.IncrBy cannot read them; keep counters under keys that
+// are only touched by IncrBy.
 package msgpack
 
 import (

@@ -14,7 +14,7 @@ import (
 func TestCircuitBreakerOpensAndCloses(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := newCache(t)
-		o := gashe.BreakerOptions{FailurePercent: 50, MinCalls: 3, Window: time.Minute, OpenFor: 5 * time.Minute}
+		o := gashe.CircuitBreakerOptions{FailurePercent: 50, MinCalls: 3, Window: time.Minute, OpenFor: 5 * time.Minute}
 
 		_ = through(c, o, nil)
 		_ = through(c, o, errAPI) // 1 of 2 failed, but fewer than MinCalls
@@ -41,7 +41,12 @@ func TestCircuitBreakerOpensAndCloses(t *testing.T) {
 func TestCircuitBreakerTrials(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := newCache(t)
-		o := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: 5 * time.Minute, HalfOpenCalls: 1}
+		o := gashe.CircuitBreakerOptions{
+			FailurePercent: 50,
+			Window:         time.Minute,
+			OpenFor:        5 * time.Minute,
+			HalfOpenCalls:  1,
+		}
 		_ = through(c, o, errAPI)   // opens
 		time.Sleep(5 * time.Minute) // one trial
 
@@ -67,7 +72,12 @@ func TestCircuitBreakerTrials(t *testing.T) {
 func TestCircuitBreakerTrialSlots(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := newCache(t)
-		o := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
+		o := gashe.CircuitBreakerOptions{
+			FailurePercent: 50,
+			Window:         time.Minute,
+			OpenFor:        time.Minute,
+			HalfOpenCalls:  1,
+		}
 		_ = through(c, o, errAPI)
 		time.Sleep(time.Minute)
 

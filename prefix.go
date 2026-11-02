@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// WithPrefix returns a Backend that keeps every key of b under prefix, for several services or
-// environments sharing one Redis. Scan yields keys without the prefix.
-func WithPrefix(b Backend, prefix string) Backend {
+// withPrefix returns a Backend that keeps every key of b under prefix; Options.Prefix uses it.
+// Scan yields keys without the prefix, and the prefix is escaped in patterns.
+func withPrefix(b Backend, prefix string) Backend {
 	escape := strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`)
 	return prefixBackend{Backend: b, prefix: prefix, pattern: escape.Replace(prefix)}
 }
@@ -75,8 +75,8 @@ func (p prefixBackend) Exists(ctx context.Context, key string) (bool, error) {
 	return p.Backend.Exists(ctx, p.prefix+key)
 }
 
-func (p prefixBackend) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
-	return p.Backend.Incr(ctx, p.prefix+key, by, ttl)
+func (p prefixBackend) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+	return p.Backend.IncrBy(ctx, p.prefix+key, by, ttl)
 }
 
 func (p prefixBackend) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {

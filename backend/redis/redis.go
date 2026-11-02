@@ -233,9 +233,9 @@ func (b *Backend) Exists(ctx context.Context, key string) (bool, error) {
 	return n > 0, wrap("exists", err)
 }
 
-// Incr implements gashe.Backend. With a ttl it runs SET NX and INCRBY in one transaction, so
+// IncrBy implements gashe.Backend. With a ttl it runs SET NX and INCRBY in one transaction, so
 // the TTL is set only when the counter is created.
-func (b *Backend) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+func (b *Backend) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
 	if ttl <= 0 {
 		n, err := b.client.IncrBy(ctx, key, by).Result()
 		return n, wrap("incr", err)

@@ -25,10 +25,19 @@ type Options struct {
 	// LockPollInterval is how often Lock and LockOnMiss check whether a busy lock is free.
 	// 0 means 100ms.
 	LockPollInterval time.Duration
-	// Namespace is put in front of the keys the cache keeps for itself: tag counters, the locks
-	// of LockOnMiss and of background reloads, and rate limit counters. Change it when these could
-	// collide with your keys or when Redis ACLs grant keys by pattern. "" means "gashe:".
-	Namespace string
+	// Prefix is put in front of every key the cache stores, its own keys included, so several
+	// services can share one Redis: "orders:" stores "orders:user:42".
+	// Keys and All yield keys without it, and DeleteMatch never reaches past it. "" means none.
+	// The cache keeps its own keys, tag counters, locks and rate counters, under Prefix too, each
+	// starting with "_": keys of yours must not start with "_".
+	Prefix string
+	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
+	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
+	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
+	// the loader. The breaker lives in the memory of this process; misses are not failures, see
+	// CircuitBreakerOptions.IsFailure. Ping is not guarded, so health checks see the backend
+	// itself. nil means no breaker.
+	CircuitBreaker *CircuitBreakerOptions
 }
 
 // Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits
@@ -39,20 +48,26 @@ type Cache struct {
 	onError  func(ctx context.Context, err error)
 	onResult func(ctx context.Context, o Outcome)
 	lockPoll time.Duration
-	ns       string // Options.Namespace
 	calls    group
 	breakers breakers
 	shapes   sync.Map // reflect.Type to the uint64 of shapeOf
 	bg       background
 }
 
-// New returns a Cache over b. It panics if b is nil or LockPollInterval is negative.
+// New returns a Cache over b. It panics if b is nil, LockPollInterval is negative or CircuitBreaker is
+// invalid.
 func New(b Backend, o Options) *Cache {
 	if b == nil {
 		panic("gashe: nil backend")
 	}
 	if o.LockPollInterval < 0 {
 		panic("gashe: negative LockPollInterval")
+	}
+	if o.CircuitBreaker != nil {
+		b = withBreaker(b, *o.CircuitBreaker)
+	}
+	if o.Prefix != "" {
+		b = withPrefix(b, o.Prefix)
 	}
 	if o.Codec == nil {
 		o.Codec = JSON{}
@@ -69,11 +84,11 @@ func New(b Backend, o Options) *Cache {
 		onError:  o.OnError,
 		onResult: o.OnResult,
 		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),
-		ns:       cmp.Or(o.Namespace, defaultNamespace),
 	}
 }
 
-// Backend returns the backend the cache stores bytes in, for raw access.
+// Backend returns the backend the cache stores bytes in, for raw access; it applies Options.Prefix
+// and Options.CircuitBreaker.
 func (c *Cache) Backend() Backend { return c.backend }
 
 // Get decodes the value stored under key into dst. A miss returns ErrNotFound.
@@ -202,13 +217,13 @@ func (c *Cache) Exists(ctx context.Context, key string) (bool, error) {
 	return c.backend.Exists(ctx, key)
 }
 
-// Incr adds by to the integer under key, creating it from 0 if absent, and returns the result.
+// IncrBy adds by to the integer under key, creating it from 0 if absent, and returns the result.
 // ttl applies only when the entry is created. The stored integer reads back with Get.
-func (c *Cache) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error) {
+func (c *Cache) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error) {
 	if ttl < 0 {
 		return 0, ErrInvalidTTL
 	}
-	return c.backend.Incr(ctx, key, by, ttl)
+	return c.backend.IncrBy(ctx, key, by, ttl)
 }
 
 // Expire sets a new TTL for key and reports whether the key existed. ttl must be positive.

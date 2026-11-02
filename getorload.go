@@ -31,14 +31,15 @@ func GetOrLoad[V any](
 	o Policy[V],
 	load func(context.Context) (V, error),
 ) (V, error) {
-	if err := o.check(); err != nil {
+	ttl, err := o.check()
+	if err != nil {
 		var zero V
 		return zero, err
 	}
-	l := loading[V]{c: c, o: o, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
+	l := loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
 	shared, err := c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, func() (any, error) {
-		v, r, err := l.get(ctx)
-		return answer[V]{v: v, r: r, took: l.took}, err
+		v, r, getErr := l.get(ctx)
+		return answer[V]{v: v, r: r, took: l.took}, getErr
 	})
 	a, _ := shared.(answer[V]) // empty when the wait was cancelled
 	if a.r != 0 {
@@ -57,11 +58,12 @@ func Reload[V any](
 	o Policy[V],
 	load func(context.Context) (V, error),
 ) (V, error) {
-	if err := o.check(); err != nil {
+	ttl, err := o.check()
+	if err != nil {
 		var zero V
 		return zero, err
 	}
-	l := loading[V]{c: c, o: o, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
+	l := loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
 	gens, err := l.readGens(ctx)
 	if err != nil {
 		return load(ctx)
@@ -95,6 +97,7 @@ type answer[V any] struct {
 type loading[V any] struct {
 	c     *Cache
 	o     Policy[V]
+	ttl   func(V) time.Duration // o.TTL as checked by Policy.check
 	key   string
 	load  func(context.Context) (V, error)
 	gens  []int64       // current generations of o.Tags, read before loading
@@ -239,10 +242,7 @@ func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 
 // freshFor returns the jittered fresh TTL of v, and false if v must not be stored.
 func (l *loading[V]) freshFor(v V) (time.Duration, bool) {
-	fresh := l.o.TTL
-	if l.o.TTLFunc != nil {
-		fresh = l.o.TTLFunc(v)
-	}
+	fresh := l.ttl(v)
 	if fresh < 0 || fresh+l.o.keep() <= 0 {
 		return 0, false
 	}
@@ -262,7 +262,7 @@ func (l *loading[V]) refreshInBackground(ctx context.Context) {
 		return // the cache is shutting down
 	}
 	ttl := min(l.o.StaleWhileRevalidate, maxRefreshLock)
-	lease, ok, err := l.c.TryLock(ctx, l.c.ownKey(spaceRefresh, l.key), ttl)
+	lease, ok, err := l.c.TryLock(ctx, ownRefresh+l.key, ttl)
 	if err != nil {
 		l.c.onError(ctx, fmt.Errorf("gashe: refresh lock %q: %w", l.key, err))
 	}
@@ -287,7 +287,7 @@ func (l *loading[V]) refreshInBackground(ctx context.Context) {
 // runs detached from ctx, so it can finish after the call; a key already loading answers slow at
 // once, so a slow source does not get one more load per call.
 func (l *loading[V]) loadWithin(ctx context.Context) (v V, slow bool, err error) {
-	lease, ok, lockErr := l.c.TryLock(ctx, l.c.ownKey(spaceRefresh, l.key), maxRefreshLock)
+	lease, ok, lockErr := l.c.TryLock(ctx, ownRefresh+l.key, maxRefreshLock)
 	switch {
 	case lockErr != nil:
 		l.c.onError(ctx, fmt.Errorf("gashe: refresh lock %q: %w", l.key, lockErr))
@@ -334,7 +334,7 @@ func (l *loading[V]) loadWithin(ctx context.Context) (v V, slow bool, err error)
 // loadLocked loads a missing key under the load lock and answers with the result of whoever held
 // the lock before, if there is one. If the backend cannot lock, it loads without the lock.
 func (l *loading[V]) loadLocked(ctx context.Context) (V, Result, error) {
-	lease, err := l.c.Lock(ctx, l.c.ownKey(spaceLoad, l.key), l.o.LockOnMiss)
+	lease, err := l.c.Lock(ctx, ownLoad+l.key, l.o.LockOnMiss)
 	if err != nil {
 		if ctx.Err() != nil {
 			var zero V

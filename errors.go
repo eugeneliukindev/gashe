@@ -8,7 +8,7 @@ var (
 	// ErrInvalidTTL reports a TTL the operation cannot accept, such as a negative one.
 	ErrInvalidTTL = errors.New("gashe: invalid ttl")
 	// ErrWrongType reports an entry that holds data the operation cannot use,
-	// such as Incr on a value that is not an integer.
+	// such as IncrBy on a value that is not an integer.
 	ErrWrongType = errors.New("gashe: wrong type")
 	// ErrInvalidOptions reports options that cannot work, such as a negative duration.
 	ErrInvalidOptions = errors.New("gashe: invalid options")

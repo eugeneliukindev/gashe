@@ -48,7 +48,7 @@ func TestEvictedTagCounterDoesNotRevalidateEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The backend evicts the counter, as Redis may under maxmemory-policy allkeys-lru.
-	if _, err := c.Backend().Delete(ctx, "gashe:tag:users"); err != nil {
+	if _, err := c.Backend().Delete(ctx, "_tag:users"); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := gashe.GetOrLoad(ctx, c, "u", o, load); got != 2 || calls.Load() != 2 {

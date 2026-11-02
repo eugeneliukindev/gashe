@@ -228,8 +228,8 @@ func (m *Backend) Exists(_ context.Context, key string) (bool, error) {
 	return m.live(key) != nil, nil
 }
 
-// Incr implements gashe.Backend.
-func (m *Backend) Incr(_ context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+// IncrBy implements gashe.Backend.
+func (m *Backend) IncrBy(_ context.Context, key string, by int64, ttl time.Duration) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	e := m.live(key)

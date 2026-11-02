@@ -25,7 +25,7 @@ func ownKeys(t *testing.T, o gashe.Options) []string {
 	_ = c.RateLimit(ctx, "ip", gashe.FixedWindow{Calls: 5, Per: time.Minute})
 	_ = c.RateLimit(ctx, "ip", gashe.PerMinute(5))
 	var keys []string
-	for k, err := range c.Keys(ctx, "*") {
+	for k, err := range mem.Scan(ctx, "*") { // the keys as stored, with the prefix
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -35,19 +35,16 @@ func ownKeys(t *testing.T, o gashe.Options) []string {
 	return keys
 }
 
-func TestNamespace(t *testing.T) {
-	for _, tc := range []struct {
-		namespace string
-		prefix    string
-	}{{"", "gashe:"}, {"orders:", "orders:"}} {
-		keys := ownKeys(t, gashe.Options{Namespace: tc.namespace})
-		want := []string{tc.prefix + "rate:fixed:ip", tc.prefix + "rate:sliding:ip:", tc.prefix + "tag:users"}
+func TestOwnKeys(t *testing.T) {
+	for _, prefix := range []string{"", "orders:"} {
+		keys := ownKeys(t, gashe.Options{Prefix: prefix})
+		want := []string{prefix + "_rate:fixed:ip", prefix + "_rate:sliding:ip:", prefix + "_tag:users"}
 		if len(keys) != len(want) {
-			t.Fatalf("Namespace %q: keys %v", tc.namespace, keys)
+			t.Fatalf("Prefix %q: keys %v", prefix, keys)
 		}
 		for i, k := range keys {
 			if !strings.HasPrefix(k, want[i]) {
-				t.Fatalf("Namespace %q: key %q, want it to start with %q", tc.namespace, k, want[i])
+				t.Fatalf("Prefix %q: key %q, want it to start with %q", prefix, k, want[i])
 			}
 		}
 	}

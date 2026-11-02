@@ -34,9 +34,9 @@ func Run(t *testing.T, newBackend func(t *testing.T) gashe.Backend) {
 		{"ScanEdgeCases", testScanEdgeCases},
 		{"ScanStops", testScanStops},
 		{"DeleteMatch", testDeleteMatch},
-		{"Incr", testIncr},
-		{"IncrTTLOnlyOnCreate", testIncrTTL},
-		{"IncrErrors", testIncrErrors},
+		{"IncrBy", testIncrBy},
+		{"IncrByTTLOnlyOnCreate", testIncrByTTL},
+		{"IncrByErrors", testIncrByErrors},
 		{"ExpireAndTTL", testExpireTTL},
 		{"Unlock", testUnlock},
 		{"ExtendLock", testExtendLock},
@@ -255,48 +255,48 @@ func testDeleteMatch(t *testing.T, b gashe.Backend) {
 	}
 }
 
-func testIncr(t *testing.T, b gashe.Backend) {
+func testIncrBy(t *testing.T, b gashe.Backend) {
 	ctx := context.Background()
-	if n, err := b.Incr(ctx, "n", 5, 0); err != nil || n != 5 {
-		t.Fatalf("Incr(new) = %d, %v", n, err)
+	if n, err := b.IncrBy(ctx, "n", 5, 0); err != nil || n != 5 {
+		t.Fatalf("IncrBy(new) = %d, %v", n, err)
 	}
-	if n, err := b.Incr(ctx, "n", -7, 0); err != nil || n != -2 {
-		t.Fatalf("Incr = %d, %v", n, err)
+	if n, err := b.IncrBy(ctx, "n", -7, 0); err != nil || n != -2 {
+		t.Fatalf("IncrBy = %d, %v", n, err)
 	}
 	if got, _ := b.Get(ctx, "n"); string(got) != "-2" {
 		t.Fatalf("stored counter = %q, want decimal -2", got)
 	}
 	must(t, b.Set(ctx, "m", []byte("40"), 0))
-	if n, err := b.Incr(ctx, "m", 2, 0); err != nil || n != 42 {
-		t.Fatalf("Incr on a decimal value = %d, %v", n, err)
+	if n, err := b.IncrBy(ctx, "m", 2, 0); err != nil || n != 42 {
+		t.Fatalf("IncrBy on a decimal value = %d, %v", n, err)
 	}
 }
 
-func testIncrTTL(t *testing.T, b gashe.Backend) {
+func testIncrByTTL(t *testing.T, b gashe.Backend) {
 	ctx := context.Background()
-	_, err := b.Incr(ctx, "n", 1, time.Minute)
+	_, err := b.IncrBy(ctx, "n", 1, time.Minute)
 	must(t, err)
-	_, err = b.Incr(ctx, "n", 1, time.Hour)
+	_, err = b.IncrBy(ctx, "n", 1, time.Hour)
 	must(t, err)
 	if ttl, ttlErr := b.TTL(ctx, "n"); ttlErr != nil || ttl <= 0 || ttl > time.Minute {
 		t.Fatalf("TTL = %v, %v; want the TTL from creation", ttl, ttlErr)
 	}
-	_, err = b.Incr(ctx, "plain", 1, 0)
+	_, err = b.IncrBy(ctx, "plain", 1, 0)
 	must(t, err)
 	if ttl, _ := b.TTL(ctx, "plain"); ttl != gashe.NoExpiry {
-		t.Fatalf("Incr with ttl 0 set TTL %v", ttl)
+		t.Fatalf("IncrBy with ttl 0 set TTL %v", ttl)
 	}
 }
 
-func testIncrErrors(t *testing.T, b gashe.Backend) {
+func testIncrByErrors(t *testing.T, b gashe.Backend) {
 	ctx := context.Background()
 	must(t, b.Set(ctx, "json", []byte(`{"a":1}`), 0))
-	if _, err := b.Incr(ctx, "json", 1, 0); !errors.Is(err, gashe.ErrWrongType) {
-		t.Fatalf("Incr on JSON: %v, want ErrWrongType", err)
+	if _, err := b.IncrBy(ctx, "json", 1, 0); !errors.Is(err, gashe.ErrWrongType) {
+		t.Fatalf("IncrBy on JSON: %v, want ErrWrongType", err)
 	}
-	_, err := b.Incr(ctx, "max", math.MaxInt64, 0)
+	_, err := b.IncrBy(ctx, "max", math.MaxInt64, 0)
 	must(t, err)
-	if _, err := b.Incr(ctx, "max", 1, 0); err == nil {
+	if _, err := b.IncrBy(ctx, "max", 1, 0); err == nil {
 		t.Fatal("overflow accepted")
 	}
 	if got, _ := b.Get(ctx, "max"); string(got) != "9223372036854775807" {

@@ -29,7 +29,12 @@ func (f *flaky) Ping(context.Context) error {
 	return errBackendDown
 }
 
-var cacheBreaker = gashe.BreakerOptions{FailurePercent: 50, MinCalls: 3, Window: time.Minute, OpenFor: time.Minute}
+var cacheBreaker = gashe.CircuitBreakerOptions{
+	FailurePercent: 50,
+	MinCalls:       3,
+	Window:         time.Minute,
+	OpenFor:        time.Minute,
+}
 
 func newFlaky(t *testing.T) *flaky {
 	t.Helper()
@@ -38,10 +43,10 @@ func newFlaky(t *testing.T) *flaky {
 	return &flaky{Backend: mem}
 }
 
-func TestWithBreakerStopsCallingAFailingBackend(t *testing.T) {
+func TestBreakerStopsCallingAFailingBackend(t *testing.T) {
 	ctx := context.Background()
 	f := newFlaky(t)
-	b := gashe.WithBreaker(f, cacheBreaker)
+	b := gashe.New(f, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
 
 	for range 3 {
 		if _, err := b.Get(ctx, "k"); !errors.Is(err, errBackendDown) {
@@ -59,11 +64,11 @@ func TestWithBreakerStopsCallingAFailingBackend(t *testing.T) {
 	}
 }
 
-func TestWithBreakerIgnoresMisses(t *testing.T) {
+func TestBreakerIgnoresMisses(t *testing.T) {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = mem.Close() })
-	b := gashe.WithBreaker(mem, cacheBreaker)
+	b := gashe.New(mem, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
 
 	for range 10 {
 		if _, err := b.Get(ctx, "missing"); !errors.Is(err, gashe.ErrNotFound) {
@@ -74,7 +79,7 @@ func TestWithBreakerIgnoresMisses(t *testing.T) {
 
 func TestGetOrLoadThroughAnOpenBreaker(t *testing.T) {
 	ctx := context.Background()
-	c := gashe.New(gashe.WithBreaker(newFlaky(t), cacheBreaker), gashe.Options{})
+	c := gashe.New(newFlaky(t), gashe.Options{CircuitBreaker: &cacheBreaker})
 	_, load := versions()
 	o := gashe.Policy[int]{TTL: time.Minute}
 
@@ -85,20 +90,20 @@ func TestGetOrLoadThroughAnOpenBreaker(t *testing.T) {
 	}
 }
 
-func TestWithBreakerPanicsOnInvalidOptions(t *testing.T) {
+func TestBreakerPanicsOnInvalidOptions(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("no panic")
 		}
 	}()
-	gashe.WithBreaker(newFlaky(t), gashe.BreakerOptions{})
+	gashe.New(newFlaky(t), gashe.Options{CircuitBreaker: &gashe.CircuitBreakerOptions{}})
 }
 
-func TestWithBreakerContract(t *testing.T) {
+func TestBreakerContract(t *testing.T) {
 	backendtest.Run(t, func(t *testing.T) gashe.Backend {
 		t.Helper()
 		mem := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = mem.Close() })
-		return gashe.WithBreaker(mem, cacheBreaker)
+		return gashe.New(mem, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
 	})
 }

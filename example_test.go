@@ -75,7 +75,7 @@ func ExampleCache_CircuitBreaker() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
-	db := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: 30 * time.Second}
+	db := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: 30 * time.Second}
 
 	for _, callErr := range []error{errors.New("timeout"), nil} {
 		done, err := c.CircuitBreaker("db", db)
@@ -101,4 +101,35 @@ func ExampleOptions_onError() {
 	})
 	_ = c
 	// Output:
+}
+
+// TTL takes a time.Duration, a string for time.ParseDuration or a function of the result.
+func ExamplePolicy_ttl() {
+	ctx := context.Background()
+	mem := memory.New(memory.Options{})
+	defer mem.Close()
+	c := gashe.New(mem, gashe.Options{})
+
+	type Token struct {
+		Value     string
+		ExpiresIn time.Duration
+	}
+	load := func(context.Context) (Token, error) { return Token{Value: "t", ExpiresIn: 5 * time.Minute}, nil }
+
+	ttlOf := func(t Token) time.Duration { return t.ExpiresIn - time.Minute }
+	for key, ttl := range map[string]any{
+		"duration": time.Hour,
+		"string":   "1h30m", // such as a value from the configuration
+		"func":     ttlOf,   // from the result
+		"int":      3600,    // not a time.Duration: an error
+	} {
+		_, err := gashe.GetOrLoad(ctx, c, key, gashe.Policy[Token]{TTL: ttl}, load)
+		left, _ := c.TTL(ctx, key)
+		fmt.Printf("%s: %v %v\n", key, left.Round(time.Minute), errors.Is(err, gashe.ErrInvalidOptions))
+	}
+	// Unordered output:
+	// duration: 1h0m0s false
+	// string: 1h30m0s false
+	// func: 4m0s false
+	// int: 0s true
 }

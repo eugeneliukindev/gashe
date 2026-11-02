@@ -47,14 +47,14 @@ func TestSetWithoutTTLDropsOldTTL(t *testing.T) {
 	})
 }
 
-func TestIncrTTLOnlyOnCreate(t *testing.T) {
+func TestIncrByTTLOnlyOnCreate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
 
-		_, _ = c.Incr(ctx, "n", 5, time.Minute)
+		_, _ = c.IncrBy(ctx, "n", 5, time.Minute)
 		time.Sleep(30 * time.Second)
-		_, _ = c.Incr(ctx, "n", 1, time.Hour) // must not extend the TTL
+		_, _ = c.IncrBy(ctx, "n", 1, time.Hour) // must not extend the TTL
 		time.Sleep(30 * time.Second)
 		if ok, _ := c.Exists(ctx, "n"); ok {
 			t.Fatal("counter outlived the TTL it was created with")

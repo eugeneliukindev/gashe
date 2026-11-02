@@ -17,7 +17,7 @@ const maxGeneration = math.MaxInt64 / 2
 // backend.
 func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error {
 	for _, tag := range tags {
-		if _, err := c.backend.Incr(ctx, c.ownKey(spaceTag, tag), 1, 0); err != nil {
+		if _, err := c.backend.IncrBy(ctx, ownTag+tag, 1, 0); err != nil {
 			return err
 		}
 	}
@@ -43,7 +43,7 @@ func (l *loading[V]) readGens(ctx context.Context) ([]int64, error) {
 func (l *loading[V]) tagKeys() []string {
 	keys := make([]string, len(l.o.Tags))
 	for i, g := range l.o.Tags {
-		keys[i] = l.c.ownKey(spaceTag, g)
+		keys[i] = ownTag + g
 	}
 	return keys
 }

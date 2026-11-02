@@ -46,7 +46,7 @@ func (p *page) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func serve(t *testing.T, c *gashe.Cache, opts *httpcache.Options, h http.Handler) http.Handler {
 	t.Helper()
 	o := *opts
-	if o.Policy.TTL == 0 && o.Policy.StaleIfError == 0 {
+	if o.Policy.TTL == nil && o.Policy.StaleIfError == 0 {
 		o.Policy.TTL = time.Minute
 	}
 	return httpcache.New(c, o)(h)

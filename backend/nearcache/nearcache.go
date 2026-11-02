@@ -176,10 +176,10 @@ func (b *Backend) Exists(ctx context.Context, key string) (bool, error) {
 	return b.shared.Exists(ctx, key)
 }
 
-// Incr implements gashe.Backend.
-func (b *Backend) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+// IncrBy implements gashe.Backend.
+func (b *Backend) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
 	defer b.drop(ctx, key)
-	return b.shared.Incr(ctx, key, by, ttl)
+	return b.shared.IncrBy(ctx, key, by, ttl)
 }
 
 // Expire implements gashe.Backend.

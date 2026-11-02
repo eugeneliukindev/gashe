@@ -9,7 +9,7 @@ import (
 )
 
 // through runs one call with result err through the breaker and returns what the caller sees.
-func through(c *gashe.Cache, o gashe.BreakerOptions, err error) error {
+func through(c *gashe.Cache, o gashe.CircuitBreakerOptions, err error) error {
 	done, openErr := c.CircuitBreaker("api", o)
 	if openErr != nil {
 		return openErr
@@ -20,7 +20,7 @@ func through(c *gashe.Cache, o gashe.BreakerOptions, err error) error {
 
 func TestCircuitBreakerIsFailure(t *testing.T) {
 	c := newCache(t)
-	o := gashe.BreakerOptions{
+	o := gashe.CircuitBreakerOptions{
 		FailurePercent: 10, Window: time.Minute, OpenFor: time.Minute,
 		IsFailure: func(err error) bool { return !errors.Is(err, errAPI) },
 	}
@@ -33,7 +33,7 @@ func TestCircuitBreakerIsFailure(t *testing.T) {
 
 func TestCircuitBreakerInvalid(t *testing.T) {
 	c := newCache(t)
-	_, err := c.CircuitBreaker("api", gashe.BreakerOptions{FailurePercent: 100})
+	_, err := c.CircuitBreaker("api", gashe.CircuitBreakerOptions{FailurePercent: 100})
 	if !errors.Is(err, gashe.ErrInvalidOptions) {
 		t.Fatalf("got %v, want ErrInvalidOptions", err)
 	}
@@ -41,7 +41,7 @@ func TestCircuitBreakerInvalid(t *testing.T) {
 
 func TestCircuitBreakerUsesNoBackend(t *testing.T) {
 	c := gashe.New(incrDown{Backend: lockDown{Backend: newCache(t).Backend()}}, gashe.Options{})
-	o := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute}
+	o := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute}
 	_ = through(c, o, errAPI)
 	if err := through(c, o, nil); !errors.Is(err, gashe.ErrCircuitOpen) {
 		t.Fatalf("got %v, want the breaker open without any backend", err)

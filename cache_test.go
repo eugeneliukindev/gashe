@@ -59,26 +59,26 @@ func TestSetIfAbsentSetIfPresent(t *testing.T) {
 	}
 }
 
-func TestIncrReadsBackWithGet(t *testing.T) {
+func TestIncrByReadsBackWithGet(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 
 	if err := c.Set(ctx, "n", 90, 0); err != nil {
 		t.Fatal(err)
 	}
-	got, err := c.Incr(ctx, "n", 10, 0)
+	got, err := c.IncrBy(ctx, "n", 10, 0)
 	if err != nil || got != 100 {
-		t.Fatalf("Incr: %d %v", got, err)
+		t.Fatalf("IncrBy: %d %v", got, err)
 	}
 	var n int
 	if err := c.Get(ctx, "n", &n); err != nil || n != 100 {
-		t.Fatalf("Get after Incr: %d %v", n, err)
+		t.Fatalf("Get after IncrBy: %d %v", n, err)
 	}
 	if err := c.Set(ctx, "u", user{Name: "Ann"}, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Incr(ctx, "u", 1, 0); !errors.Is(err, gashe.ErrWrongType) {
-		t.Fatalf("Incr on JSON: got %v, want ErrWrongType", err)
+	if _, err := c.IncrBy(ctx, "u", 1, 0); !errors.Is(err, gashe.ErrWrongType) {
+		t.Fatalf("IncrBy on JSON: got %v, want ErrWrongType", err)
 	}
 }
 

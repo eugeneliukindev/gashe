@@ -15,11 +15,32 @@ import (
 // old: StaleWhileRevalidate and StaleIfError say for how much longer it is still good enough. The
 // entry is kept for TTL plus the longer of the two windows.
 type Policy[V any] struct {
-	// TTL is how long a result is fresh. It may be 0 when a window is set: then every call
-	// either refreshes in the background (StaleWhileRevalidate) or calls the loader (StaleIfError).
-	TTL time.Duration
-	// TTLFunc, when set, picks TTL from the result. A negative TTL means "do not store".
-	TTLFunc func(V) time.Duration
+	// TTL is how long a result is fresh: a time.Duration, a string for time.ParseDuration such
+	// as "1h", or a func(V) time.Duration that picks it from the result, where a negative TTL
+	// means "do not store":
+	//
+	//	TTL: time.Hour
+	//	TTL: 90 * time.Second
+	//	TTL: "1h30m"
+	//	TTL: cfg.UserTTL // a string from the configuration, such as "10m"
+	//	TTL: func(t Token) time.Duration { return time.Until(t.ExpiresAt) - time.Minute }
+	//	TTL: func(u User) time.Duration {
+	//		if u.Admin {
+	//			return time.Minute // admins change often
+	//		}
+	//		return time.Hour
+	//	}
+	//	TTL: func(p Page) time.Duration {
+	//		if p.Draft {
+	//			return -1 // do not store drafts
+	//		}
+	//		return 10 * time.Minute
+	//	}
+	//
+	// Any other type, a plain int such as 3600 included, returns ErrInvalidOptions. TTL may be
+	// left out when a window is set: then every call either refreshes in the background
+	// (StaleWhileRevalidate) or calls the loader (StaleIfError).
+	TTL any
 	// Jitter spreads TTLs randomly by up to this share, from 0 to 1 (0.1 means +-10%), so that
 	// entries stored together do not expire together.
 	Jitter float64
@@ -64,25 +85,64 @@ type Negative struct {
 	TTL time.Duration
 }
 
-func (o Policy[V]) check() error {
+// check validates o and returns its TTL as a function of the result, so the code after it does
+// not care which form TTL was given in.
+func (o Policy[V]) check() (ttl func(V) time.Duration, err error) {
+	ttl, err = o.ttlFunc()
+	if err != nil {
+		return nil, err
+	}
 	for _, rule := range []struct {
 		broken bool
 		why    string
 	}{
 		{
-			negative(o.TTL, o.StaleWhileRevalidate, o.StaleIfError, o.StaleIfSlow, o.LockOnMiss, o.Negative.TTL),
+			negative(o.StaleWhileRevalidate, o.StaleIfError, o.StaleIfSlow, o.LockOnMiss, o.Negative.TTL),
 			"durations must not be negative",
 		},
 		{o.Jitter < 0 || o.Jitter >= 1, "Jitter must be from 0 to less than 1"},
-		{o.TTL == 0 && o.TTLFunc == nil && o.keep() == 0, "set TTL, TTLFunc or a window, or nothing is ever stored"},
 		{o.Negative.If != nil && (o.Negative.Err == nil || o.Negative.TTL == 0), "Negative needs Err and TTL"},
 		{o.StaleIfSlow > 0 && o.StaleIfError == 0, "StaleIfSlow needs StaleIfError"},
 	} {
 		if rule.broken {
-			return fmt.Errorf("%w: %s", ErrInvalidOptions, rule.why)
+			return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, rule.why)
 		}
 	}
-	return nil
+	return ttl, nil
+}
+
+// ttlFunc turns TTL into a function of the result.
+func (o Policy[V]) ttlFunc() (func(V) time.Duration, error) {
+	switch t := o.TTL.(type) {
+	case nil:
+		return o.fixedTTL(0)
+	case time.Duration:
+		return o.fixedTTL(t)
+	case string:
+		d, err := time.ParseDuration(t)
+		if err != nil {
+			return nil, fmt.Errorf("%w: TTL: %w", ErrInvalidOptions, err)
+		}
+		return o.fixedTTL(d)
+	case func(V) time.Duration:
+		if t == nil {
+			return nil, fmt.Errorf("%w: TTL is a nil func", ErrInvalidOptions)
+		}
+		return t, nil
+	}
+	return nil, fmt.Errorf("%w: TTL is a %T; want time.Duration, a string such as \"1h\" or func(%v) time.Duration",
+		ErrInvalidOptions, o.TTL, reflect.TypeFor[V]())
+}
+
+// fixedTTL checks a TTL that does not depend on the result.
+func (o Policy[V]) fixedTTL(d time.Duration) (func(V) time.Duration, error) {
+	if d < 0 {
+		return nil, fmt.Errorf("%w: durations must not be negative", ErrInvalidOptions)
+	}
+	if d == 0 && o.keep() == 0 {
+		return nil, fmt.Errorf("%w: set TTL or a window, or nothing is ever stored", ErrInvalidOptions)
+	}
+	return func(V) time.Duration { return d }, nil
 }
 
 func negative(ds ...time.Duration) bool {

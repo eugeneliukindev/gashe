@@ -9,12 +9,12 @@ import (
 	"github.com/eugeneliukindev/gashe"
 )
 
-// incrDown fails every Incr, like an unreachable Redis.
+// incrDown fails every IncrBy, like an unreachable Redis.
 type incrDown struct {
 	gashe.Backend
 }
 
-func (incrDown) Incr(context.Context, string, int64, time.Duration) (int64, error) {
+func (incrDown) IncrBy(context.Context, string, int64, time.Duration) (int64, error) {
 	return 0, errBackendDown
 }
 

@@ -38,9 +38,9 @@ type Backend interface {
 	Scan(ctx context.Context, pattern string) iter.Seq2[string, error]
 	// Exists reports whether key has a live entry.
 	Exists(ctx context.Context, key string) (bool, error)
-	// Incr adds by to the integer under key, creating it from 0 if absent, and returns the result.
+	// IncrBy adds by to the integer under key, creating it from 0 if absent, and returns the result.
 	// ttl applies only when the entry is created.
-	Incr(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error)
+	IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (value int64, err error)
 	// Expire sets a new TTL (ttl > 0) for key and reports whether the key existed.
 	Expire(ctx context.Context, key string, ttl time.Duration) (existed bool, err error)
 	// TTL returns the time key has left, or NoExpiry.

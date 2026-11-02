@@ -39,7 +39,7 @@ func TestGetOrLoadTTLOf(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
 		s := newCached(c, gashe.Policy[user]{
-			TTLFunc: func(u user) time.Duration {
+			TTL: func(u user) time.Duration {
 				if u.Name == "admin" {
 					return time.Minute
 				}

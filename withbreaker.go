@@ -7,13 +7,8 @@ import (
 	"time"
 )
 
-// WithBreaker returns a Backend that stops calling b for a while once too many calls to it fail,
-// as CircuitBreaker does for a dependency. While it is open every call returns ErrCircuitOpen at
-// once, so a cache that is down costs no timeout: GetOrLoad goes straight to the loader. The
-// breaker lives in the memory of this process. Failures are errors other than ErrNotFound,
-// ErrWrongType and a done context, unless o.IsFailure says otherwise. Ping and Close are not
-// guarded, so health checks see the backend itself. It panics on invalid options.
-func WithBreaker(b Backend, o BreakerOptions) Backend {
+// withBreaker returns b behind a breaker, see Options.CircuitBreaker. It panics on invalid options.
+func withBreaker(b Backend, o CircuitBreakerOptions) Backend {
 	if err := o.check(); err != nil {
 		panic(err)
 	}
@@ -33,7 +28,7 @@ type breakerBackend struct {
 	Backend
 
 	breaker *breaker
-	o       BreakerOptions
+	o       CircuitBreakerOptions
 }
 
 // guard runs call through the breaker.
@@ -114,8 +109,8 @@ func (p breakerBackend) Exists(ctx context.Context, key string) (bool, error) {
 	return guard(p, func() (bool, error) { return p.Backend.Exists(ctx, key) })
 }
 
-func (p breakerBackend) Incr(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
-	return guard(p, func() (int64, error) { return p.Backend.Incr(ctx, key, by, ttl) })
+func (p breakerBackend) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
+	return guard(p, func() (int64, error) { return p.Backend.IncrBy(ctx, key, by, ttl) })
 }
 
 func (p breakerBackend) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {

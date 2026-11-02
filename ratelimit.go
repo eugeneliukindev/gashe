@@ -56,11 +56,11 @@ func (l SlidingWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if l.Calls <= 0 || l.Per <= 0 {
 		return fmt.Errorf("%w: SlidingWindow needs positive Calls and Per", ErrInvalidOptions)
 	}
-	key = c.ownKey(spaceSliding, key)
+	key = ownSliding + key
 	now := time.Now()
 	window := now.UnixNano() / int64(l.Per)
 	current := key + ":" + strconv.FormatInt(window, 10)
-	n, err := c.backend.Incr(ctx, current, 1, slidingWindows*l.Per)
+	n, err := c.backend.IncrBy(ctx, current, 1, slidingWindows*l.Per)
 	if err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: rate limit %q: %w", key, err))
 		return nil
@@ -73,7 +73,7 @@ func (l SlidingWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if float64(last)*overlap+float64(n) <= float64(l.Calls) {
 		return nil
 	}
-	if _, err := c.backend.Incr(ctx, current, -1, 0); err != nil {
+	if _, err := c.backend.IncrBy(ctx, current, -1, 0); err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: rate limit %q: %w", key, err))
 	}
 	return ErrRateLimited
@@ -83,8 +83,8 @@ func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if l.Calls <= 0 || l.Per <= 0 || l.BanFor < 0 {
 		return fmt.Errorf("%w: FixedWindow needs positive Calls and Per and a non-negative BanFor", ErrInvalidOptions)
 	}
-	key = c.ownKey(spaceFixed, key)
-	n, err := c.backend.Incr(ctx, key, 1, l.Per)
+	key = ownFixed + key
+	n, err := c.backend.IncrBy(ctx, key, 1, l.Per)
 	if err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: rate limit %q: %w", key, err))
 		return nil
@@ -100,7 +100,7 @@ func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
 	return ErrRateLimited
 }
 
-// readCount reads a counter written by Incr; a missing counter is 0.
+// readCount reads a counter written by IncrBy; a missing counter is 0.
 func readCount(ctx context.Context, c *Cache, key string) (int64, error) {
 	raw, err := c.backend.Get(ctx, key)
 	if errors.Is(err, ErrNotFound) {

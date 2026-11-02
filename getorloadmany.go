@@ -16,7 +16,7 @@ import (
 // stored.
 //
 // It reads entries stored by GetOrLoad with the same policy and the other way round. It supports
-// TTL, TTLFunc, Jitter, Tags, CacheIf and Prefix; StaleWhileRevalidate, StaleIfError, LockOnMiss
+// TTL, Jitter, Tags, CacheIf and Prefix; StaleWhileRevalidate, StaleIfError, LockOnMiss
 // and Negative return ErrInvalidOptions. Unlike GetOrLoad, concurrent calls do not share a load.
 // An error from load is returned as is; if the backend fails, the result of load is returned
 // without storing it.
@@ -27,7 +27,8 @@ func GetOrLoadMany[V any](
 	o Policy[V],
 	load func(ctx context.Context, missing []string) (map[string]V, error),
 ) (map[string]V, error) {
-	if err := o.check(); err != nil {
+	ttl, err := o.check()
+	if err != nil {
 		return nil, err
 	}
 	if o.keep() > 0 || o.LockOnMiss > 0 || o.Negative.If != nil {
@@ -38,7 +39,7 @@ func GetOrLoadMany[V any](
 	if len(keys) == 0 {
 		return map[string]V{}, nil
 	}
-	l := loading[V]{c: c, o: o, shape: c.shapeOf(reflect.TypeFor[V]())}
+	l := loading[V]{c: c, o: o, ttl: ttl, shape: c.shapeOf(reflect.TypeFor[V]())}
 	found, missing, err := l.readMany(ctx, keys)
 	if err != nil {
 		return load(ctx, keys)

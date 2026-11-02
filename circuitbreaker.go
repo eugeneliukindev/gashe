@@ -13,9 +13,9 @@ const (
 	percent        = 100
 )
 
-// BreakerOptions configures Cache.CircuitBreaker. FailurePercent, Window and OpenFor are
-// required. Use the same options for the same key.
-type BreakerOptions struct {
+// CircuitBreakerOptions configures Cache.CircuitBreaker and Options.CircuitBreaker. FailurePercent,
+// Window and OpenFor are required. Use the same options for the same key.
+type CircuitBreakerOptions struct {
 	// FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
 	FailurePercent int
 	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
@@ -28,7 +28,8 @@ type BreakerOptions struct {
 	// succeeds closes the breaker, one that fails opens it again. 0 means the breaker just
 	// closes after OpenFor.
 	HalfOpenCalls int
-	// IsFailure decides which errors count as failures. nil means any error.
+	// IsFailure decides which errors count as failures. nil means any error; for
+	// Options.CircuitBreaker, any error but ErrNotFound, ErrWrongType and a done context.
 	IsFailure func(error) bool
 }
 
@@ -40,14 +41,14 @@ type DoneFunc func(err error)
 // ErrCircuitOpen while the breaker is open; otherwise it returns a DoneFunc to report how the
 // call went. The breaker lives in the memory of this process: every process judges the dependency
 // by its own calls, and checking it costs no backend round trip.
-func (c *Cache) CircuitBreaker(key string, o BreakerOptions) (DoneFunc, error) {
+func (c *Cache) CircuitBreaker(key string, o CircuitBreakerOptions) (DoneFunc, error) {
 	if err := o.check(); err != nil {
 		return nil, err
 	}
 	return c.breakers.get(key).allow(o, time.Now())
 }
 
-func (o BreakerOptions) check() error {
+func (o CircuitBreakerOptions) check() error {
 	if o.FailurePercent <= 0 || o.FailurePercent >= percent || o.Window <= 0 || o.OpenFor <= 0 ||
 		o.MinCalls < 0 || o.HalfOpenCalls < 0 {
 		return fmt.Errorf("%w: a breaker needs FailurePercent 1..99, positive Window and OpenFor, "+
@@ -114,7 +115,7 @@ func (b *breaker) state(now time.Time) breakerState {
 	return breakerClosed
 }
 
-func (b *breaker) allow(o BreakerOptions, now time.Time) (DoneFunc, error) {
+func (b *breaker) allow(o CircuitBreakerOptions, now time.Time) (DoneFunc, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	switch b.state(now) {
@@ -142,7 +143,7 @@ func (b *breaker) allow(o BreakerOptions, now time.Time) (DoneFunc, error) {
 
 // trial lets one test call through while trials are left; its outcome closes or reopens the
 // breaker. b.mu is held.
-func (b *breaker) trial(o BreakerOptions) (DoneFunc, error) {
+func (b *breaker) trial(o CircuitBreakerOptions) (DoneFunc, error) {
 	if b.trialsLeft == 0 {
 		return nil, ErrCircuitOpen
 	}
@@ -169,7 +170,7 @@ func (b *breaker) slot(n int64) *bucket {
 
 // overLimit reports whether the buckets of the window ending at bucket n have enough calls and
 // enough failures to open.
-func (b *breaker) overLimit(o BreakerOptions, n int64) bool {
+func (b *breaker) overLimit(o CircuitBreakerOptions, n int64) bool {
 	var total, failures int
 	for _, s := range b.buckets {
 		if s.n > n-breakerBuckets && s.n <= n {
@@ -181,7 +182,7 @@ func (b *breaker) overLimit(o BreakerOptions, n int64) bool {
 }
 
 // trip opens the breaker, arms the trial phase that follows it and clears the counters.
-func (b *breaker) trip(o BreakerOptions, now time.Time) {
+func (b *breaker) trip(o CircuitBreakerOptions, now time.Time) {
 	b.openUntil = now.Add(o.OpenFor)
 	b.trialUntil = time.Time{}
 	if o.HalfOpenCalls > 0 {
@@ -192,6 +193,6 @@ func (b *breaker) trip(o BreakerOptions, now time.Time) {
 	b.buckets = [breakerBuckets]bucket{}
 }
 
-func failed(o BreakerOptions, err error) bool {
+func failed(o CircuitBreakerOptions, err error) bool {
 	return err != nil && (o.IsFailure == nil || o.IsFailure(err))
 }

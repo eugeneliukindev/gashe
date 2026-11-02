@@ -152,7 +152,7 @@ func TestGetOrLoadSurvivesBackendFailure(t *testing.T) {
 func TestGetOrLoadTTLOfNegativeSkipsStore(t *testing.T) {
 	ctx := context.Background()
 	s := newCached(newCache(t), gashe.Policy[user]{
-		TTLFunc: func(u user) time.Duration {
+		TTL: func(u user) time.Duration {
 			if u.Name == "" {
 				return -1
 			}
