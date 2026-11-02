@@ -6,6 +6,40 @@ Notable changes of every release, newest first. The format follows
 the API. The root module and `backend/redis` and `codec/msgpack` are released with their own tags
 (`v0.2.0`, `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`); a section names the module it is about.
 
+## [Unreleased]
+
+## [0.3.0] - 2026-11-03
+
+Released as `v0.3.0`, `backend/redis/v0.3.0` and `codec/msgpack/v0.3.0`. The API changed in ways
+that break code written for earlier versions, so they are retracted: `v0.1.0` and `v0.2.0` of the
+root, `backend/redis/v0.1.0` and `backend/redis/v0.2.0`, and `codec/msgpack/v0.1.0`.
+`go get` no longer picks them, and `go list -m -u` points to `v0.3.0`.
+
+### Added
+
+- `examples/`: a runnable program for every feature, in a module of its own; the README links each
+  strategy to its example.
+
+### Changed
+
+- The keys the cache keeps for itself start with `_` and live under `Options.Prefix`: `_tag:`,
+  `_load:`, `_refresh:`, `_rate:sliding:`, `_rate:fixed:`. `Options.Namespace` is removed; keys of
+  yours must not start with `_`. After the upgrade, tagged entries reload once and rate limit
+  counters start from zero.
+- `Options.Prefix` replaces `WithPrefix`: `gashe.New(b, gashe.Options{Prefix: "orders:"})` puts every
+  key of the cache under the prefix, and `Policy.Prefix` adds up after it. `WithPrefix` is removed.
+- `Options.CircuitBreaker` replaces `WithBreaker`: `gashe.New(b, gashe.Options{CircuitBreaker: &opts})`
+  puts the backend behind a circuit breaker. `WithBreaker` is removed, and `BreakerOptions` is
+  renamed `CircuitBreakerOptions`.
+- `Policy.TTL` takes a `time.Duration`, a string such as `"1h"` or a `func(V) time.Duration`, and
+  `Policy.TTLFunc` is removed: write `TTL: func(v V) time.Duration {...}`. Another type returns
+  `ErrInvalidOptions`.
+- `Incr` is renamed `IncrBy`, like the Redis command it matches, on `Cache` and `Backend`; a backend
+  of yours renames its method too.
+- `backend/redis` and `codec/msgpack` require gashe `v0.3.0`. The tests of `backend/redis` against a real server moved into the module
+  and run with `just integration`; the separate integration module and testcontainers are gone.
+  Valkey 8 joins Redis 7.0 in the servers every release is tested on.
+
 ## [0.2.0] - 2026-11-02
 
 Released as `v0.2.0` and `backend/redis/v0.2.0`; `codec/msgpack` stays at `v0.1.0`.
@@ -77,5 +111,7 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.1.0
