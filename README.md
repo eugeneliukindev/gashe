@@ -1,10 +1,21 @@
-# gashe
+<p align="center">
+  <img src="assets/logo.svg" width="200" alt="The gashe gopher, its cheeks full of cached data">
+</p>
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg)](https://pkg.go.dev/github.com/eugeneliukindev/gashe)
+<h1 align="center">gashe</h1>
 
-Caching for Go services that run as many processes. One `*gashe.Cache` stores results of expensive
-calls, keeps answering when a dependency is slow or down, and guards dependencies with locks, rate
-limits and circuit breakers. Over Redis all of it is shared by every pod.
+<p align="center">Caching for Go services that run as many processes.</p>
+
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/eugeneliukindev/gashe"><img src="https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg" alt="Go Reference"></a>
+  <a href="https://github.com/eugeneliukindev/gashe/tags"><img src="https://img.shields.io/github/v/tag/eugeneliukindev/gashe?filter=v*&label=release" alt="Release"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/eugeneliukindev/gashe" alt="Go version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/eugeneliukindev/gashe" alt="License"></a>
+</p>
+
+One `*gashe.Cache` stores results of expensive calls, keeps answering when a dependency is slow or
+down, and guards dependencies with locks, rate limits and circuit breakers. Over Redis all of it is
+shared by every pod.
 
 ```bash
 go get github.com/eugeneliukindev/gashe
@@ -47,26 +58,9 @@ mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
 
 ## Contents
 
-- [Configuration](#configuration)
-- [Backends](#backends): [memory](#memory), [Redis](#redis), [near cache](#near-cache-backend),
-  [your own](#your-own-backend)
-- [Keys and TTL](#keys-and-ttl)
-- [Basic API](#basic-api)
-- [Direct calls](#direct-calls)
-  - Caching: [cache-aside](#cache-aside), [stale-while-revalidate](#stale-while-revalidate),
-    [stale-if-error](#stale-if-error), [negative caching](#negative-caching)
-  - Invalidation: [by tag](#invalidation-by-tag), [other ways](#other-ways-to-invalidate)
-  - Load on the source: [stampede inside a process](#cache-stampede-inside-a-process),
-    [stampede across processes](#cache-stampede-across-processes), [batch loading](#batch-loading),
-    [TTL jitter](#ttl-jitter), [near cache](#near-cache)
-  - Storage: [key prefixes](#key-prefixes), [type changes](#type-changes), [large values](#large-values)
-  - Protecting dependencies: [distributed lock](#distributed-lock), [rate limiting](#rate-limiting),
-    [circuit breaker](#circuit-breaker)
-  - Operations: [cache failure](#cache-failure), [monitoring](#monitoring),
-    [graceful shutdown](#graceful-shutdown), [known limits](#known-limits)
-- [HTTP middleware](#http-middleware)
-- [Errors](#errors)
-- [Testing your code](#testing-your-code)
+[Configuration](#configuration) - [Backends](#backends) - [Keys and TTL](#keys-and-ttl) -
+[Basic API](#basic-api) - [Direct calls](#direct-calls) - [HTTP middleware](#http-middleware) -
+[Errors](#errors) - [Testing your code](#testing-your-code)
 
 ## Configuration
 
@@ -179,6 +173,9 @@ negative one returns `ErrInvalidTTL`.
 
 A map with TTL. `GetOrLoad` and the strategies below are built on the same entries.
 
+<details>
+<summary>Every call of the basic API</summary>
+
 ```go
 c.Set(ctx, "key", v, time.Hour)          // ttl 0 = no expiry; replaces the old TTL
 c.SetIfAbsent(ctx, "key", v, time.Hour)  // (bool, error)
@@ -196,6 +193,8 @@ c.Delete(ctx, "key")
 c.Expire(ctx, "key", time.Minute)
 c.TTL(ctx, "key") // gashe.NoExpiry for no expiry
 ```
+
+</details>
 
 Patterns are Redis globs: `*`, `?`, `[abc]`, `[^a]`, `[a-z]`, `\` to escape. Values are anything
 the codec can encode; with JSON, exported fields only. `GetOrLoad` returns the value as it reads
@@ -230,6 +229,23 @@ your own code.
 
 If the cache itself fails, `GetOrLoad` serves from the loader and reports the error to `OnError`.
 
+How `GetOrLoad` answers, with the options that change each step:
+
+```mermaid
+flowchart TD
+    call["GetOrLoad"] --> fresh{"stored and fresh?"}
+    fresh -- yes --> hit["answer it: hit"]
+    fresh -- stale, within StaleWhileRevalidate --> swr["answer it, reload in the background"]
+    fresh -- stale --> load["run the loader"]
+    fresh -- missing --> lock{"LockOnMiss?"}
+    lock -- yes --> one["one process loads, the others wait for it"] --> load
+    lock -- no --> load
+    load -- ok --> store["store it and answer"]
+    load -- "error, or slower than StaleIfSlow" --> old{"stale entry within StaleIfError?"}
+    old -- yes --> stale["answer the stale entry"]
+    old -- no --> fail["return the error"]
+```
+
 ### Caching
 
 #### Cache-aside
@@ -258,9 +274,14 @@ gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"} // stores "users:v2:42"
 Stored as one string under `user:42` for an hour: `at` is when the result stops being fresh,
 `v` is the result, `t` is the shape of `User` (see [type changes](#type-changes)).
 
+<details>
+<summary>The stored value</summary>
+
 ```
 {"at":"2026-11-02T21:42:44.923656871+03:00","v":{"ID":42,"Name":"Ann","Email":"ann@example.com"},"t":12739442919671864151}
 ```
+
+</details>
 
 #### Stale-while-revalidate
 
@@ -331,9 +352,14 @@ var cachedUsers = gashe.Policy[User]{
 
 Stored under `user:999` for `Negative.TTL`, as an entry with `"neg":true`:
 
+<details>
+<summary>The stored value</summary>
+
 ```
 {"at":"2026-11-02T20:43:14.923731132+03:00","v":{"ID":0,"Name":"","Email":""},"neg":true,"t":12739442919671864151}
 ```
+
+</details>
 
 > [!WARNING]
 > Data created after a negative answer stays "not found" until `Negative.TTL` ends. Keep it short,
@@ -356,9 +382,14 @@ err = c.InvalidateTags(ctx, "user:42") // after the write, not before
 
 An entry stores the generations of its tags in `g`, in the order of `Tags`:
 
+<details>
+<summary>The stored value</summary>
+
 ```
 {"at":"2026-11-02T21:42:44.923741491+03:00","v":[{"ID":7}],"g":[2979883199008293202,1244849662261960931],"t":7073818895893918877}
 ```
+
+</details>
 
 A tag is a counter under `gashe:tag:<tag>` that starts at a random number on first use and never
 expires: `InvalidateTags(ctx, "user:42")` raises `gashe:tag:user:42` from `2979883199008293202` to
@@ -696,6 +727,9 @@ from `max-age`.
 
 Check them with `errors.Is`.
 
+<details>
+<summary>Every error</summary>
+
 | Error | When |
 |---|---|
 | `ErrNotFound` | `Get`, `TTL`, `Value.Decode` on a miss |
@@ -704,7 +738,9 @@ Check them with `errors.Is`.
 | `ErrWrongType` | `Incr` on a value that is not an integer |
 | `ErrLockLost` | `Lease.Extend` of a lock that expired |
 | `ErrRateLimited` | `RateLimit` refuses a call |
-| `ErrCircuitOpen` | `CircuitBreaker` refuses a call |
+| `ErrCircuitOpen` | `CircuitBreaker` or a `WithBreaker` backend refuses a call |
+
+</details>
 
 Loader errors are returned unchanged. `GetOrLoad` and `RateLimit` never return backend errors:
 they work around them and send them to `OnError`. `Lock`, `TryLock`, `Extend` and
@@ -739,4 +775,6 @@ func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, er
 - [Changelog](CHANGELOG.md) of every release.
 - [Glossary](GLOSSARY.md) of the terms used here, and [Contributing](CONTRIBUTING.md).
 
-Under the [MIT license](LICENSE).
+Under the [MIT license](LICENSE). The gopher in the logo is based on the Go gopher by
+[Renee French](https://reneefrench.blogspot.com/), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and was redrawn for gashe.

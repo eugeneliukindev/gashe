@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <rect width="1280" height="640" fill="#f3fbfd"/>
+  <rect x="0" y="600" width="1280" height="40" fill="#74d0e4"/>
+  <g transform="translate(70 70) scale(0.98)">
+<defs>
+    <style>
+      .ink { stroke: #1d2b33; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
+      .body { fill: #74d0e4; }
+      .shade { fill: #5fbcd2; }
+      .skin { fill: #f5d6a8; }
+    </style>
+  </defs>
+  <!-- feet -->
+  <ellipse class="skin ink" cx="196" cy="468" rx="40" ry="20"/>
+  <ellipse class="skin ink" cx="316" cy="468" rx="40" ry="20"/>
+  <!-- ears -->
+  <circle class="body ink" cx="150" cy="118" r="30"/>
+  <circle class="body ink" cx="362" cy="118" r="30"/>
+  <circle class="shade" cx="150" cy="118" r="14"/>
+  <circle class="shade" cx="362" cy="118" r="14"/>
+  <!-- body -->
+  <path class="body ink" d="M256 70 C 360 70 412 140 412 250 L 412 380 C 412 445 350 470 256 470 C 162 470 100 445 100 380 L 100 250 C 100 140 152 70 256 70 Z"/>
+  <!-- belly -->
+  <ellipse cx="256" cy="400" rx="88" ry="58" fill="#a9e3ef"/>
+  <!-- puffed cheeks, full of cached data -->
+  <circle class="body ink" cx="146" cy="284" r="70"/>
+  <circle class="body ink" cx="366" cy="284" r="70"/>
+  <path d="M104 262 C 112 236 138 226 160 232" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <path d="M408 262 C 400 236 374 226 352 232" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <ellipse cx="140" cy="306" rx="26" ry="14" fill="#f39aa6" opacity="0.75"/>
+  <ellipse cx="372" cy="306" rx="26" ry="14" fill="#f39aa6" opacity="0.75"/>
+  <!-- eyes -->
+  <circle class="ink" cx="196" cy="182" r="54" fill="#ffffff"/>
+  <circle class="ink" cx="316" cy="182" r="54" fill="#ffffff"/>
+  <circle cx="212" cy="172" r="23" fill="#1d2b33"/>
+  <circle cx="332" cy="172" r="23" fill="#1d2b33"/>
+  <circle cx="220" cy="163" r="8" fill="#ffffff"/>
+  <circle cx="340" cy="163" r="8" fill="#ffffff"/>
+  <!-- snout, nose, teeth -->
+  <ellipse class="skin ink" cx="256" cy="262" rx="50" ry="36"/>
+  <ellipse cx="256" cy="246" rx="19" ry="13" fill="#3b2a26"/>
+  <path class="ink" d="M240 290 L 240 316 L 272 316 L 272 290" fill="#ffffff"/>
+  <line class="ink" x1="256" y1="292" x2="256" y2="316" stroke-width="4"/>
+  <!-- paws holding one more key: a nut -->
+  <ellipse class="skin ink" cx="214" cy="372" rx="26" ry="20"/>
+  <ellipse class="skin ink" cx="298" cy="372" rx="26" ry="20"/>
+  <path class="ink" d="M226 360 C 226 410 286 410 286 360 Z" fill="#c98a4b"/>
+  <path class="ink" d="M220 362 C 224 336 288 336 292 362 Z" fill="#7a4e2b"/>
+  <line class="ink" x1="256" y1="342" x2="258" y2="328" stroke-width="6"/>
+  </g>
+  <text x="640" y="300" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="150" fill="#1d2b33">gashe</text>
+  <text x="646" y="378" font-family="DejaVu Sans, sans-serif" font-size="38" fill="#3c5560">Caching for Go services</text>
+  <text x="646" y="428" font-family="DejaVu Sans, sans-serif" font-size="38" fill="#3c5560">that run as many processes</text>
+  <text x="646" y="510" font-family="DejaVu Sans Mono, monospace" font-size="28" fill="#1d6f86">github.com/eugeneliukindev/gashe</text>
+</svg>
