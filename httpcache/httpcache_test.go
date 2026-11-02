@@ -71,8 +71,9 @@ func TestMissThenHit(t *testing.T) {
 	if p.runs.Load() != 1 {
 		t.Fatalf("handler ran %d times, want 1", p.runs.Load())
 	}
-	if first.Header().Get("X-Cache") != "miss" || second.Header().Get("X-Cache") != "hit" {
-		t.Fatalf("X-Cache = %q, %q", first.Header().Get("X-Cache"), second.Header().Get("X-Cache"))
+	if first.Header().Get("Cache-Status") != "gashe; fwd=uri-miss; stored" ||
+		second.Header().Get("Cache-Status") != "gashe; hit" {
+		t.Fatalf("Cache-Status = %q, %q", first.Header().Get("Cache-Status"), second.Header().Get("Cache-Status"))
 	}
 	if second.Body.String() != "catalog" || second.Code != http.StatusOK || second.Header().Get("Age") == "" {
 		t.Fatalf("hit: %d %q, Age %q", second.Code, second.Body.String(), second.Header().Get("Age"))
@@ -260,8 +261,8 @@ func TestHead(t *testing.T) {
 	if w := get(h, http.MethodGet, "/"); w.Body.String() != "catalog" || p.runs.Load() != 1 {
 		t.Fatalf("GET after HEAD: %q after %d runs; HEAD must store the GET response", w.Body.String(), p.runs.Load())
 	}
-	if w := get(h, http.MethodHead, "/"); w.Body.Len() != 0 || w.Header().Get("X-Cache") != "hit" {
-		t.Fatalf("HEAD hit: %d bytes, X-Cache %q", w.Body.Len(), w.Header().Get("X-Cache"))
+	if w := get(h, http.MethodHead, "/"); w.Body.Len() != 0 || w.Header().Get("Cache-Status") != "gashe; hit" {
+		t.Fatalf("HEAD hit: %d bytes, Cache-Status %q", w.Body.Len(), w.Header().Get("Cache-Status"))
 	}
 }
 
@@ -273,5 +274,32 @@ func TestStaleIfErrorDoesNotHideAnswersThatAreNotStored(t *testing.T) {
 	p.status.Store(http.StatusNotFound) // the product was deleted: a real answer, not a failure
 	if w := get(h, http.MethodGet, "/p/1"); w.Code != http.StatusNotFound {
 		t.Fatalf("got %d; a 404 must reach the client, not the stored 200", w.Code)
+	}
+}
+
+func TestCacheStatusSaysWhyTheHandlerRan(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		header []string
+		cookie bool
+		want   string
+	}{
+		{"not stored", http.MethodGet, nil, true, "gashe; fwd=uri-miss"},
+		{"method", http.MethodPost, nil, false, "gashe; fwd=method"},
+		{"Range", http.MethodGet, []string{"Range", "bytes=0-1"}, false, "gashe; fwd=request"},
+		{"Authorization", http.MethodGet, []string{"Authorization", "Bearer t"}, false, "gashe; fwd=request"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &page{body: "x"}
+			if tc.cookie {
+				p.header = func(h http.Header) { h.Set("Set-Cookie", "s=1") }
+			}
+			h := serve(t, newCache(t), &httpcache.Options{}, p)
+			if got := get(h, tc.method, "/", tc.header...).Header().Get("Cache-Status"); got != tc.want {
+				t.Fatalf("Cache-Status = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

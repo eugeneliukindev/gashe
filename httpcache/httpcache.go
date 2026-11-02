@@ -36,15 +36,23 @@ const (
 	headerRange         = "Range"
 	headerSetCookie     = "Set-Cookie"
 	headerVary          = "Vary"
-	headerXCache        = "X-Cache"
+	headerCacheStatus   = "Cache-Status"
 )
 
-// source is where a sent response came from; it is the value of X-Cache.
-type source string
+// cacheStatus is the Cache-Status header of RFC 9211: how this cache handled the request.
+type cacheStatus string
 
 const (
-	fromCache   source = "hit"
-	fromHandler source = "miss"
+	// statusHit is a response from the cache.
+	statusHit cacheStatus = "gashe; hit"
+	// statusStored is a response the handler rendered for this request and the cache stored.
+	statusStored cacheStatus = "gashe; fwd=uri-miss; stored"
+	// statusMiss is a response the handler rendered for this request that was not stored.
+	statusMiss cacheStatus = "gashe; fwd=uri-miss"
+	// statusMethod is a request whose method is not cached.
+	statusMethod cacheStatus = "gashe; fwd=method"
+	// statusRequest is a request whose headers keep it out of the cache: Range, Authorization.
+	statusRequest cacheStatus = "gashe; fwd=request"
 )
 
 var (
@@ -87,7 +95,7 @@ type Options struct {
 //
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
-// hit, and X-Cache: hit or miss; a matching If-None-Match gets 304.
+// hit, and Cache-Status (RFC 9211); a matching If-None-Match gets 304.
 //
 //nolint:gocritic // options by value, like gashe.New
 func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
@@ -125,7 +133,8 @@ type middleware struct {
 }
 
 func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Handler) {
-	if !m.cacheable(r) {
+	if status, ok := m.bypass(r); ok {
+		w.Header().Set(headerCacheStatus, string(status))
 		next.ServeHTTP(w, r)
 		return
 	}
@@ -147,36 +156,38 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 	mine := own.Load()
 	switch {
 	case err == nil:
-		write(w, r, &resp, sourceOf(&resp, mine))
+		write(w, r, &resp, statusOf(&resp, mine))
 	case mine != nil:
-		write(w, r, mine, fromHandler)
+		write(w, r, mine, statusMiss)
 	case r.Context().Err() != nil:
 		// The client is gone.
 	default:
 		// The load was shared with another request whose response cannot be shared, or the cache
 		// failed in a way GetOrLoad does not work around: render for this request alone.
+		w.Header().Set(headerCacheStatus, string(statusMiss))
 		next.ServeHTTP(w, r)
 	}
 }
 
-// sourceOf reports whether resp is the one this request rendered, mine, or one from the cache.
-func sourceOf(resp, mine *Response) source {
+// statusOf tells a stored resp this request rendered, mine, from one it found in the cache.
+func statusOf(resp, mine *Response) cacheStatus {
 	if mine != nil && mine.Stored.Equal(resp.Stored) {
-		return fromHandler
+		return statusStored
 	}
-	return fromCache
+	return statusHit
 }
 
-func (m *middleware) cacheable(r *http.Request) bool {
+// bypass reports whether r must go straight to the handler, and why.
+func (m *middleware) bypass(r *http.Request) (cacheStatus, bool) {
 	switch {
 	case r.Method != http.MethodGet && r.Method != http.MethodHead:
-		return false
+		return statusMethod, true
 	case r.Header.Get(headerRange) != "":
-		return false
+		return statusRequest, true
 	case m.key == nil && r.Header.Get(headerAuthorization) != "":
-		return false
+		return statusRequest, true
 	}
-	return true
+	return "", false
 }
 
 func (m *middleware) requestKey(r *http.Request) string {
@@ -221,13 +232,13 @@ func (m *middleware) storable(resp *Response, h http.Header) bool {
 	return resp.Status == http.StatusOK
 }
 
-// write sends resp, which came from src.
-func write(w http.ResponseWriter, r *http.Request, resp *Response, src source) {
+// write sends resp with its Cache-Status.
+func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheStatus) {
 	h := w.Header()
 	maps.Copy(h, resp.Header)
 	h.Set(headerETag, resp.ETag)
-	h.Set(headerXCache, string(src))
-	if src == fromCache {
+	h.Set(headerCacheStatus, string(status))
+	if status == statusHit {
 		h.Set(headerAge, strconv.Itoa(int(time.Since(resp.Stored).Seconds())))
 	}
 	if resp.Status == http.StatusOK && etagMatches(r.Header.Get(headerIfNoneMatch), resp.ETag) {
