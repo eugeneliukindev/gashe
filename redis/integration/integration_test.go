@@ -14,6 +14,8 @@ import (
 
 	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backendtest"
+	"github.com/eugeneliukindev/gashe/memory"
+	"github.com/eugeneliukindev/gashe/nearcache"
 	gasheredis "github.com/eugeneliukindev/gashe/redis"
 )
 
@@ -67,22 +69,52 @@ func TestContract(t *testing.T) {
 	})
 }
 
+func TestWrappersOverRedis(t *testing.T) {
+	client := newClient(t)
+	fresh := func(t *testing.T) gashe.Backend {
+		t.Helper()
+		if err := client.FlushDB(context.Background()).Err(); err != nil {
+			t.Fatal(err)
+		}
+		return gasheredis.New(client)
+	}
+	t.Run("WithPrefix", func(t *testing.T) {
+		backendtest.Run(t, func(t *testing.T) gashe.Backend {
+			t.Helper()
+			return gashe.WithPrefix(fresh(t), "svc:")
+		})
+	})
+	t.Run("NearCache", func(t *testing.T) {
+		backendtest.Run(t, func(t *testing.T) gashe.Backend {
+			t.Helper()
+			local := memory.New(memory.Options{PurgeInterval: -1})
+			t.Cleanup(func() { _ = local.Close() })
+			return nearcache.New(local, fresh(t), nearcache.Options{})
+		})
+	})
+}
+
 func TestGetOrLoadOverRedis(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	users := gashe.CacheOptions[string]{
-		TTL:            time.Hour,
-		RefreshWindow:  time.Hour,
-		FallbackWindow: time.Hour,
-		LockOnMiss:     time.Second,
-		MaxReads:       2,
+	users := gashe.Policy[string]{
+		TTL:                  time.Hour,
+		StaleWhileRevalidate: time.Hour,
+		StaleIfError:         time.Hour,
+		LockOnMiss:           time.Second,
+		Tags:                 []string{"users"},
 	}
 	calls := 0
 	load := func(context.Context) (string, error) {
 		calls++
 		return "Ann", nil
 	}
-	for i, wantCalls := range []int{1, 1, 1, 2} { // a load, two reads, then MaxReads reloads
+	for i, wantCalls := range []int{1, 1, 2} { // a load, a hit, then a reload after InvalidateTags
+		if i == 2 {
+			if err := c.InvalidateTags(ctx, "users"); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if got, err := gashe.GetOrLoad(ctx, c, "user:1", users, load); err != nil || got != "Ann" {
 			t.Fatalf("call %d: %q, %v", i+1, got, err)
 		}
@@ -96,18 +128,21 @@ func TestLocksAndLimitsOverRedis(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 
-	unlock, ok, lockErr := c.TryLock(ctx, "job", time.Minute)
+	lease, ok, lockErr := c.TryLock(ctx, "job", time.Minute)
 	if lockErr != nil || !ok {
 		t.Fatalf("TryLock = %v, %v", ok, lockErr)
 	}
 	if _, ok, _ := c.TryLock(ctx, "job", time.Minute); ok {
 		t.Fatal("a held lock was taken twice")
 	}
-	if err := unlock(ctx); err != nil {
+	if err := lease.Extend(ctx, time.Hour); err != nil {
+		t.Fatalf("Extend: %v", err)
+	}
+	if err := lease.Unlock(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, limit := range []gashe.Limit{gashe.Fixed{Calls: 2, Per: time.Minute}, gashe.PerMinute(2)} {
+	for _, limit := range []gashe.Limit{gashe.FixedWindow{Calls: 2, Per: time.Minute}, gashe.PerMinute(2)} {
 		for i := range 2 {
 			if err := c.RateLimit(ctx, "k", limit); err != nil {
 				t.Fatalf("%T call %d: %v", limit, i+1, err)
@@ -118,13 +153,13 @@ func TestLocksAndLimitsOverRedis(t *testing.T) {
 		}
 	}
 
-	db := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, TrialCalls: 1}
-	done, err := c.CircuitBreaker(ctx, "db", db)
+	db := gashe.BreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
+	done, err := c.CircuitBreaker("db", db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	done(errors.New("boom"))
-	if _, err := c.CircuitBreaker(ctx, "db", db); !errors.Is(err, gashe.ErrCircuitOpen) {
+	if _, err := c.CircuitBreaker("db", db); !errors.Is(err, gashe.ErrCircuitOpen) {
 		t.Fatalf("after a failure: %v, want ErrCircuitOpen", err)
 	}
 }
