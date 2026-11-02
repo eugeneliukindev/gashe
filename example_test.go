@@ -22,14 +22,14 @@ func ExampleGetOrLoad() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	users := gashe.Policy[User]{TTL: time.Hour}
+	cachedUsers := gashe.Policy[User]{TTL: time.Hour}
 	load := func(context.Context) (User, error) {
 		fmt.Println("loading user 42")
 		return User{ID: 42, Name: "Ann"}, nil
 	}
 
 	for range 2 {
-		u, err := gashe.GetOrLoad(ctx, c, "user:42", users, load)
+		u, err := gashe.GetOrLoad(ctx, c, "user:42", cachedUsers, load)
 		fmt.Println(u.Name, err)
 	}
 	// Output:

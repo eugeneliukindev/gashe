@@ -42,7 +42,7 @@ type User struct {
 var errNoUser = errors.New("user not found")
 
 // A Policy says how one kind of data is cached. Define it once, next to the code that loads it.
-var users = gashe.Policy[User]{
+var cachedUsers = gashe.Policy[User]{
 	Prefix:               "user:",          // stored under "user:<id>"
 	TTL:                  10 * time.Minute, // fresh for 10 minutes
 	Jitter:               0.1,              // spread expiry by up to 10%, so users do not expire together
@@ -58,7 +58,7 @@ var users = gashe.Policy[User]{
 }
 
 // GetOrLoadMany takes the plain options only.
-var userList = gashe.Policy[User]{Prefix: "user:", TTL: 10 * time.Minute, Tags: []string{"users"}}
+var cachedUserList = gashe.Policy[User]{Prefix: "user:", TTL: 10 * time.Minute, Tags: []string{"users"}}
 
 func main() {
 	ctx := context.Background()
@@ -76,20 +76,20 @@ func main() {
 	defer c.Shutdown(ctx) // let background reloads finish before the backend closes
 
 	// One value: from the cache, or from the loader, which is then stored.
-	u, err := gashe.GetOrLoad(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+	u, err := gashe.GetOrLoad(ctx, c, "42", cachedUsers, func(ctx context.Context) (User, error) {
 		return db.User(ctx, "42")
 	})
 	fmt.Println(u, err)
 
 	// Many values: one cache read, then one loader call for the missing ones.
-	list, err := gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, userList,
+	list, err := gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, cachedUserList,
 		func(ctx context.Context, missing []string) (map[string]User, error) {
 			return db.Users(ctx, missing)
 		})
 	fmt.Println(list, err)
 
 	// After a write: reload one user, or drop every user at once.
-	if _, err := gashe.Reload(ctx, c, "42", users, func(ctx context.Context) (User, error) {
+	if _, err := gashe.Reload(ctx, c, "42", cachedUsers, func(ctx context.Context) (User, error) {
 		return db.User(ctx, "42")
 	}); err != nil {
 		fmt.Println(err)
@@ -225,8 +225,8 @@ The key that reaches the backend has up to three parts:
 
 ```go
 c := gashe.New(gashe.WithPrefix(gasheredis.New(client), "orders:prod:"), gashe.Options{}) // per service
-users := gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"}                         // per kind
-gashe.GetOrLoad(ctx, c, "42", users, load) // stored as "orders:prod:users:v2:42"
+cachedUsers := gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"}                    // per kind
+gashe.GetOrLoad(ctx, c, "42", cachedUsers, load) // stored as "orders:prod:users:v2:42"
 ```
 
 Prefixes are used as is, separator included. The library keeps its own keys under `gashe:tag:`,
@@ -270,8 +270,8 @@ back from the cache, so a field that is lost shows up on the first call, not onl
 
 Each section names a problem caches run into and the option that solves it. Most are fields of one
 `gashe.Policy[V]` and can be combined. Over `memory` everything stays inside one process; over Redis
-it is shared by every process that uses that Redis, unless a section says otherwise. "In Redis"
-shows what the example stores, as `redis-cli` prints it. `loadUser`, `s.repo` and the like stand for
+it is shared by every process that uses that Redis, unless a section says otherwise. Most
+sections end with what the example stores in Redis. `loadUser`, `s.repo` and the like stand for
 your own code.
 
 | Problem | Solution |
@@ -301,9 +301,9 @@ fresh; otherwise it calls your loader, stores the result for `TTL` and returns i
 is returned as is and never stored.
 
 ```go
-var users = gashe.Policy[User]{TTL: time.Hour}
+var cachedUsers = gashe.Policy[User]{TTL: time.Hour}
 
-u, err := gashe.GetOrLoad(ctx, c, "user:42", users, func(ctx context.Context) (User, error) {
+u, err := gashe.GetOrLoad(ctx, c, "user:42", cachedUsers, func(ctx context.Context) (User, error) {
 	return loadUser(ctx, 42) // runs only when the cache cannot answer
 })
 ```
@@ -317,13 +317,11 @@ gashe.Policy[Token]{TTLFunc: func(t Token) time.Duration { return time.Until(t.E
 gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"} // stores "users:v2:42"; change it when User changes
 ```
 
-In Redis, one string per key: `at` is when the result stops being fresh, `v` is the result.
+Stored as one string under `user:42` for an hour: `at` is when the result stops being fresh,
+`v` is the result.
 
-```console
-$ redis-cli GET user:42
-"{\"at\":\"2026-11-02T16:21:48.62510671+03:00\",\"v\":{\"ID\":42,\"Name\":\"Ann\",\"Email\":\"ann@example.com\"}}"
-$ redis-cli TTL user:42
-(integer) 3600
+```
+{"at":"2026-11-02T16:21:48.62510671+03:00","v":{"ID":42,"Name":"Ann","Email":"ann@example.com"}}
 ```
 
 #### Stale-while-revalidate
@@ -333,18 +331,12 @@ A popular key expires, and every request waits for the slow loader. With `StaleW
 reloads it in the background; with Redis, one caller across all processes.
 
 ```go
-var feeds = gashe.Policy[[]Item]{TTL: 5 * time.Minute, StaleWhileRevalidate: 30 * time.Minute}
+var cachedFeeds = gashe.Policy[[]Item]{TTL: 5 * time.Minute, StaleWhileRevalidate: 30 * time.Minute}
 ```
 
-In Redis, the entry lives `TTL + StaleWhileRevalidate`; during a reload the refresh lock holds the
-id of the process that reloads, for at most a minute.
-
-```console
-$ redis-cli TTL feed:u1
-(integer) 2100
-$ redis-cli GET feed:u1:refresh
-"f4fefbc6731d4abccff956cae8ca012f"
-```
+Stored like a cache-aside entry, but for `TTL + StaleWhileRevalidate` (35 minutes). While one
+process reloads it, `feed:u1:refresh` holds the random id of that process, such as
+`f4fefbc6731d4abccff956cae8ca012f`, for at most a minute.
 
 > [!CAUTION]
 > The background reload runs after the request has ended: its `ctx` keeps the values of the
@@ -358,19 +350,14 @@ The database or an API is down, and expired entries leave nothing to answer with
 error goes to `OnError`. `StaleIf` picks which errors count.
 
 ```go
-var rates = gashe.Policy[Rates]{
+var cachedRates = gashe.Policy[Rates]{
 	TTL:          time.Minute,
 	StaleIfError: 6 * time.Hour,
 	StaleIf:      func(err error) bool { return errors.Is(err, ErrAPIDown) }, // nil = any error
 }
 ```
 
-In Redis, the entry is fresh for a minute but kept `TTL + StaleIfError`:
-
-```console
-$ redis-cli TTL rates:usd
-(integer) 21660
-```
+Stored for `TTL + StaleIfError` (6 hours and a minute), though fresh only for the minute in `at`.
 
 > [!WARNING]
 > An answer can be up to `TTL + StaleIfError` old. Do not use it where a stale answer is wrong
@@ -383,7 +370,7 @@ reach the database. `Negative` caches "not found" for a short while and returns 
 while it is cached.
 
 ```go
-var users = gashe.Policy[User]{
+var cachedUsers = gashe.Policy[User]{
 	TTL: time.Hour,
 	Negative: gashe.Negative{
 		If:  func(err error) bool { return errors.Is(err, sql.ErrNoRows) }, // which errors mean "no such data"
@@ -393,11 +380,10 @@ var users = gashe.Policy[User]{
 }
 ```
 
-In Redis, an ordinary entry with `"neg":true`:
+Stored under `user:999` for `Negative.TTL`, as an entry with `"neg":true`:
 
-```console
-$ redis-cli GET user:999
-"{\"at\":\"2026-11-02T15:22:19.930721677+03:00\",\"v\":{\"ID\":0,\"Name\":\"\",\"Email\":\"\"},\"neg\":true}"
+```
+{"at":"2026-11-02T15:22:19.930721677+03:00","v":{"ID":0,"Name":"","Email":""},"neg":true}
 ```
 
 > [!WARNING]
@@ -438,22 +424,22 @@ One change makes many entries stale, and deleting them by pattern scans the whol
 entries `Tags`; `InvalidateTags` makes every entry with the tag a miss with one write per tag.
 
 ```go
-profile := gashe.Policy[Profile]{TTL: time.Hour, Tags: []string{"user:42"}}
-orders := gashe.Policy[[]Order]{TTL: time.Hour, Tags: []string{"user:42", "orders"}}
+cachedProfiles := gashe.Policy[Profile]{TTL: time.Hour, Tags: []string{"user:42"}}
+cachedOrders := gashe.Policy[[]Order]{TTL: time.Hour, Tags: []string{"user:42", "orders"}}
 
 _, err = db.ExecContext(ctx, "UPDATE users SET name = $1 WHERE id = 42", name)
 err = c.InvalidateTags(ctx, "user:42") // after the write, not before
 ```
 
-In Redis, a tag is a counter that appears on its first invalidation; `g` in an entry holds the
-counters it was stored with, so entries with an old `g` are misses and expire by TTL:
+An entry stores the generations of its tags in `g`, in the order of `Tags`:
 
-```console
-$ redis-cli GET orders:42
-"{\"at\":\"2026-11-02T16:21:50.147958692+03:00\",\"v\":[{\"ID\":7}],\"g\":[0,0]}"
-$ redis-cli GET gashe:tag:user:42
-"1"
 ```
+{"at":"2026-11-02T16:21:50.147958692+03:00","v":[{"ID":7}],"g":[0,0]}
+```
+
+A tag is a counter under `gashe:tag:<tag>`, created on its first invalidation and never expiring:
+after one `InvalidateTags(ctx, "user:42")`, `gashe:tag:user:42` holds `1`. Entries with an older `g`
+are misses and expire by their TTL.
 
 > [!NOTE]
 > Tag counters never expire: every tag name is one small key forever. Tags per user are fine;
@@ -462,7 +448,7 @@ $ redis-cli GET gashe:tag:user:42
 #### Other ways to invalidate
 
 ```go
-gashe.Reload(ctx, c, "user:42", users, loadUser) // load and store a new result now
+gashe.Reload(ctx, c, "user:42", cachedUsers, loadUser) // load and store a new result now
 c.Delete(ctx, "user:42")
 c.DeleteMatch(ctx, "user:*")                      // scans the whole backend: avoid on a large Redis
 ```
@@ -485,17 +471,11 @@ in Redis and loads; the others wait and read its result. The key loads once for 
 is the longest the lock is held, in case its holder dies.
 
 ```go
-var stats = gashe.Policy[Stats]{TTL: 10 * time.Minute, LockOnMiss: time.Minute}
+var cachedStats = gashe.Policy[Stats]{TTL: 10 * time.Minute, LockOnMiss: time.Minute}
 ```
 
-In Redis, while one pod loads:
-
-```console
-$ redis-cli GET stats:2026-11-02:load
-"64a228b2be4e789acbfa2b626f87c114"
-$ redis-cli TTL stats:2026-11-02:load
-(integer) 60
-```
+While one pod loads, `stats:2026-11-02:load` holds the random id of that pod for at most
+`LockOnMiss`; it is deleted once the result is stored.
 
 > [!WARNING]
 > Make `LockOnMiss` longer than the slowest load, or a second pod starts loading when the lock
@@ -509,9 +489,9 @@ out are not stored. It shares entries with `GetOrLoad` and supports `TTL`, `TTLF
 `Tags`, `CacheIf` and `Prefix`; the other options return `ErrInvalidOptions`.
 
 ```go
-var catalog = gashe.Policy[Product]{TTL: time.Hour, Prefix: "product:"}
+var cachedCatalog = gashe.Policy[Product]{TTL: time.Hour, Prefix: "product:"}
 
-products, err := gashe.GetOrLoadMany(ctx, c, ids, catalog,
+products, err := gashe.GetOrLoadMany(ctx, c, ids, cachedCatalog,
 	func(ctx context.Context, missing []string) (map[string]Product, error) {
 		return s.repo.ProductsByID(ctx, missing) // SELECT ... WHERE id = ANY($1)
 	})
@@ -525,17 +505,11 @@ Keys stored together (after a deploy or a warm-up) expire together, and the data
 their loads at once (cache avalanche). `Jitter` spreads every TTL randomly by up to this share.
 
 ```go
-var products = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.2} // 48 to 72 minutes
+var cachedProducts = gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.2} // 48 to 72 minutes
 ```
 
-In Redis, products stored at the same moment:
-
-```console
-$ redis-cli TTL product:1
-(integer) 3009
-$ redis-cli TTL product:2
-(integer) 4183
-```
+Products stored at the same moment get TTLs such as 3009, 4183 and 3263 seconds instead of 3600
+each.
 
 #### Near cache
 
@@ -575,10 +549,7 @@ key of a backend under a prefix; inside the service keys stay as they are.
 c := gashe.New(gashe.WithPrefix(gasheredis.New(client), "orders:staging:"), gashe.Options{})
 ```
 
-```console
-$ redis-cli --scan
-orders:staging:order:1
-```
+Every key is stored with the prefix: `order:1` becomes `orders:staging:order:1`.
 
 #### Large values
 
@@ -615,12 +586,8 @@ for more() {
 }
 ```
 
-In Redis, the random id of the holder:
-
-```console
-$ redis-cli GET job:reindex
-"621708739092f7d5ef73f2358d22a804"
-```
+Stored under `job:reindex`: the random id of the holder, such as
+`621708739092f7d5ef73f2358d22a804`, for the lock TTL.
 
 > [!CAUTION]
 > Locks are advisory: a holder paused longer than the TTL (GC, a frozen VM) can overlap with the
@@ -640,15 +607,9 @@ if errors.Is(err, gashe.ErrRateLimited) {
 }
 ```
 
-In Redis, a sliding window keeps a counter per span of `Per`; a fixed window is one counter, whose
-TTL the first call over the limit sets to `BanFor`:
-
-```console
-$ redis-cli GET srl:api-key:k1:29893701
-"3"
-$ redis-cli TTL rate_limit:login:1.2.3.4
-(integer) 900
-```
+A sliding window stores a plain counter per span of `Per`, such as `3` under
+`srl:api-key:k1:29893701`, each for twice `Per`. A fixed window is one counter under
+`rate_limit:login:1.2.3.4`; the first call over the limit sets its TTL to `BanFor`.
 
 `SlidingWindow` is an estimate and can let slightly more through under bursts; `FixedWindow` can
 let up to twice `Calls` through around the border of two windows.
