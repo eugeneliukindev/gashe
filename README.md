@@ -41,6 +41,7 @@ processes that share one Redis.
 
 ## Table of Contents
 
+- [API reference](REFERENCE.md), a separate file
 - [Configuration](#configuration)
 - [Available Backends](#available-backends)
 - [Across processes](#across-processes)
@@ -190,7 +191,8 @@ func main() {
 | `c.Get`, `c.Set`, ... | the basic API, like a map with TTL | anywhere |
 | `c.Shutdown` | waits for background reloads | at the end of `main` |
 
-Every option is explained in [Configuration](#configuration) and [Strategies](#strategies).
+Every option is explained in [Configuration](#configuration) and [Strategies](#strategies). What every
+function, method and field takes and returns is in the [API reference](REFERENCE.md).
 
 ## Configuration
 
@@ -1305,4 +1307,5 @@ GOENV_VERSION=1.23.12 GOTOOLCHAIN=local go test -race ./...  # the oldest suppor
 `backend/redis/go.mod`, `backend/redis/integration/go.mod` and `codec/msgpack/go.mod` replace the
 gashe modules with local copies; remove the `replace` lines and require tagged versions before publishing them.
 
-Domain terms are defined in `GLOSSARY.md`.
+Domain terms are defined in `GLOSSARY.md`. `REFERENCE.md` and `REFERENCE.ru.md` list the public API;
+a test fails when an exported name is missing from them.
