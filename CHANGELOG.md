@@ -3,10 +3,42 @@
 Notable changes of every release, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/): while the version is `0.x`, a minor release may change
-the API. The root module and `backend/redis` and `codec/msgpack` are released with their own tags
-(`v0.2.0`, `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`); a section names the module it is about.
+the API. The root module, `backend/redis`, `codec/msgpack` and `compress/zstd` are released with
+their own tags (`v0.4.0`, `backend/redis/v0.3.0`, `compress/zstd/v0.1.0`); a section names the
+module it is about.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-03
+
+Released as `v0.4.0` and `compress/zstd/v0.1.0`, the first version of that module.
+`backend/redis` and `codec/msgpack` have no changes and stay at `v0.3.0`.
+
+### Added
+
+- `benchmarks/`: benchmarks of every codec and compressor, run with `just bench`; the README has the
+  results and the recommended choice.
+- `Options.Compressor` and the `Compressor` interface: compression is set apart from the format of
+  `Options.Codec` and works with any codec.
+- `compress/zstd` (module): a `Compressor` based on Zstandard; it stores about what gzip does and is
+  faster.
+- `compress/gzip`: a `Compressor` based on gzip, in the root module; it reuses its writers, so a
+  small value costs a fraction of what `Gzip` did.
+- `For` and `Cached[V]`: a `Policy` bound to a `Cache` and checked once, with `GetOrLoad`,
+  `GetOrLoadMany` and `Reload`, `Set` that stores a value you already have as a load would, and
+  `Delete` that applies `Policy.Prefix`.
+- `Cache.WithLock`: runs a function under a lock and extends the lock while it runs; a lost lock
+  cancels the function's `ctx`.
+- `Guard`: runs one call through `CircuitBreaker` and reports its result.
+- `RateLimitError` with `RetryAfter`: over the limit `RateLimit` returns a `*RateLimitError`, still
+  `ErrRateLimited` for `errors.Is`, that says how long until a call passes again, for a
+  `Retry-After` header.
+
+### Changed
+
+- `Gzip` is removed: `Codec: gashe.Gzip{Inner: c}` becomes `Codec: c, Compressor: gzip.New()`.
+- `Raw` moves to `codec/raw`: `gashe.Raw{}` becomes `raw.Codec{}`. The core keeps the interfaces and
+  the defaults, `JSON` and no compression; the alternatives are packages.
 
 ## [0.3.0] - 2026-11-03
 
@@ -21,6 +53,7 @@ root, `backend/redis/v0.1.0` and `backend/redis/v0.2.0`, and `codec/msgpack/v0.1
   strategy to its example.
 
 ### Changed
+
 
 - The keys the cache keeps for itself start with `_` and live under `Options.Prefix`: `_tag:`,
   `_load:`, `_refresh:`, `_rate:sliding:`, `_rate:fixed:`. `Options.Namespace` is removed; keys of
@@ -111,7 +144,8 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.2.0
 [0.1.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.1.0
