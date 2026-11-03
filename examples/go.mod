@@ -5,7 +5,7 @@ module github.com/eugeneliukindev/gashe/examples
 go 1.23
 
 require (
-	github.com/eugeneliukindev/gashe v0.2.0
+	github.com/eugeneliukindev/gashe v0.3.0
 	github.com/eugeneliukindev/gashe/backend/redis v0.2.0
 	github.com/redis/go-redis/v9 v9.0.0
 )

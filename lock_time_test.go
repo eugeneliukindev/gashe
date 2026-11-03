@@ -101,3 +101,38 @@ func TestLockPollInterval(t *testing.T) {
 		}
 	})
 }
+
+func TestWithLockExtendsWhileFnRuns(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		err := c.WithLock(ctx, "job", time.Minute, func(ctx context.Context) error {
+			time.Sleep(3 * time.Minute) // three times the ttl
+			if _, ok, _ := c.TryLock(ctx, "job", time.Minute); ok {
+				t.Error("the lock expired while fn ran")
+			}
+			return ctx.Err()
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if locked, _ := c.IsLocked(ctx, "job"); locked {
+			t.Fatal("WithLock did not release the lock")
+		}
+	})
+}
+
+func TestWithLockCancelsFnWhenTheLockIsLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		err := c.WithLock(ctx, "job", time.Minute, func(ctx context.Context) error {
+			_, _ = c.Delete(ctx, "job") // the lock expires or is taken away
+			<-ctx.Done()
+			return nil
+		})
+		if !errors.Is(err, gashe.ErrLockLost) {
+			t.Fatalf("err = %v, want ErrLockLost", err)
+		}
+	})
+}

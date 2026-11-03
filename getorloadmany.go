@@ -31,6 +31,18 @@ func GetOrLoadMany[V any](
 	if err != nil {
 		return nil, err
 	}
+	return getOrLoadMany(ctx, c, keys, o, ttl, load)
+}
+
+// getOrLoadMany is GetOrLoadMany with o checked; ttl is what Policy.check returned.
+func getOrLoadMany[V any](
+	ctx context.Context,
+	c *Cache,
+	keys []string,
+	o Policy[V],
+	ttl func(V) time.Duration,
+	load func(ctx context.Context, missing []string) (map[string]V, error),
+) (map[string]V, error) {
 	if o.keep() > 0 || o.LockOnMiss > 0 || o.Negative.If != nil {
 		return nil, fmt.Errorf("%w: GetOrLoadMany does not support StaleWhileRevalidate, StaleIfError, "+
 			"LockOnMiss or Negative", ErrInvalidOptions)

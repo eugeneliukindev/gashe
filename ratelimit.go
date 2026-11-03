@@ -45,8 +45,22 @@ type FixedWindow struct {
 	BanFor time.Duration
 }
 
-// RateLimit counts a call for key and returns ErrRateLimited once the key is over limit, across
-// every process that uses the same backend. Call it before the work it guards. If the backend
+// RateLimitError is what RateLimit returns over the limit; errors.Is(err, ErrRateLimited) holds.
+type RateLimitError struct {
+	// RetryAfter is how long until a call would pass again if no other calls come, for a
+	// Retry-After header.
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string {
+	return "gashe: rate limited, retry after " + e.RetryAfter.String()
+}
+
+// Is reports whether target is ErrRateLimited.
+func (e *RateLimitError) Is(target error) bool { return target == ErrRateLimited }
+
+// RateLimit counts a call for key and returns a *RateLimitError, which is ErrRateLimited, once the
+// key is over limit, across every process that uses the same backend. Call it before the work it guards. If the backend
 // fails, it reports the error to Options.OnError and lets the call through.
 func (c *Cache) RateLimit(ctx context.Context, key string, limit Limit) error {
 	return limit.allow(ctx, c, key)
@@ -76,7 +90,23 @@ func (l SlidingWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if _, err := c.backend.IncrBy(ctx, current, -1, 0); err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: rate limit %q: %w", key, err))
 	}
-	return ErrRateLimited
+	return &RateLimitError{RetryAfter: l.retryAfter(last, n-1, now)}
+}
+
+// retryAfter returns how long until a call passes, given the calls of the last and the current
+// window and no calls to come: until the last window weighs little enough, after the current one
+// ends if it is full by itself.
+func (l SlidingWindow) retryAfter(last, current int64, now time.Time) time.Duration {
+	per := float64(l.Per)
+	elapsed := float64(now.UnixNano() % int64(l.Per))
+	room := float64(l.Calls) - 1 // what the weighted calls may sum to before this one
+	if float64(current) > room {
+		// The current window becomes the last one; wait until it weighs room at most.
+		return time.Duration(per - elapsed + max(0, per*(1-room/float64(current))))
+	}
+	// share is how much of the last window may still overlap.
+	share := (room - float64(current)) / float64(last)
+	return time.Duration(max(0, per*(1-share)-elapsed))
 }
 
 func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
@@ -92,12 +122,26 @@ func (l FixedWindow) allow(ctx context.Context, c *Cache, key string) error {
 	if n <= int64(l.Calls) {
 		return nil
 	}
+	ban := cmp.Or(l.BanFor, l.Per)
 	if n == int64(l.Calls)+1 {
-		if _, err := c.backend.Expire(ctx, key, cmp.Or(l.BanFor, l.Per)); err != nil {
+		if _, err := c.backend.Expire(ctx, key, ban); err != nil {
 			c.onError(ctx, fmt.Errorf("gashe: rate limit ban %q: %w", key, err))
 		}
+		return &RateLimitError{RetryAfter: ban}
 	}
-	return ErrRateLimited
+	return &RateLimitError{RetryAfter: banLeft(ctx, c, key, ban)}
+}
+
+// banLeft returns what is left of the ban on key, or all of ban if that cannot be read.
+func banLeft(ctx context.Context, c *Cache, key string, ban time.Duration) time.Duration {
+	left, err := c.backend.TTL(ctx, key)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		c.onError(ctx, fmt.Errorf("gashe: rate limit ban %q: %w", key, err))
+	}
+	if err != nil || left < 0 {
+		return ban // the counter is gone or has no TTL: the longest it can be
+	}
+	return left
 }
 
 // readCount reads a counter written by IncrBy; a missing counter is 0.

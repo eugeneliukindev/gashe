@@ -59,3 +59,59 @@ func TestRateLimitSliding(t *testing.T) {
 		}
 	})
 }
+
+// retryAfter calls RateLimit, which must refuse, and returns its RetryAfter.
+func retryAfter(t *testing.T, c *gashe.Cache, l gashe.Limit) time.Duration {
+	t.Helper()
+	err := c.RateLimit(context.Background(), "k", l)
+	var limited *gashe.RateLimitError
+	if !errors.As(err, &limited) || !errors.Is(err, gashe.ErrRateLimited) {
+		t.Fatalf("err = %v, want a *RateLimitError that is ErrRateLimited", err)
+	}
+	return limited.RetryAfter
+}
+
+func TestRateLimitRetryAfterFixed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		limit := gashe.FixedWindow{Calls: 1, Per: time.Minute, BanFor: 10 * time.Minute}
+
+		_ = c.RateLimit(ctx, "k", limit)
+		if got := retryAfter(t, c, limit); got != 10*time.Minute {
+			t.Fatalf("first refusal: RetryAfter = %v, want the ban of 10m", got)
+		}
+		time.Sleep(9 * time.Minute)
+		if got := retryAfter(t, c, limit); got != time.Minute {
+			t.Fatalf("during the ban: RetryAfter = %v, want what is left of it, 1m", got)
+		}
+	})
+}
+
+func TestRateLimitRetryAfterSliding(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		limit := gashe.PerMinute(2)
+		begin := time.Now() // on a minute boundary, as in TestRateLimitSliding
+
+		_ = c.RateLimit(ctx, "k", limit)
+		time.Sleep(10 * time.Second)
+		_ = c.RateLimit(ctx, "k", limit)
+		time.Sleep(10 * time.Second)
+		// At 20s the window is full: wait until it ends at 60s and then weighs 1 call, at 90s.
+		if got := retryAfter(t, c, limit); got != 70*time.Second {
+			t.Fatalf("at 20s: RetryAfter = %v, want 70s", got)
+		}
+		time.Sleep(time.Until(begin.Add(65 * time.Second)))
+		// At 65s the last window weighs 2 * 55/60; it weighs 1 at 90s.
+		got := retryAfter(t, c, limit)
+		if got != 25*time.Second {
+			t.Fatalf("at 65s: RetryAfter = %v, want 25s", got)
+		}
+		time.Sleep(got)
+		if err := c.RateLimit(ctx, "k", limit); err != nil {
+			t.Fatalf("after RetryAfter: %v", err)
+		}
+	})
+}

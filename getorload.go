@@ -36,7 +36,19 @@ func GetOrLoad[V any](
 		var zero V
 		return zero, err
 	}
-	l := loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
+	return getOrLoad(ctx, c, key, o, ttl, load)
+}
+
+// getOrLoad is GetOrLoad with o checked; ttl is what Policy.check returned.
+func getOrLoad[V any](
+	ctx context.Context,
+	c *Cache,
+	key string,
+	o Policy[V],
+	ttl func(V) time.Duration,
+	load func(context.Context) (V, error),
+) (V, error) {
+	l := newLoading(c, o, ttl, key, load)
 	shared, err := c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, func() (any, error) {
 		v, r, getErr := l.get(ctx)
 		return answer[V]{v: v, r: r, took: l.took}, getErr
@@ -63,7 +75,19 @@ func Reload[V any](
 		var zero V
 		return zero, err
 	}
-	l := loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
+	return reload(ctx, c, key, o, ttl, load)
+}
+
+// reload is Reload with o checked; ttl is what Policy.check returned.
+func reload[V any](
+	ctx context.Context,
+	c *Cache,
+	key string,
+	o Policy[V],
+	ttl func(V) time.Duration,
+	load func(context.Context) (V, error),
+) (V, error) {
+	l := newLoading(c, o, ttl, key, load)
 	gens, err := l.readGens(ctx)
 	if err != nil {
 		return load(ctx)
@@ -103,6 +127,16 @@ type loading[V any] struct {
 	gens  []int64       // current generations of o.Tags, read before loading
 	shape uint64        // shapeOf V
 	took  time.Duration // how long the loader ran in this call
+}
+
+func newLoading[V any](
+	c *Cache,
+	o Policy[V],
+	ttl func(V) time.Duration,
+	key string,
+	load func(context.Context) (V, error),
+) loading[V] {
+	return loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
 }
 
 // call runs the loader and adds the time it took to took.

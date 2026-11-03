@@ -84,3 +84,60 @@ func (l *Lease) Extend(ctx context.Context, ttl time.Duration) error {
 	}
 	return nil
 }
+
+// WithLock runs fn while holding the lock key, waiting for it as Lock does. It extends the lock
+// by ttl every third of ttl while fn runs, so fn may take longer than ttl, and releases it when fn
+// returns. If the lock cannot be extended, the ctx of fn is cancelled with that error as its
+// cause, and WithLock returns it unless fn returned an error of its own.
+func (c *Cache) WithLock(ctx context.Context, key string, ttl time.Duration, fn func(ctx context.Context) error) error {
+	lease, err := c.Lock(ctx, key, ttl)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockErr := lease.Unlock(ctx); unlockErr != nil {
+			c.onError(ctx, fmt.Errorf("gashe: unlock %q: %w", key, unlockErr))
+		}
+	}()
+	held, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	stop := lease.keepExtended(held, cancel, ttl)
+	err = fn(held)
+	stop()
+	if cause := context.Cause(held); err == nil && cause != nil && ctx.Err() == nil {
+		return cause
+	}
+	return err
+}
+
+// extendsPerTTL is how many times WithLock extends a lock within one ttl.
+const extendsPerTTL = 3
+
+// keepExtended extends the lock by ttl in the background until stop is called or ctx ends, and
+// cancels ctx with the error if an extension fails. stop returns once the extending has ended.
+func (l *Lease) keepExtended(ctx context.Context, cancel context.CancelCauseFunc, ttl time.Duration) (stop func()) {
+	quit := make(chan struct{})
+	ended := make(chan struct{})
+	go func() {
+		defer close(ended)
+		tick := time.NewTicker(max(ttl/extendsPerTTL, time.Millisecond))
+		defer tick.Stop()
+		for {
+			select {
+			case <-quit:
+				return
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				if err := l.Extend(ctx, ttl); err != nil {
+					cancel(fmt.Errorf("gashe: extend lock %q: %w", l.key, err))
+					return
+				}
+			}
+		}
+	}()
+	return func() {
+		close(quit)
+		<-ended
+	}
+}

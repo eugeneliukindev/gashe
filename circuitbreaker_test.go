@@ -47,3 +47,16 @@ func TestCircuitBreakerUsesNoBackend(t *testing.T) {
 		t.Fatalf("got %v, want the breaker open without any backend", err)
 	}
 }
+
+func TestGuardReportsTheCall(t *testing.T) {
+	c := newCache(t)
+	o := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute}
+	if _, err := gashe.Guard(c, "api", o, func() (int, error) { return 0, errAPI }); !errors.Is(err, errAPI) {
+		t.Fatalf("first call: %v, want the error of the call", err)
+	}
+	called := false
+	_, err := gashe.Guard(c, "api", o, func() (int, error) { called = true; return 1, nil })
+	if !errors.Is(err, gashe.ErrCircuitOpen) || called {
+		t.Fatalf("after a failure: %v, called = %v; want ErrCircuitOpen without the call", err, called)
+	}
+}

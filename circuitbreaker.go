@@ -196,3 +196,16 @@ func (b *breaker) trip(o CircuitBreakerOptions, now time.Time) {
 func failed(o CircuitBreakerOptions, err error) bool {
 	return err != nil && (o.IsFailure == nil || o.IsFailure(err))
 }
+
+// Guard runs call through the breaker for key, as CircuitBreaker does, and reports its error:
+// ErrCircuitOpen while the breaker is open, otherwise what call returned.
+func Guard[T any](c *Cache, key string, o CircuitBreakerOptions, call func() (T, error)) (T, error) {
+	done, err := c.CircuitBreaker(key, o)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	v, err := call()
+	done(err)
+	return v, err
+}
