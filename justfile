@@ -2,12 +2,13 @@
 # `just release-check` before a tag.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
+set script-interpreter := ["bash", "-euo", "pipefail"]
 
 # Every Go module of the repository.
-modules := ". backend/redis codec/msgpack examples"
+modules := ". backend/redis codec/msgpack compress/zstd examples benchmarks"
 
 # The modules users import, released with their own tags.
-released := ". backend/redis codec/msgpack"
+released := ". backend/redis codec/msgpack compress/zstd"
 
 # The oldest Go the modules support, run through goenv.
 oldest_go := "1.23.12"
@@ -17,8 +18,9 @@ oldest_go := "1.23.12"
 govulncheck := "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 gorelease := "go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
 
+[default]
 [private]
-default:
+list:
     @just --list
 
 # Create go.work, so every module builds against the local code of the others; it is not committed.
@@ -47,18 +49,18 @@ test: work
     for m in {{ released }}; do echo "== test $m"; (cd "$m" && go test -race ./...); done
 
 # Run the tests on the oldest supported Go; needs goenv.
+[env('GOENV_VERSION', oldest_go)]
+[env('GOTOOLCHAIN', 'local')]
 [group('test')]
 test-oldest: work
-    for m in {{ released }}; do echo "== test $m on Go {{ oldest_go }}"; (cd "$m" && GOENV_VERSION={{ oldest_go }} GOTOOLCHAIN=local go test -race ./...); done
-
-# The Redis-compatible servers the backend is tested against: the oldest Redis it supports and Valkey.
-servers := "redis:7.0.0 valkey/valkey:8"
+    for m in {{ released }}; do echo "== test $m on Go {{ oldest_go }}"; (cd "$m" && go test -race ./...); done
 
 # Run the backend/redis tests against a server in Docker, on the local gashe code; flags go to go test.
 [group('test')]
-integration image="redis:7.0.0" flags="": work
-    #!/usr/bin/env bash
-    set -euo pipefail
+[positional-arguments]
+[script]
+[working-directory('backend/redis')]
+integration image="redis:7.0.0" *flags: work
     id=$(docker run -d --rm -p 127.0.0.1::6379 {{ image }})
     trap 'docker rm -f "$id" > /dev/null' EXIT
     port=$(docker port "$id" 6379/tcp | head -1 | sed 's/.*://')
@@ -69,32 +71,43 @@ integration image="redis:7.0.0" flags="": work
         sleep 0.1
     done
     echo "== {{ image }} on 127.0.0.1:$port"
-    cd backend/redis && GASHE_REDIS_ADDR="127.0.0.1:$port" go test -race -count=1 {{ flags }} ./...
+    GASHE_REDIS_ADDR="127.0.0.1:$port" go test -race -count=1 "${@:2}" ./...
 
-# Run the integration tests against every server in `servers`.
+# Run the integration tests on the oldest supported Redis and on Valkey, at once.
 [group('test')]
-integration-all:
-    for s in {{ servers }}; do just integration "$s"; done
+[parallel]
+integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
 
 # Run every example that needs no Redis, so they keep working with the current API.
 [group('test')]
+[working-directory('examples')]
 examples: work
-    for e in examples/*/; do e=$(basename "$e"); [ "$e" = nearcache ] && continue; echo "== example $e"; (cd examples && go run "./$e" > /dev/null); done
+    for e in */; do [ "$e" = nearcache/ ] && continue; echo "== example ${e%/}"; go run "./$e" > /dev/null; done
+
+# Run the benchmarks; flags go to go test, such as `just bench -count=5`. The README has the results.
+[group('test')]
+[positional-arguments]
+[working-directory('benchmarks')]
+bench *flags: work
+    go test -run '^$' -bench . -benchtime 300ms "$@" .
 
 # Report known vulnerabilities in the code and dependencies the released modules call.
+[env('GOWORK', 'off')]
 [group('security')]
 vuln:
-    for m in {{ released }}; do echo "== govulncheck $m"; (cd "$m" && GOWORK=off {{ govulncheck }} ./...); done
+    for m in {{ released }}; do echo "== govulncheck $m"; (cd "$m" && {{ govulncheck }} ./...); done
 
 # Tidy go.mod and go.sum of every module.
+[env('GOWORK', 'off')]
 [group('deps')]
 tidy:
-    for m in {{ modules }}; do (cd "$m" && GOWORK=off go mod tidy); done
+    for m in {{ modules }}; do (cd "$m" && go mod tidy); done
 
 # Compare the API of released modules with their last tags; needs a clean working tree.
+[env('GOWORK', 'off')]
 [group('release')]
 api:
-    for m in {{ released }}; do echo "== gorelease $m"; (cd "$m" && GOWORK=off {{ gorelease }}); done
+    for m in {{ released }}; do echo "== gorelease $m"; (cd "$m" && {{ gorelease }}); done
 
 # Everything to run before a commit.
 [group('all')]
