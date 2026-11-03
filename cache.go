@@ -14,8 +14,25 @@ const allBatch = 100
 
 // Options configures a Cache. The zero value is ready to use.
 type Options struct {
-	// Codec turns values into bytes. nil means JSON.
+	// Prefix is put in front of every key the cache stores, its own keys included, so several
+	// services can share one Redis: "orders:" stores "orders:user:42".
+	// Keys and All yield keys without it, and DeleteMatch never reaches past it. "" means none.
+	// The cache keeps its own keys, tag counters, locks and rate counters, under Prefix too, each
+	// starting with "_": keys of yours must not start with "_".
+	Prefix string
+	// Codec turns values into bytes: the format of what is stored. nil means JSON.
 	Codec Codec
+	// Compressor shrinks what Codec produced, such as compress/zstd for large values. nil means
+	// none. Compressed values are binary: IncrBy cannot read them, so keep counters under keys
+	// that only IncrBy touches.
+	Compressor Compressor
+	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
+	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
+	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
+	// the loader. The breaker lives in the memory of this process; misses are not failures, see
+	// CircuitBreakerOptions.IsFailure. Ping is not guarded, so health checks see the backend
+	// itself. nil means no breaker.
+	CircuitBreaker *CircuitBreakerOptions
 	// OnError receives errors the cache works around instead of returning them, such as a
 	// failing backend during GetOrLoad; each error names the operation and key. nil drops them.
 	OnError func(ctx context.Context, err error)
@@ -25,19 +42,6 @@ type Options struct {
 	// LockPollInterval is how often Lock and LockOnMiss check whether a busy lock is free.
 	// 0 means 100ms.
 	LockPollInterval time.Duration
-	// Prefix is put in front of every key the cache stores, its own keys included, so several
-	// services can share one Redis: "orders:" stores "orders:user:42".
-	// Keys and All yield keys without it, and DeleteMatch never reaches past it. "" means none.
-	// The cache keeps its own keys, tag counters, locks and rate counters, under Prefix too, each
-	// starting with "_": keys of yours must not start with "_".
-	Prefix string
-	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
-	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
-	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
-	// the loader. The breaker lives in the memory of this process; misses are not failures, see
-	// CircuitBreakerOptions.IsFailure. Ping is not guarded, so health checks see the backend
-	// itself. nil means no breaker.
-	CircuitBreaker *CircuitBreakerOptions
 }
 
 // Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits
@@ -56,6 +60,8 @@ type Cache struct {
 
 // New returns a Cache over b. It panics if b is nil, LockPollInterval is negative or CircuitBreaker is
 // invalid.
+//
+//nolint:gocritic // options by value: they are built once, at startup
 func New(b Backend, o Options) *Cache {
 	if b == nil {
 		panic("gashe: nil backend")
@@ -72,6 +78,9 @@ func New(b Backend, o Options) *Cache {
 	if o.Codec == nil {
 		o.Codec = JSON{}
 	}
+	if o.Compressor == nil {
+		o.Compressor = noCompression{}
+	}
 	if o.OnError == nil {
 		o.OnError = func(context.Context, error) {}
 	}
@@ -80,7 +89,7 @@ func New(b Backend, o Options) *Cache {
 	}
 	return &Cache{
 		backend:  b,
-		codec:    o.Codec,
+		codec:    compressed{codec: o.Codec, compressor: o.Compressor},
 		onError:  o.OnError,
 		onResult: o.OnResult,
 		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),

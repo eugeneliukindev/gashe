@@ -1,0 +1,4 @@
+github.com/eugeneliukindev/gashe v0.3.0 h1:x2xo4qzhaCb/7iXLKEcCxV/Nk9Ue65PfqJbeC9Ohc+A=
+github.com/eugeneliukindev/gashe v0.3.0/go.mod h1:DM9yimUshi/B5xFs9W6SjuCDL3diHZ4HMqLt93Z43tw=
+github.com/klauspost/compress v1.18.4 h1:RPhnKRAQ4Fh8zU2FY/6ZFDwTVTxgJ/EMydqSTzE9a2c=
+github.com/klauspost/compress v1.18.4/go.mod h1:R0h/fSBs8DE4ENlcrlib3PsXS61voFxhIs2DeRhCvJ4=

@@ -12,6 +12,8 @@ import (
 )
 
 // ownKeys runs every feature that keeps keys of its own and returns the keys, sorted.
+//
+//nolint:gocritic // options by value, as gashe.New takes them
 func ownKeys(t *testing.T, o gashe.Options) []string {
 	t.Helper()
 	ctx := context.Background()

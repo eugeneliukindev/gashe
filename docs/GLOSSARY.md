@@ -28,8 +28,13 @@ How long an entry lives before it expires, or, for a cached result, how long it 
 _Avoid_: expire, timeout
 
 **Codec**:
-The rule that turns a value into stored bytes and back.
+The format that turns a value into bytes and back, such as JSON or MessagePack.
 _Avoid_: serializer, pickler, marshaler
+
+**Compressor**:
+What shrinks the bytes of a codec before they are stored and restores them, such as gzip or
+Zstandard. It knows nothing of values.
+_Avoid_: compression codec
 
 **Hit**:
 A lookup that finds a live entry.
