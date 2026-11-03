@@ -626,10 +626,10 @@ existed, err := userCache.Delete(ctx, "42") // deletes users:v2:42
 ```go
 cached := httpcache.New(c, httpcache.Options{
 	Policy: gashe.Policy[httpcache.Response]{ // as in GetOrLoad; a nil CacheIf stores 200 only
-		Prefix:       "http:",
 		TTL:          time.Minute,
 		StaleIfError: time.Hour,
 		Tags:         []string{"catalog"}, // c.InvalidateTags(ctx, "catalog") after an edit
+		Prefix:       "http:",
 	},
 	Key:          keyOf,   // the key of a request; nil: host, path and query, no Authorization
 	MaxBodyBytes: 4 << 20, // a larger body is sent but not stored; 0 means 1 MB

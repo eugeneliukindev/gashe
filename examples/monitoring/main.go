@@ -20,11 +20,11 @@ func main() {
 	results := map[gashe.Result]int{}
 	var loadTime time.Duration
 	c := gashe.New(mem, gashe.Options{
+		OnError: func(_ context.Context, err error) { log.Println("cache degraded:", err) },
 		OnResult: func(_ context.Context, o gashe.Outcome) {
 			results[o.Result]++ // in production: a Prometheus counter by o.Result.String()
 			loadTime += o.Load  // and a histogram of o.Load
 		},
-		OnError: func(_ context.Context, err error) { log.Println("cache degraded:", err) },
 	})
 
 	load := func(context.Context) (int, error) {

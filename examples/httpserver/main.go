@@ -30,9 +30,9 @@ func main() {
 	})
 
 	cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		Prefix:       "http:",
 		TTL:          time.Minute,
 		StaleIfError: time.Hour, // a 5xx gets the last good page
+		Prefix:       "http:",
 	}})
 	mux := http.NewServeMux()
 	mux.Handle("/products", cached(listProducts))
