@@ -58,13 +58,13 @@ type Policy[V any] struct {
 	// background and stores what it gets; meanwhile other calls answer with the old result at
 	// once. 0 means wait for the loader. It needs StaleIfError.
 	StaleIfSlow time.Duration
+	// Negative caches answers like "not found", so lookups of missing data do not reach the
+	// source every time.
+	Negative Negative
 	// LockOnMiss, when set, makes a missing key load under a lock: one process calls the loader,
 	// the others wait and take its result. The value is the longest the lock is held. The lock is
 	// shared by every process that uses the same backend.
 	LockOnMiss time.Duration
-	// Negative caches answers like "not found", so lookups of missing data do not reach the
-	// source every time.
-	Negative Negative
 	// Tags lists the tags of a result; Cache.InvalidateTags of any of them makes it a miss. Tags
 	// are shared by every process that uses the same backend.
 	Tags []string
