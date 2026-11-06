@@ -54,7 +54,7 @@ func getOrLoadMany[V any](
 	l := loading[V]{c: c, o: o, ttl: ttl, shape: c.shapeOf(reflect.TypeFor[V]())}
 	found, missing, err := l.readMany(ctx, keys)
 	if err != nil {
-		return load(ctx, keys)
+		return l.manyWithoutBackend(ctx, keys, load)
 	}
 	if len(missing) == 0 {
 		return found, nil
@@ -140,16 +140,56 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 		raws[key] = raw
 		ttl = max(ttl, fresh)
 	}
-	if len(raws) > 0 {
-		if err := l.c.backend.SetMany(ctx, raws, ttl); err != nil {
-			l.c.onError(ctx, fmt.Errorf("gashe: set many: %w", err))
+	l.writeMany(ctx, raws, ttl)
+	return out
+}
+
+// writeMany stores raws in one call; if the backend fails, Options.Fallback keeps them.
+func (l *loading[V]) writeMany(ctx context.Context, raws map[string][]byte, ttl time.Duration) {
+	if len(raws) == 0 {
+		return
+	}
+	if err := l.c.backend.SetMany(ctx, raws, ttl); err != nil {
+		l.c.onError(ctx, fmt.Errorf("gashe: set many: %w", err))
+		for key, raw := range raws {
+			l.c.spare.put(ctx, key, raw, ttl)
 		}
 	}
-	return out
 }
 
 // usable reports whether e answers without loading: fresh, of the current tag generations and of
 // the current shape of V.
 func (l *loading[V]) usable(e *entry[V], now time.Time) bool {
 	return !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) && e.sameShape(l.shape)
+}
+
+// manyWithoutBackend answers keys while the backend fails: from Options.Fallback for the keys it
+// has, and one load for the others, whose results it keeps there.
+func (l *loading[V]) manyWithoutBackend(
+	ctx context.Context,
+	keys []string,
+	load func(ctx context.Context, missing []string) (map[string]V, error),
+) (map[string]V, error) {
+	found := make(map[string]V, len(keys))
+	var missing []string
+	for _, k := range keys {
+		if v, ok := l.spared(ctx, l.o.Prefix+k); ok {
+			found[k] = v
+			l.c.onResult(ctx, Outcome{Key: l.o.Prefix + k, Result: ResultFallback})
+			continue
+		}
+		missing = append(missing, k)
+	}
+	if len(missing) == 0 {
+		return found, nil
+	}
+	loaded, err := load(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range loaded {
+		found[k] = v
+		l.spareResult(ctx, l.o.Prefix+k, v)
+	}
+	return found, nil
 }

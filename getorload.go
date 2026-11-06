@@ -89,8 +89,12 @@ func reload[V any](
 ) (V, error) {
 	l := newLoading(c, o, ttl, key, load)
 	gens, err := l.readGens(ctx)
-	if err != nil {
-		return load(ctx)
+	if err != nil { // the backend failed: load, and keep the result in Options.Fallback
+		v, loadErr := l.call(ctx)
+		if loadErr == nil {
+			l.spareResult(ctx, l.key, v)
+		}
+		return v, loadErr
 	}
 	l.gens = gens
 	return l.loadAndStore(ctx)
@@ -156,10 +160,49 @@ func (l *loading[V]) get(ctx context.Context) (V, Result, error) {
 	case errors.Is(err, ErrNotFound):
 		return l.miss(ctx)
 	case err != nil:
-		v, loadErr := l.call(ctx) // the backend failed: answer without storing
-		return v, ResultMiss, loadErr
+		return l.withoutBackend(ctx)
 	}
 	return l.answer(ctx, e)
+}
+
+// withoutBackend answers while the backend fails: from Options.Fallback if it has the key, or by
+// loading and keeping the result there.
+func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
+	if v, ok := l.spared(ctx, l.key); ok {
+		return v, ResultFallback, nil
+	}
+	v, err := l.call(ctx)
+	if err == nil {
+		l.spareResult(ctx, l.key, v)
+	}
+	return v, ResultMiss, err
+}
+
+// spared returns the result Options.Fallback keeps under key, if it is of the current shape of V.
+func (l *loading[V]) spared(ctx context.Context, key string) (V, bool) {
+	var e entry[V]
+	raw, ok := l.c.spare.get(ctx, key)
+	if !ok || l.c.decode(key, raw, &e) != nil || !e.sameShape(l.shape) || e.Neg {
+		return e.V, false
+	}
+	return e.V, true
+}
+
+// spareResult keeps v in Options.Fallback for its TTL, if the policy stores it.
+func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
+	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
+		return
+	}
+	fresh, ok := l.freshFor(v)
+	if !ok {
+		return
+	}
+	raw, err := l.c.encode(key, entry[V]{At: time.Now().Add(fresh), V: v, T: l.shape}, 0)
+	if err != nil {
+		l.c.onError(ctx, err)
+		return
+	}
+	l.c.spare.put(ctx, key, raw, fresh)
 }
 
 // miss loads a key that has no usable entry.
@@ -431,6 +474,7 @@ func store[V any](ctx context.Context, c *Cache, key string, v V, ttl time.Durat
 	}
 	if err := c.backend.Set(ctx, key, raw, ttl); err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: set %q: %w", key, err))
+		c.spare.put(ctx, key, raw, ttl) // kept in Options.Fallback while the backend fails
 	}
 	return out
 }

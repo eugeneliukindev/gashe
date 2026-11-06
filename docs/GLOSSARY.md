@@ -98,6 +98,11 @@ _Avoid_: group
 A cache of whole HTTP responses of a handler, answered without running the handler.
 _Avoid_: page cache, HTTP cache
 
+**Fallback**:
+A store in the memory of one process that answers in place of the backend while it fails, for a
+short time, so a failing cache does not send every call to the source.
+_Avoid_: backup cache, secondary cache
+
 **Near cache**:
 A small cache in process memory in front of a shared backend.
 _Avoid_: L1, local cache, client-side cache
