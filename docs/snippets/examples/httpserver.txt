@@ -1,0 +1,5 @@
+GET  200  Cache-Status: "gashe; fwd=uri-miss; stored"  ETag: "8b60dd4b4d36c801"
+GET  200  Cache-Status: "gashe; hit"                   ETag: "8b60dd4b4d36c801"
+GET  304  Cache-Status: "gashe; hit"                   ETag: "8b60dd4b4d36c801"
+POST 200  Cache-Status: "gashe; fwd=method"            ETag: 
+handler ran 2 times

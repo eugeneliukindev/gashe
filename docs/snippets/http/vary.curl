@@ -1,0 +1,1 @@
+curl -i -H 'Accept-Language: ru' localhost:8080/products

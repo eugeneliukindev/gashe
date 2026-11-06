@@ -18,6 +18,9 @@ oldest_go := "1.23.12"
 govulncheck := "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 gorelease := "go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
 
+# The documentation site is built by Zensical, run through uv at a pinned version.
+zensical := "uv run --no-project --with zensical==0.1.0 python docs/build.py"
+
 [default]
 [private]
 list:
@@ -107,14 +110,39 @@ integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
 [group('test')]
 [working-directory('examples')]
 examples: work
-    for e in */; do [ "$e" = nearcache/ ] && continue; echo "== example ${e%/}"; go run "./$e" > /dev/null; done
+    for e in */ tutorial/*/; do case "$e" in nearcache/|httpapi/|tutorial/) continue;; esac; echo "== example ${e%/}"; go run "./$e" > /dev/null; done
 
-# Run the benchmarks; flags go to go test, such as `just bench -count=5`. The README has the results.
+# Run the benchmarks; flags go to go test, such as `just bench -count=5`. docs/en/internals/benchmarks.md has the results.
 [group('test')]
 [positional-arguments]
 [working-directory('benchmarks')]
 bench *flags: work
     go test -run '^$' -bench . -benchtime 300ms "$@" .
+
+# Build the documentation site in every language into site/; a broken link fails the build.
+[group('docs')]
+docs:
+    {{ zensical }} build
+
+# Preview the documentation of one language at http://localhost:8000/gashe/.
+[group('docs')]
+docs-serve lang="en":
+    {{ zensical }} serve {{ lang }}
+
+# Run the examples and curl against examples/httpapi, and write their outputs into docs/snippets/.
+[group('docs')]
+docs-output: work
+    python3 docs/outputs.py
+
+# Check the external links of the documentation with lychee, in Docker.
+[group('docs')]
+docs-links:
+    docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2 --config lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
+
+# List translated pages whose English page changed since they were translated.
+[group('docs')]
+docs-check:
+    {{ zensical }} check
 
 # Report known vulnerabilities in the code and dependencies the released modules call.
 [env('GOWORK', 'off')]

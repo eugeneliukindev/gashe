@@ -17,6 +17,7 @@ go run ./examples/stale
 | [tags](tags/main.go) | `InvalidateTags` after a write |
 | [nearcache](nearcache/main.go) | two pods, local caches and a `Bus`; needs Redis |
 | [httpserver](httpserver/main.go) | `httpcache`: `Cache-Status`, `ETag`, `304` |
+| [httpapi](httpapi/main.go) | `httpcache` behind a real server, for curl: `Vary`, cookies, `StaleIfError`, `503` |
 | [lock](lock/main.go) | `TryLock`: one worker runs a job |
 | [ratelimit](ratelimit/main.go) | fixed window with a ban, sliding window |
 | [breaker](breaker/main.go) | `CircuitBreaker` opening and closing |

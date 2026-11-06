@@ -27,7 +27,7 @@ Tasks run with [just](https://just.systems) and go through every module; `just` 
 just check          # before a commit: golangci-lint, tests with -race, govulncheck
 just release-check  # before a tag: check, tests on Go 1.23 through goenv, Redis and a Cluster in Docker, gorelease
 just fmt            # format with the formatters of .golangci.yml
-just bench -count=5 # the benchmarks; update the tables in the README from them
+just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
 just integration-all               # the Redis tests on Redis 7.0 and Valkey 8, in Docker
 just integration-cluster           # the Cluster tests on three masters, in Docker
 just integration docker.dragonflydb.io/dragonflydb/dragonfly -v  # any other server
@@ -53,3 +53,22 @@ Copy the section into the GitHub release of the tag.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
+
+The documentation site is built with [Zensical](https://zensical.org) from `docs/en/` and
+published to GitHub Pages on every push to `main`; it needs only [uv](https://docs.astral.sh/uv/):
+
+```bash
+just docs            # build the site into site/; a broken link or anchor fails it
+just docs-serve      # preview it at http://localhost:8000/gashe/
+just docs-output     # run the examples and curl, and refresh their outputs in docs/snippets/
+just docs-links      # external links, with lychee in Docker; CI checks them weekly
+```
+
+Code comes from `examples/` and outputs from `docs/snippets/`, included with `--8<--`, so they are
+never copied by hand. Headings carry fixed ids (`{ #id }`), so links keep working when a heading is
+reworded.
+
+The documentation is in English only until the API settles. `docs/build.py` can build more
+languages: one `[[project.extra.alternate]]` per language in `zensical.toml` and a
+`docs/<lang>/lang.toml`; a page without a translation shows the English one with a notice, and
+`just docs-check` lists translations behind their English page.

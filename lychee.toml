@@ -1,0 +1,9 @@
+# External links of the documentation, checked by lychee: `just docs-links` and .github/workflows/links.yml.
+# Links inside the site are checked by `just docs` (zensical --strict).
+exclude_loopback = true
+exclude = [
+  '^https://eugeneliukindev\.github\.io/gashe',                  # the site itself, before it is published
+  '^https://pkg\.go\.dev/github\.com/eugeneliukindev/gashe',     # pkg.go.dev lists a module after its first fetch
+]
+max_retries = 3
+accept = ["200..=299", "429"] # 429: a site that rate limits the check is up

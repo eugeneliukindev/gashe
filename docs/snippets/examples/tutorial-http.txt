@@ -1,0 +1,3 @@
+GET /users: 200, Cache-Status: gashe; fwd=uri-miss; stored
+GET /users: 200, Cache-Status: gashe; hit
+handler ran: 1

@@ -1,0 +1,137 @@
+# The documentation site of gashe. This file builds the English site; docs/build.py builds every
+# language from it, so `just docs` builds the whole site and `just docs-serve` previews one language.
+[project]
+site_name = "gashe"
+site_description = "Caching for Go services that run as many processes"
+site_url = "https://eugeneliukindev.github.io/gashe/"
+repo_url = "https://github.com/eugeneliukindev/gashe"
+repo_name = "eugeneliukindev/gashe"
+edit_uri = "edit/main/docs/en/"
+docs_dir = "docs/en"
+site_dir = "site"
+copyright = "MIT license"
+nav = [
+  { "Home" = "index.md" },
+  { "Learn" = [
+    "tutorial/index.md",
+    "tutorial/first-cache.md",
+    "tutorial/ttl.md",
+    "tutorial/stale.md",
+    "tutorial/invalidation.md",
+    "tutorial/redis.md",
+    "tutorial/outages.md",
+    "tutorial/http.md",
+  ] },
+  { "Concepts" = [
+    "concepts/setup.md",
+    "concepts/backends.md",
+    "concepts/loading.md",
+    "concepts/stale.md",
+    "concepts/stampedes.md",
+    "concepts/outages.md",
+    "concepts/invalidation.md",
+    "concepts/negative.md",
+    "concepts/lists.md",
+    "concepts/httpcache.md",
+    "concepts/locks.md",
+    "concepts/rate-limits.md",
+    "concepts/breakers.md",
+    "concepts/values.md",
+  ] },
+  { "Recipes" = [
+    "recipes/index.md",
+    "recipes/postgres.md",
+    "recipes/http-client.md",
+    "recipes/metrics.md",
+    "recipes/testing.md",
+    "recipes/changing-types.md",
+    "recipes/warm-up.md",
+  ] },
+  { "Errors" = "errors.md" },
+  { "Reference" = [
+    "reference.md",
+    { "Internals" = ["internals/storage.md", "internals/benchmarks.md"] },
+  ] },
+  { "About" = [
+    "about/index.md",
+    "about/alternatives.md",
+    "about/version-policy.md",
+    "about/migration.md",
+    "changelog.md",
+    "glossary.md",
+  ] },
+]
+
+[project.theme]
+language = "en"
+logo = "assets/logo.svg"
+favicon = "assets/logo.svg"
+features = [
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+# Other languages: add a [[project.extra.alternate]] per language, English first, and
+# docs/<lang>/lang.toml; docs/build.py builds every language listed.
+
+# llms.txt and llms-full.txt: the pages as Markdown for AI assistants.
+[project.plugins.llmstxt]
+full_output = "llms-full.txt"
+markdown_description = "gashe is a caching library for Go services that run as many processes: GetOrLoad with stale data, locks, tags, rate limits, circuit breakers and an HTTP middleware, over memory or Redis."
+
+[project.plugins.llmstxt.sections]
+"Start" = [{ "index.md" = "what gashe is, a full example, the problems it solves" }]
+"Learn" = ["tutorial/*.md"]
+"Concepts" = ["concepts/*.md"]
+"Recipes" = ["recipes/*.md"]
+"Errors" = [{ "errors.md" = "every error and when it comes" }]
+"Reference" = [
+  { "reference.md" = "the packages, with links to pkg.go.dev" },
+  "internals/*.md",
+  { "changelog.md" = "notable changes of every release" },
+  { "glossary.md" = "the terms of the domain" },
+  "about/*.md",
+]
+
+# Open Graph images: a card with the title of the page when a link is shared.
+[project.plugins.social]
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.inlinehilite = {}
+# Diagrams: a ```mermaid block is drawn by Mermaid.js in the colors of the theme.
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tabbed.alternate_style = true
+# Code and outputs come from the repository: examples/, docs/snippets/, CHANGELOG.md.
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true

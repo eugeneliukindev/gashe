@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Cache-Status: gashe; fwd=request
+Content-Type: application/json
+Date: Fri, 06 Nov 2026 12:00:00 GMT
+Content-Length: 57
+
+{
+  "items": [
+    "Mug",
+    "Kettle"
+  ],
+  "page": "1",
+  "title": "Products"
+}

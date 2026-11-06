@@ -1,0 +1,2 @@
+without LockOnMiss:  3 pods, database queries: 3
+with LockOnMiss:     3 pods, database queries: 1

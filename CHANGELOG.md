@@ -32,10 +32,13 @@ module it is about.
   (`CLIENT TRACKING`): Redis itself reports every change of a key under a prefix, so near caches see
   changes made past gashe, by `redis-cli` or another service, and `FLUSHDB`. It needs Redis 6 or
   Valkey and does not work on a Cluster, where `NewBus` stays the choice.
-- The README lists every header `httpcache` reads and sets, and how it works behind a reverse proxy.
+- The documentation lists every header `httpcache` reads and sets, and how it works behind a reverse proxy.
 
 ### Changed
 
+- The documentation moved from the README to a site, https://eugeneliukindev.github.io/gashe/,
+  built from `docs/` with Zensical, with code from `examples/` and outputs of real runs, curl
+  against `httpcache` included. The README keeps a short example.
 - `httpcache.Options.Key`, a function, becomes `httpcache.Options.Vary`, a `httpcache.Vary`:
   `Key: keyOf` becomes `Vary: httpcache.Vary{Custom: keyOf}`, and a key that held the user becomes
   `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in.

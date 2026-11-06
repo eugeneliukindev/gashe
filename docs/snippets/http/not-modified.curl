@@ -1,0 +1,1 @@
+curl -i -H 'If-None-Match: "899869ad60c44727"' localhost:8080/products

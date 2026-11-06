@@ -1,0 +1,11 @@
+login attempt 1: allowed
+login attempt 2: allowed
+login attempt 3: allowed
+login attempt 4: allowed
+login attempt 5: allowed
+login attempt 6: 429, retry after 15m0s
+login attempt 7: 429, retry after 15m0s
+api call 1: allowed
+api call 2: allowed
+api call 3: allowed
+api call 4: 429, retry after 1s
