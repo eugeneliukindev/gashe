@@ -23,9 +23,9 @@ func TestFallbackMaxTTLOnlyShortens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				ctx := context.Background()
-				c, _ := withFallback(t, 30*time.Second)
+				c, fb, _ := withFallback(t, 30*time.Second)
 				calls, load := counter(user{Name: "Ann"})
-				o := gashe.Policy[user]{TTL: tc.ttl}
+				o := gashe.Policy[user]{TTL: tc.ttl, Fallback: fb}
 
 				_, _ = gashe.GetOrLoad(ctx, c, "42", o, load)
 				time.Sleep(tc.kept - time.Second)

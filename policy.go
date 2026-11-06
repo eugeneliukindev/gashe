@@ -65,6 +65,18 @@ type Policy[V any] struct {
 	// the others wait and take its result. The value is the longest the lock is held. The lock is
 	// shared by every process that uses the same backend.
 	LockOnMiss time.Duration
+	// MaxConcurrentLoads is how many loads of this kind of data, its type and Prefix, may run at
+	// once in this process: with 10 processes, up to 10 times as many reach the source. A call over
+	// the limit waits for a slot as long as its ctx allows, then returns ErrOverloaded; one that an
+	// old result can answer, within StaleIfError or a background reload, does not wait. Use the same
+	// value for the same kind of data. 0 means no limit.
+	MaxConcurrentLoads int
+	// Fallback keeps the results of this kind of data in a backend of its own while the backend of
+	// the cache fails or its CircuitBreaker is open, for the TTL but at most Fallback.MaxTTL, and
+	// answers from it (ResultFallback): the source gets one load per key and process instead of
+	// one per call. The basic API and locks do not use it. nil means none: while the backend
+	// fails, every call loads.
+	Fallback *FallbackOptions
 	// Tags lists the tags of a result; Cache.InvalidateTags of any of them makes it a miss. Tags
 	// are shared by every process that uses the same backend.
 	Tags []string
@@ -103,6 +115,11 @@ func (o Policy[V]) check() (ttl func(V) time.Duration, err error) {
 		{o.Jitter < 0 || o.Jitter >= 1, "Jitter must be from 0 to less than 1"},
 		{o.Negative.If != nil && (o.Negative.Err == nil || o.Negative.TTL == 0), "Negative needs Err and TTL"},
 		{o.StaleIfSlow > 0 && o.StaleIfError == 0, "StaleIfSlow needs StaleIfError"},
+		{o.MaxConcurrentLoads < 0, "MaxConcurrentLoads must not be negative"},
+		{
+			o.Fallback != nil && (o.Fallback.Backend == nil || o.Fallback.MaxTTL < 0),
+			"Fallback needs a Backend and a MaxTTL that is not negative",
+		},
 	} {
 		if rule.broken {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, rule.why)

@@ -18,4 +18,7 @@ var (
 	ErrRateLimited = errors.New("gashe: rate limited")
 	// ErrCircuitOpen reports a call refused by an open circuit breaker.
 	ErrCircuitOpen = errors.New("gashe: circuit open")
+	// ErrOverloaded reports a load refused by Policy.MaxConcurrentLoads: every slot was taken
+	// until ctx ended, or an old result could answer in its place.
+	ErrOverloaded = errors.New("gashe: overloaded")
 )

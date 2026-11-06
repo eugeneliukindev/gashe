@@ -1,6 +1,7 @@
 package gashe
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"time"
@@ -9,57 +10,46 @@ import (
 // defaultFallbackTTL is the MaxTTL of a fallback that sets none.
 const defaultFallbackTTL = 30 * time.Second
 
-// FallbackOptions configures Options.Fallback: where GetOrLoad keeps results while the backend of
+// FallbackOptions configures Policy.Fallback: where loads keep their results while the backend of
 // the cache fails, so the source gets one load per key and process, not one per call.
 type FallbackOptions struct {
-	// Backend keeps the results, usually a memory.Backend of its own; required. Do not share it with
-	// a near cache or another Cache.
+	// Backend keeps the results, usually a memory.Backend of its own; required. Policies of one
+	// Cache may share it; a near cache or another Cache may not.
 	Backend Backend
 	// MaxTTL is the longest a result stays in Backend: the TTL of its policy, but never longer, since
 	// no invalidation reaches Backend while the backend is down. 0 means 30 seconds.
 	MaxTTL time.Duration
 }
 
-// spare keeps results while the backend fails.
-type spare interface {
-	get(ctx context.Context, key string) ([]byte, bool)
-	put(ctx context.Context, key string, raw []byte, ttl time.Duration)
-}
-
-// noSpare is the spare of a Cache without Options.Fallback: it keeps nothing.
-type noSpare struct{}
-
-func (noSpare) get(context.Context, string) ([]byte, bool)         { return nil, false }
-func (noSpare) put(context.Context, string, []byte, time.Duration) {}
-
-// backendSpare keeps results in Options.Fallback.Backend.
-type backendSpare struct {
-	backend Backend
+// spare keeps results in Policy.Fallback.Backend while the backend fails; without a Fallback it
+// keeps nothing.
+type spare struct {
+	backend Backend // nil without a Fallback
 	maxTTL  time.Duration
 	onError func(ctx context.Context, err error)
 }
 
-func newSpare(o *FallbackOptions, onError func(ctx context.Context, err error)) backendSpare {
-	if o.Backend == nil {
-		panic("gashe: Fallback without a Backend")
+// spareOf returns the spare of a policy with fallback f, already checked by Policy.check.
+func (c *Cache) spareOf(f *FallbackOptions) spare {
+	if f == nil {
+		return spare{}
 	}
-	if o.MaxTTL < 0 {
-		panic("gashe: negative Fallback.MaxTTL")
-	}
-	maxTTL := o.MaxTTL
-	if maxTTL == 0 {
-		maxTTL = defaultFallbackTTL
-	}
-	return backendSpare{backend: o.Backend, maxTTL: maxTTL, onError: onError}
+	return spare{backend: f.Backend, maxTTL: cmp.Or(f.MaxTTL, defaultFallbackTTL), onError: c.onError}
 }
 
-func (s backendSpare) get(ctx context.Context, key string) ([]byte, bool) {
+func (s spare) get(ctx context.Context, key string) ([]byte, bool) {
+	if s.backend == nil {
+		return nil, false
+	}
 	raw, err := s.backend.Get(ctx, key)
 	return raw, err == nil
 }
 
 // put keeps raw for ttl, but never longer than MaxTTL; a result never fresh keeps MaxTTL.
-func (s backendSpare) put(ctx context.Context, key string, raw []byte, ttl time.Duration) {
+func (s spare) put(ctx context.Context, key string, raw []byte, ttl time.Duration) {
+	if s.backend == nil {
+		return
+	}
 	if ttl <= 0 || ttl > s.maxTTL {
 		ttl = s.maxTTL
 	}

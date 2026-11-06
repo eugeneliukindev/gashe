@@ -33,7 +33,7 @@ const (
 	// ResultStaleIfSlow is a stale stored result, answered because the loader took longer than
 	// StaleIfSlow; the load goes on in the background.
 	ResultStaleIfSlow
-	// ResultFallback is a result kept in Options.Fallback, answered while the backend fails.
+	// ResultFallback is a result kept in Policy.Fallback, answered while the backend fails.
 	ResultFallback
 )
 

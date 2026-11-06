@@ -33,11 +33,6 @@ type Options struct {
 	// CircuitBreakerOptions.IsFailure. Ping is not guarded, so health checks see the backend
 	// itself. nil means no breaker.
 	CircuitBreaker *CircuitBreakerOptions
-	// Fallback keeps the results of GetOrLoad, GetOrLoadMany and Reload in a backend of its own
-	// while the backend fails or CircuitBreaker is open, for at most Fallback.MaxTTL, so the source
-	// gets one load per key and process instead of one per call. The basic API and locks do not
-	// use it: they return the error. nil means none: while the backend fails, every call loads.
-	Fallback *FallbackOptions
 	// OnError receives errors the cache works around instead of returning them, such as a
 	// failing backend during GetOrLoad; each error names the operation and key. nil drops them.
 	OnError func(ctx context.Context, err error)
@@ -56,16 +51,16 @@ type Cache struct {
 	codec    Codec
 	onError  func(ctx context.Context, err error)
 	onResult func(ctx context.Context, o Outcome)
-	spare    spare // Options.Fallback
 	lockPoll time.Duration
 	calls    group
 	breakers breakers
+	loads    loadLimits
 	shapes   sync.Map // reflect.Type to the uint64 of shapeOf
 	bg       background
 }
 
-// New returns a Cache over b. It panics if b is nil, LockPollInterval is negative, or CircuitBreaker
-// or Fallback is invalid.
+// New returns a Cache over b. It panics if b is nil, LockPollInterval is negative or CircuitBreaker
+// is invalid.
 //
 //nolint:gocritic // options by value: they are built once, at startup
 func New(b Backend, o Options) *Cache {
@@ -93,16 +88,11 @@ func New(b Backend, o Options) *Cache {
 	if o.OnResult == nil {
 		o.OnResult = func(context.Context, Outcome) {}
 	}
-	var keep spare = noSpare{}
-	if o.Fallback != nil {
-		keep = newSpare(o.Fallback, o.OnError)
-	}
 	return &Cache{
 		backend:  b,
 		codec:    compressed{codec: o.Codec, compressor: o.Compressor},
 		onError:  o.OnError,
 		onResult: o.OnResult,
-		spare:    keep,
 		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),
 	}
 }

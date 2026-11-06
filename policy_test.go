@@ -23,6 +23,7 @@ func TestGetOrLoadRejectsInvalidOptions(t *testing.T) {
 		{TTL: 3600},         // an int, not a time.Duration
 		{TTL: func(string) time.Duration { return time.Hour }},                           // a func of another type
 		{TTL: (func(user) time.Duration)(nil)},                                           // a nil func
+		{TTL: time.Hour, MaxConcurrentLoads: -1},                                         // a negative limit
 		{TTL: time.Hour, Jitter: 1},                                                      // jitter of 100% or more
 		{TTL: time.Hour, Negative: gashe.Negative{If: func(error) bool { return true }}}, // no Err, no TTL
 	} {

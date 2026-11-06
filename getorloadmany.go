@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"reflect"
 	"slices"
 	"time"
 )
@@ -51,7 +50,7 @@ func getOrLoadMany[V any](
 	if len(keys) == 0 {
 		return map[string]V{}, nil
 	}
-	l := loading[V]{c: c, o: o, ttl: ttl, shape: c.shapeOf(reflect.TypeFor[V]())}
+	l := newLoading(c, o, ttl, "", nil)
 	found, missing, err := l.readMany(ctx, keys)
 	if err != nil {
 		return l.manyWithoutBackend(ctx, keys, load)
@@ -60,7 +59,7 @@ func getOrLoadMany[V any](
 		return found, nil
 	}
 	start := time.Now()
-	loaded, err := load(ctx, missing)
+	loaded, err := l.loadMany(ctx, load, missing)
 	took := time.Since(start)
 	for _, k := range missing {
 		c.onResult(ctx, Outcome{Key: o.Prefix + k, Result: ResultMiss, Load: took})
@@ -144,7 +143,7 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 	return out
 }
 
-// writeMany stores raws in one call; if the backend fails, Options.Fallback keeps them.
+// writeMany stores raws in one call; if the backend fails, Policy.Fallback keeps them.
 func (l *loading[V]) writeMany(ctx context.Context, raws map[string][]byte, ttl time.Duration) {
 	if len(raws) == 0 {
 		return
@@ -152,7 +151,7 @@ func (l *loading[V]) writeMany(ctx context.Context, raws map[string][]byte, ttl 
 	if err := l.c.backend.SetMany(ctx, raws, ttl); err != nil {
 		l.c.onError(ctx, fmt.Errorf("gashe: set many: %w", err))
 		for key, raw := range raws {
-			l.c.spare.put(ctx, key, raw, ttl)
+			l.spare.put(ctx, key, raw, ttl)
 		}
 	}
 }
@@ -163,7 +162,7 @@ func (l *loading[V]) usable(e *entry[V], now time.Time) bool {
 	return !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) && e.sameShape(l.shape)
 }
 
-// manyWithoutBackend answers keys while the backend fails: from Options.Fallback for the keys it
+// manyWithoutBackend answers keys while the backend fails: from Policy.Fallback for the keys it
 // has, and one load for the others, whose results it keeps there.
 func (l *loading[V]) manyWithoutBackend(
 	ctx context.Context,
@@ -183,7 +182,7 @@ func (l *loading[V]) manyWithoutBackend(
 	if len(missing) == 0 {
 		return found, nil
 	}
-	loaded, err := load(ctx, missing)
+	loaded, err := l.loadMany(ctx, load, missing)
 	if err != nil {
 		return nil, err
 	}
@@ -192,4 +191,18 @@ func (l *loading[V]) manyWithoutBackend(
 		l.spareResult(ctx, l.o.Prefix+k, v)
 	}
 	return found, nil
+}
+
+// loadMany runs the loader for missing within Policy.MaxConcurrentLoads: one batch takes one slot.
+func (l *loading[V]) loadMany(
+	ctx context.Context,
+	load func(ctx context.Context, missing []string) (map[string]V, error),
+	missing []string,
+) (map[string]V, error) {
+	release, err := l.acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	return load(ctx, missing)
 }

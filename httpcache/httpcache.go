@@ -94,7 +94,7 @@ type Options struct {
 // allows its status and it has no Set-Cookie, no Vary header beyond Options.Vary, no Cache-Control
 // no-store, private or no-cache, and a body within MaxBodyBytes; otherwise it is sent as is to the
 // request that made it. A 5xx response counts as a loader error, so StaleIfError answers it with
-// the last stored response.
+// the last stored response; a request Policy.MaxConcurrentLoads holds back gets 503.
 //
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
@@ -162,6 +162,10 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 		write(w, r, &resp, statusOf(&resp, mine))
 	case mine != nil:
 		write(w, r, mine, statusMiss)
+	case errors.Is(err, gashe.ErrOverloaded):
+		// Policy.MaxConcurrentLoads is full: rendering anyway would load what the limit holds back.
+		w.Header().Set(headerCacheStatus, string(statusMiss))
+		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 	case r.Context().Err() != nil:
 		// The client is gone.
 	default:

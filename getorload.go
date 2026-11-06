@@ -89,7 +89,7 @@ func reload[V any](
 ) (V, error) {
 	l := newLoading(c, o, ttl, key, load)
 	gens, err := l.readGens(ctx)
-	if err != nil { // the backend failed: load, and keep the result in Options.Fallback
+	if err != nil { // the backend failed: load, and keep the result in Policy.Fallback
 		v, loadErr := l.call(ctx)
 		if loadErr == nil {
 			l.spareResult(ctx, l.key, v)
@@ -131,6 +131,8 @@ type loading[V any] struct {
 	gens  []int64       // current generations of o.Tags, read before loading
 	shape uint64        // shapeOf V
 	took  time.Duration // how long the loader ran in this call
+	stale bool          // an old result can answer, so a full MaxConcurrentLoads fails at once
+	spare spare         // Policy.Fallback
 }
 
 func newLoading[V any](
@@ -140,11 +142,35 @@ func newLoading[V any](
 	key string,
 	load func(context.Context) (V, error),
 ) loading[V] {
-	return loading[V]{c: c, o: o, ttl: ttl, key: o.Prefix + key, load: load, shape: c.shapeOf(reflect.TypeFor[V]())}
+	return loading[V]{
+		c:     c,
+		o:     o,
+		ttl:   ttl,
+		key:   o.Prefix + key,
+		load:  load,
+		shape: c.shapeOf(reflect.TypeFor[V]()),
+		spare: c.spareOf(o.Fallback),
+	}
+}
+
+// acquire takes a slot of Policy.MaxConcurrentLoads for one load of this kind of data.
+func (l *loading[V]) acquire(ctx context.Context) (release func(), err error) {
+	return l.c.loads.acquire(
+		ctx,
+		loadKind{typ: reflect.TypeFor[V](), prefix: l.o.Prefix},
+		l.o.MaxConcurrentLoads,
+		l.stale,
+	)
 }
 
 // call runs the loader and adds the time it took to took.
 func (l *loading[V]) call(ctx context.Context) (V, error) {
+	release, err := l.acquire(ctx)
+	if err != nil {
+		var zero V
+		return zero, err
+	}
+	defer release()
 	start := time.Now()
 	v, err := l.load(ctx)
 	l.took += time.Since(start)
@@ -165,30 +191,54 @@ func (l *loading[V]) get(ctx context.Context) (V, Result, error) {
 	return l.answer(ctx, e)
 }
 
-// withoutBackend answers while the backend fails: from Options.Fallback if it has the key, or by
-// loading and keeping the result there.
+// withoutBackend answers while the backend fails: from Policy.Fallback if it has the key, a result
+// or a cached "not found", or by loading and keeping the answer there.
 func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
-	if v, ok := l.spared(ctx, l.key); ok {
-		return v, ResultFallback, nil
+	if e, ok := l.sparedEntry(ctx, l.key); ok {
+		if e.Neg {
+			var zero V
+			return zero, ResultNegativeHit, l.o.Negative.Err
+		}
+		return e.V, ResultFallback, nil
 	}
 	v, err := l.call(ctx)
-	if err == nil {
+	switch {
+	case err == nil:
 		l.spareResult(ctx, l.key, v)
+	case l.o.Negative.If != nil && l.o.Negative.If(err):
+		l.spareNegative(ctx)
 	}
 	return v, ResultMiss, err
 }
 
-// spared returns the result Options.Fallback keeps under key, if it is of the current shape of V.
+// spared returns the result Policy.Fallback keeps under key, if it has one.
 func (l *loading[V]) spared(ctx context.Context, key string) (V, bool) {
-	var e entry[V]
-	raw, ok := l.c.spare.get(ctx, key)
-	if !ok || l.c.decode(key, raw, &e) != nil || !e.sameShape(l.shape) || e.Neg {
-		return e.V, false
-	}
-	return e.V, true
+	e, ok := l.sparedEntry(ctx, key)
+	return e.V, ok && !e.Neg
 }
 
-// spareResult keeps v in Options.Fallback for its TTL, if the policy stores it.
+// sparedEntry returns the entry Policy.Fallback keeps under key, if it is of the current shape of V.
+func (l *loading[V]) sparedEntry(ctx context.Context, key string) (entry[V], bool) {
+	var e entry[V]
+	raw, ok := l.spare.get(ctx, key)
+	if !ok || l.c.decode(key, raw, &e) != nil || !e.sameShape(l.shape) {
+		return e, false
+	}
+	return e, true
+}
+
+// spareNegative keeps a "not found" in Policy.Fallback for Negative.TTL.
+func (l *loading[V]) spareNegative(ctx context.Context) {
+	ttl := l.o.spread(l.o.Negative.TTL)
+	raw, err := l.c.encode(l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, T: l.shape}, 0)
+	if err != nil {
+		l.c.onError(ctx, err)
+		return
+	}
+	l.spare.put(ctx, l.key, raw, ttl)
+}
+
+// spareResult keeps v in Policy.Fallback for its TTL, if the policy stores it.
 func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
 	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
 		return
@@ -202,7 +252,7 @@ func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
 		l.c.onError(ctx, err)
 		return
 	}
-	l.c.spare.put(ctx, key, raw, fresh)
+	l.spare.put(ctx, key, raw, fresh)
 }
 
 // miss loads a key that has no usable entry.
@@ -234,6 +284,7 @@ func (l *loading[V]) answer(ctx context.Context, e entry[V]) (V, Result, error) 
 // with the entry instead.
 func (l *loading[V]) reloadStale(ctx context.Context, e entry[V], now time.Time) (V, Result, error) {
 	staleOK := now.Before(e.At.Add(l.o.StaleIfError))
+	l.stale = staleOK
 	var v V
 	var err error
 	if staleOK && l.o.StaleIfSlow > 0 {
@@ -311,6 +362,7 @@ func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 	return store(
 		ctx,
 		l.c,
+		l.spare,
 		l.key,
 		entry[V]{At: time.Now().Add(fresh), V: v, G: l.gens, T: l.shape},
 		fresh+l.o.keep(),
@@ -329,7 +381,7 @@ func (l *loading[V]) freshFor(v V) (time.Duration, bool) {
 // storeNegative stores a negative answer for Negative.TTL.
 func (l *loading[V]) storeNegative(ctx context.Context) {
 	ttl := l.o.spread(l.o.Negative.TTL)
-	store(ctx, l.c, l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, G: l.gens, T: l.shape}, ttl)
+	store(ctx, l.c, l.spare, l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, G: l.gens, T: l.shape}, ttl)
 }
 
 // refreshInBackground reloads the key in the background unless another caller already holds the
@@ -347,7 +399,8 @@ func (l *loading[V]) refreshInBackground(ctx context.Context) {
 		l.c.bg.wg.Done()
 		return
 	}
-	r := *l // the call returns before the reload ends: the reload times itself
+	r := *l        // the call returns before the reload ends: the reload times itself
+	r.stale = true // the old result was answered: a full MaxConcurrentLoads skips the reload
 	go func() {
 		defer r.c.bg.wg.Done()
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), ttl)
@@ -461,7 +514,7 @@ func lookup[V any](ctx context.Context, c *Cache, key string) (V, error) {
 
 // store saves v under key and returns v as it reads back from the cache, so callers see the
 // same value on a hit and on a miss. Failures are reported and leave v as it is.
-func store[V any](ctx context.Context, c *Cache, key string, v V, ttl time.Duration) V {
+func store[V any](ctx context.Context, c *Cache, keep spare, key string, v V, ttl time.Duration) V {
 	raw, err := c.encode(key, v, ttl)
 	if err != nil {
 		c.onError(ctx, err)
@@ -474,7 +527,7 @@ func store[V any](ctx context.Context, c *Cache, key string, v V, ttl time.Durat
 	}
 	if err := c.backend.Set(ctx, key, raw, ttl); err != nil {
 		c.onError(ctx, fmt.Errorf("gashe: set %q: %w", key, err))
-		c.spare.put(ctx, key, raw, ttl) // kept in Options.Fallback while the backend fails
+		keep.put(ctx, key, raw, ttl) // kept in Policy.Fallback while the backend fails
 	}
 	return out
 }

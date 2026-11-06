@@ -2,6 +2,7 @@ package httpcache_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -409,5 +410,60 @@ func TestVaryCustomIsPartOfTheKey(t *testing.T) {
 	get(h, http.MethodGet, "/", "X-Tenant", "a")
 	if e.runs.Load() != 2 {
 		t.Fatalf("handler ran %d times, want one per tenant", e.runs.Load())
+	}
+}
+
+func TestOverloadedRequestGets503(t *testing.T) {
+	release := make(chan struct{})
+	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = io.WriteString(w, "page")
+	})
+	h := serve(t, newCache(t), &httpcache.Options{
+		Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute, MaxConcurrentLoads: 1},
+	}, slow)
+	done := make(chan struct{})
+	go func() { get(h, http.MethodGet, "/a"); close(done) }() // takes the only slot
+	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/b", http.NoBody)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	close(release)
+	<-done
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503: rendering anyway would load what the limit holds back", w.Code)
+	}
+}
+
+// deadBackend fails every call, like a Redis that is gone.
+type deadBackend struct {
+	gashe.Backend
+}
+
+func (deadBackend) Get(context.Context, string) ([]byte, error) { return nil, errors.New("down") }
+func (deadBackend) Set(context.Context, string, []byte, time.Duration) error {
+	return errors.New("down")
+}
+
+func TestFallbackServesPagesWhileTheBackendIsDown(t *testing.T) {
+	spare := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = spare.Close() })
+	c := gashe.New(deadBackend{Backend: newCache(t).Backend()}, gashe.Options{})
+	p := &page{body: "catalog"}
+	h := serve(t, c, &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+		TTL:      time.Minute,
+		Fallback: &gashe.FallbackOptions{Backend: spare},
+	}}, p)
+
+	for range 3 {
+		if w := get(h, http.MethodGet, "/"); w.Body.String() != "catalog" {
+			t.Fatalf("body %q", w.Body.String())
+		}
+	}
+	if p.runs.Load() != 1 {
+		t.Fatalf("handler ran %d times, want once: the fallback must answer the rest", p.runs.Load())
 	}
 }
