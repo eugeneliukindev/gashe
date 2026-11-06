@@ -43,6 +43,13 @@ module it is about.
 - `backend/redis`: a `Bus` that fails to read a message drops all local copies, as after a
   reconnect, since messages may have been lost.
 
+### Fixed
+
+- `httpcache`: a request whose `ctx` deadline passed while it waited for the render of another
+  request got an empty `200`, as if its client were gone; it gets `503` now.
+- `httpcache`: a stale page `StaleIfError` answers instead of a 5xx is marked
+  `Cache-Status: gashe; fwd=stale; fwd-status=<status>`, as RFC 9211 asks, not `hit`, and has `Age`.
+
 ### Security
 
 - `httpcache` no longer caches requests with a `Cookie` header, as it does not for

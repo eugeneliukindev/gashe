@@ -126,6 +126,9 @@ func TestStaleIfErrorAnswersServerErrors(t *testing.T) {
 	if w.Code != http.StatusOK || w.Body.String() != "last good page" || p.runs.Load() != 2 {
 		t.Fatalf("during the outage: %d %q after %d runs", w.Code, w.Body.String(), p.runs.Load())
 	}
+	if got, want := w.Header().Get("Cache-Status"), "gashe; fwd=stale; fwd-status=502"; got != want {
+		t.Fatalf("Cache-Status %q, want %q: the page is stale and the handler failed", got, want)
+	}
 }
 
 func TestServerErrorIsSentAndNotStored(t *testing.T) {
@@ -435,6 +438,31 @@ func TestOverloadedRequestGets503(t *testing.T) {
 	<-done
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503: rendering anyway would load what the limit holds back", w.Code)
+	}
+}
+
+// A request whose server-side deadline passes while it waits for the load of another request
+// still gets an answer: its client is there, only the time is up.
+func TestRequestPastItsDeadlineGets503(t *testing.T) {
+	release := make(chan struct{})
+	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = io.WriteString(w, "page")
+	})
+	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute}}, slow)
+	done := make(chan struct{})
+	go func() { get(h, http.MethodGet, "/a"); close(done) }() // renders /a
+	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/a", http.NoBody) // waits for that render
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	close(release)
+	<-done
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503 for a request out of time", w.Code)
 	}
 }
 

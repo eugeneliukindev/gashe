@@ -94,11 +94,13 @@ type Options struct {
 // allows its status and it has no Set-Cookie, no Vary header beyond Options.Vary, no Cache-Control
 // no-store, private or no-cache, and a body within MaxBodyBytes; otherwise it is sent as is to the
 // request that made it. A 5xx response counts as a loader error, so StaleIfError answers it with
-// the last stored response; a request Policy.MaxConcurrentLoads holds back gets 503.
+// the last stored response; a request Policy.MaxConcurrentLoads holds back, or one whose ctx
+// deadline passes while it waits for a load, gets 503.
 //
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
-// hit, and Cache-Status (RFC 9211); a matching If-None-Match gets 304.
+// response from the cache, and Cache-Status (RFC 9211), with fwd=stale and fwd-status on a stale
+// page StaleIfError answered; a matching If-None-Match gets 304.
 //
 //nolint:gocritic // options by value, like gashe.New
 func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
@@ -162,8 +164,9 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 		write(w, r, &resp, statusOf(&resp, mine))
 	case mine != nil:
 		write(w, r, mine, statusMiss)
-	case errors.Is(err, gashe.ErrOverloaded):
-		// Policy.MaxConcurrentLoads is full: rendering anyway would load what the limit holds back.
+	case errors.Is(err, gashe.ErrOverloaded), errors.Is(err, context.DeadlineExceeded):
+		// Policy.MaxConcurrentLoads is full, or the request is out of time while it waits for a
+		// load: rendering anyway would load what the limit holds back, or answer too late.
 		w.Header().Set(headerCacheStatus, string(statusMiss))
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 	case r.Context().Err() != nil:
@@ -176,12 +179,23 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 	}
 }
 
-// statusOf tells a stored resp this request rendered, mine, from one it found in the cache.
+// statusOf tells a stored resp this request rendered, mine, from one it found in the cache, and
+// from a stale one StaleIfError answered because mine failed.
 func statusOf(resp, mine *Response) cacheStatus {
-	if mine != nil && mine.Stored.Equal(resp.Stored) {
+	switch {
+	case mine == nil:
+		return statusHit
+	case mine.Stored.Equal(resp.Stored):
 		return statusStored
+	case mine.Status >= http.StatusInternalServerError:
+		return statusStale(mine.Status)
 	}
 	return statusHit
+}
+
+// statusStale is a stale response answered because the handler returned status.
+func statusStale(status int) cacheStatus {
+	return cacheStatus(fmt.Sprintf("gashe; fwd=stale; fwd-status=%d", status))
 }
 
 // bypass reports whether r must go straight to the handler, and why.
@@ -238,7 +252,7 @@ func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheS
 	maps.Copy(h, resp.Header)
 	h.Set(headerETag, resp.ETag)
 	h.Set(headerCacheStatus, string(status))
-	if status == statusHit {
+	if status != statusStored {
 		h.Set(headerAge, strconv.Itoa(int(time.Since(resp.Stored).Seconds())))
 	}
 	if resp.Status == http.StatusOK && etagMatches(r.Header.Get(headerIfNoneMatch), resp.ETag) {
