@@ -9,6 +9,36 @@ module it is about.
 
 ## [Unreleased]
 
+### Added
+
+- `Options.Fallback`: while the backend fails or `CircuitBreaker` is open, `GetOrLoad`,
+  `GetOrLoadMany`, `Reload` and `httpcache` keep what the loader returns in a backend of their own,
+  usually memory, and answer from it, so the database gets one load per key and process instead of
+  one per call. `MaxTTL`, 30 seconds by default, caps how long an entry stays there. The basic API
+  and locks do not use it. `ResultFallback` reports such an answer.
+
+- `httpcache.Vary` says which parts of a request a page depends on, as the `Vary` header does for
+  headers, and so what its key is made of: `Headers`, such as `Accept-Language` or
+  `X-Forwarded-Host`; `Query`, the parameters that matter, so `utm_source` and random ones make no
+  new entries; `Cookies`, the cookies a page depends on, so an analytics cookie no longer keeps a
+  request out; `User`, for pages per user; and `Custom`. A response whose `Vary` header names only
+  headers of `Options.Vary` is now stored; before, any `Vary` kept it out.
+- The README lists every header `httpcache` reads and sets, and how it works behind a reverse proxy.
+
+### Changed
+
+- `httpcache.Options.Key`, a function, becomes `httpcache.Options.Vary`, a `httpcache.Vary`:
+  `Key: keyOf` becomes `Vary: httpcache.Vary{Custom: keyOf}`, and a key that held the user becomes
+  `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in.
+
+### Security
+
+- `httpcache` no longer caches requests with a `Cookie` header, as it does not for
+  `Authorization`: a page that depends on the session but sends no `Cache-Control: private` was
+  stored under its URL and served to everyone (web cache deception). `Vary.Cookies` lists the
+  cookies a page depends on, and `Vary.User` stores pages per user; with either, such requests are
+  cached.
+
 ## [0.4.0] - 2026-11-03
 
 Released as `v0.4.0` and `compress/zstd/v0.1.0`, the first version of that module.

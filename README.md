@@ -108,23 +108,53 @@ One runnable program per feature: [examples](examples/).
 | Work must run once at a time across pods | [Mutual exclusion](https://en.wikipedia.org/wiki/Mutual_exclusion), [distributed lock](https://en.wikipedia.org/wiki/Distributed_lock_manager) | [`WithLock`, `TryLock`](#locks) |
 | A client calls far too often | [Rate limiting](https://en.wikipedia.org/wiki/Rate_limiting) | [`RateLimit`](#cratelimit) |
 | A failing dependency drags the service down | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`Guard`, `CircuitBreaker`](#gasheguard) |
+| The cache backend is down, and every request goes to the database | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation), gutter pool | [`Options.Fallback`](#fallback-answer-from-memory-while-the-backend-is-down) |
 | The cache backend is down, and every request waits for its timeout | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`Options.CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down) |
 | A deploy changed a cached type | [Schema evolution](https://en.wikipedia.org/wiki/Schema_evolution) | built in: [shapes](#type-shapes-type-changes-after-a-deploy) |
 
 # Contents
 
-- [Setup](#setup): `gashe.New` and every option, `c.Shutdown`, `c.Ping`, `c.Backend`
-- [Backends](#backends): memory, Redis, near cache, your own, testing your code
-- [Load through the cache](#load-through-the-cache): [`gashe.For`](#gashefor),
-  [`GetOrLoad`](#getorload) and every option of its policy, [`GetOrLoadMany`](#getorloadmany),
-  [`Reload`](#reload), [`Cached.Set`](#cachedset), [`Cached.Delete`](#cacheddelete),
+- **[Setup](#setup)**: [`gashe.New`](#gashenew), [`c.Shutdown`](#cshutdown), [`c.Ping`](#cping),
+  [`c.Backend`](#cbackend)
+  - [`gashe.New`](#gashenew): [`Prefix`](#prefix-several-services-in-one-backend),
+    [`Codec`](#codec-the-format-of-values), [`Compressor`](#compressor-large-values),
+    [`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down),
+    [`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down), [`OnResult`,
+    `OnError`](#onresult-onerror-monitoring)
+- **[Backends](#backends)**: [`backend/memory`](#backendmemory), [`backend/redis`](#backendredis),
+  [`backend/nearcache`](#backendnearcache), [Your own backend](#your-own-backend), [Testing your
+  code](#testing-your-code)
+- **[Load through the cache](#load-through-the-cache)**: [`gashe.For`](#gashefor),
+  [`GetOrLoad`](#getorload), [`GetOrLoadMany`](#getorloadmany), [`Reload`](#reload),
+  [`Cached.Set`](#cachedset), [`Cached.Delete`](#cacheddelete),
   [`httpcache`](#httpcache-whole-http-responses)
-- [Locks](#locks): `c.WithLock`, `c.TryLock`, `c.Lock`, `lease.Extend`, `lease.Unlock`
-- [Limits and breakers](#limits-and-breakers): `c.RateLimit`, `gashe.Guard`, `c.CircuitBreaker`
-- [Values by key](#values-by-key): `c.Set`, `c.Get`, `c.GetMany` and the rest of the basic API
-- [Keys and counters](#keys-and-counters): `c.Keys`, `c.All`, `c.DeleteMatch`, `c.IncrBy`,
-  `c.Expire`, `c.TTL`
-- [Errors](#errors), [how gashe stores data](#how-gashe-stores-data), [benchmarks](#benchmarks)
+  - [`GetOrLoad`](#getorload): [`TTL`](#ttl-how-long-a-result-is-fresh),
+    [`Jitter`](#jitter-spread-expiry),
+    [`StaleWhileRevalidate`](#stalewhilerevalidate-answer-old-data-while-reloading),
+    [`StaleIfError`,
+    `StaleIfSlow`](#staleiferror-staleifslow-answer-old-data-while-the-source-fails),
+    [`Negative`](#negative-cache-not-found), [`LockOnMiss`](#lockonmiss-one-load-for-all-pods),
+    [`Tags`](#tags-invalidate-many-entries-with-one-write), [`CacheIf`,
+    `Prefix`](#cacheif-prefix-what-to-store-and-under-which-key), [Type
+    shapes](#type-shapes-type-changes-after-a-deploy)
+  - [`httpcache`](#httpcache-whole-http-responses): [How the key is made](#how-the-key-is-made),
+    [Headers](#headers-what-each-one-does), [Behind a reverse proxy](#behind-a-reverse-proxy)
+- **[Locks](#locks)**: [`c.WithLock`](#cwithlock), [`c.TryLock`](#ctrylock), [`c.Lock`](#clock),
+  [`lease.Extend`](#leaseextend), [`lease.Unlock`](#leaseunlock), [`c.IsLocked`](#cislocked)
+- **[Limits and breakers](#limits-and-breakers)**: [`c.RateLimit`](#cratelimit),
+  [`gashe.Guard`](#gasheguard), [`c.CircuitBreaker`](#ccircuitbreaker)
+- **[Values by key](#values-by-key)**: [`c.Set`](#cset), [`c.SetIfAbsent`](#csetifabsent),
+  [`c.SetIfPresent`](#csetifpresent), [`c.SetMany`](#csetmany), [`c.Get`](#cget),
+  [`c.GetMany`](#cgetmany), [`c.Delete`](#cdelete), [`c.DeleteMany`](#cdeletemany)
+- **[Keys and counters](#keys-and-counters)**: [`c.Keys`](#ckeys), [`c.All`](#call),
+  [`c.DeleteMatch`](#cdeletematch), [`c.IncrBy`](#cincrby), [`c.Exists`](#cexists),
+  [`c.Expire`](#cexpire), [`c.TTL`](#cttl)
+- **[Errors](#errors)**
+- **[How gashe stores data](#how-gashe-stores-data)**: [Keys](#keys), [TTL of an
+  entry](#ttl-of-an-entry), [The GetOrLoad entry](#the-getorload-entry), [What each strategy
+  stores](#what-each-strategy-stores), [Tags](#tags), [Type shapes](#type-shapes), [Known
+  limits](#known-limits)
+- **[Benchmarks](#benchmarks)**
 
 **Redis:** in a card lists the commands the Redis backend sends; Valkey and the other compatible
 servers get the same.
@@ -133,12 +163,21 @@ servers get the same.
 
 ## `gashe.New`
 
+Creates the cache over a backend; each option is explained below.
+
+**Options below:** [`Prefix`](#prefix-several-services-in-one-backend),
+[`Codec`](#codec-the-format-of-values), [`Compressor`](#compressor-large-values),
+[`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down),
+[`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down), [`OnResult`,
+`OnError`](#onresult-onerror-monitoring).
+
 ```go
 c := gashe.New(backend, gashe.Options{ // every field may be left out
 	Prefix:           "orders:",             // before every key, own keys included; "" means none
 	Codec:            gashe.JSON{},          // the format of values; nil means JSON
 	Compressor:       zstd.New(),            // shrinks what Codec produced; nil means none
 	CircuitBreaker:   &cacheBreaker,         // stop calling a failing backend; nil means none
+	Fallback:         &fallback,             // answer from memory while the backend fails; nil means none
 	OnError:          onError,               // errors worked around, not returned; nil drops them
 	OnResult:         onResult,              // how each GetOrLoad was answered; nil drops them
 	LockPollInterval: 20 * time.Millisecond, // how often Lock and LockOnMiss check; 0 means 100ms
@@ -194,7 +233,12 @@ gzip.New() // compress/gzip: in the core module, the standard library only
 ### `CircuitBreaker`: keep working when the backend is down
 
 ```go
-cacheBreaker := gashe.CircuitBreakerOptions{FailurePercent: 50, MinCalls: 20, Window: 10 * time.Second, OpenFor: 5 * time.Second}
+cacheBreaker := gashe.CircuitBreakerOptions{
+	FailurePercent: 50,
+	MinCalls:       20,
+	Window:         10 * time.Second,
+	OpenFor:        5 * time.Second,
+}
 ```
 
 - **Problem:** with the backend down, every call waits for its timeout before it goes to the loader.
@@ -210,6 +254,41 @@ cacheBreaker := gashe.CircuitBreakerOptions{FailurePercent: 50, MinCalls: 20, Wi
 
 ---
 
+### `Fallback`: answer from memory while the backend is down
+
+```go
+fallback := gashe.FallbackOptions{
+	Backend: memory.New(memory.Options{MaxBytes: 32 << 20}), // of its own, not shared with a near cache
+	MaxTTL:  30 * time.Second,
+}
+```
+
+- **Problem:** with the backend down, `GetOrLoad` loads on every call, and the database gets the
+  traffic the cache took, often more than it can carry.
+- **Fix:** while the backend fails or `CircuitBreaker` is open, `GetOrLoad`, `GetOrLoadMany`,
+  `Reload` and `httpcache` keep what the loader returns in `Fallback.Backend` and answer from it
+  (`ResultFallback`): one load per key and process instead of one per call.
+- **Note:** `MaxTTL` only shortens: an entry lives the TTL of its policy, but never longer than
+  `MaxTTL`, since no invalidation reaches it while the backend is down. 0 means 30 seconds. Once the
+  backend answers again, the fallback is no longer read and its entries expire.
+- **Watch out:** every pod keeps its own entries, so pods may answer differently for up to `MaxTTL`.
+  The basic API and locks do not use the fallback: they return the error, so a lock is never taken
+  in the memory of one pod.
+
+How a call goes from a working backend to a failing one and back:
+
+```text
+1. backend works     reads: backend (and a near cache); fallback not read
+        | errors
+2. backend fails     a read waits for the timeout, then the fallback, then the loader
+        | CircuitBreaker opens
+3. breaker open      no timeouts: the fallback answers, the loader runs once per key per MaxTTL
+        | after OpenFor
+4. test calls        a success goes back to 1; a failure back to 3
+```
+
+---
+
 ### `OnResult`, `OnError`: monitoring
 
 ```go
@@ -220,7 +299,8 @@ OnResult: func(ctx context.Context, o gashe.Outcome) {
 ```
 
 - **Does:** `OnResult` gets an `Outcome` for every `GetOrLoad` and every key of `GetOrLoadMany`: the
-  key, how it was answered, and how long the loader ran; `OnError` gets the errors the cache works
+  key, how it was answered (hit, miss, stale-while-revalidate, stale-if-error, stale-if-slow,
+  negative-hit, fallback), and how long the loader ran; `OnError` gets the errors the cache works
   around.
 - **Note:** both run synchronously on every call, so keep them fast; each sees its own process.
 - **Example:** [examples/monitoring](examples/monitoring/main.go)
@@ -300,23 +380,42 @@ backend := gasheredis.New(client)
 
 ## `backend/nearcache`
 
+Keeps a copy of what it reads from the shared backend in process memory, so a hot key costs no round
+trip.
+
 ```go
 local := memory.New(memory.Options{MaxBytes: 64 << 20})
 defer local.Close()
 
 backend := nearcache.New(local, gasheredis.New(client), nearcache.Options{
-	LocalTTL: time.Minute,                                    // how long a copy stays in memory; 0 means 5s
-	Bus:      gasheredis.NewBus(client, "orders:invalidate"), // one channel per service; nil: after LocalTTL
+	LocalTTL: time.Minute,
+	Bus:      gasheredis.NewBus(client, "orders:invalidate"), // one channel per service
 })
 defer backend.Close() // stops listening to the bus
 ```
 
-- **Problem:** a hot key is read thousands of times a second, each read a round trip to the shared
-  backend.
-- **Does:** keeps a copy in process memory for `LocalTTL`; with a `Bus`, a change on one pod drops
-  the copies on the others at once.
-- **Note:** writes, locks, counters and TTLs go to the shared backend; every pod keeps its own copy, so bound it
-  with `MaxBytes`; a key changed outside gashe stays old up to `LocalTTL`.
+**Default:** without a `Bus`, a copy lives 5 seconds in each process, so a change made by another pod
+is seen after at most 5 seconds.
+
+**How it works:**
+
+1. A read takes the local copy. A miss reads the shared backend and keeps a copy for `LocalTTL`.
+2. A write or a delete goes to the shared backend, drops the local copy and, with a `Bus`, tells the
+   other pods, which drop theirs; `DeleteMatch` makes them drop all their copies.
+3. `Exists`, `TTL`, scans and locks read the shared backend only.
+4. After a reconnect to the `Bus`, a pod drops all its copies, since messages may have been lost.
+
+**Options** (`nearcache.Options`):
+
+| Field | Default | What it does |
+|---|---|---|
+| `LocalTTL` | 5s | how long a copy stays in memory; also how long another pod may see an old value |
+| `Bus` | nil: copies expire after `LocalTTL` | tells other pods which keys changed; `gasheredis.NewBus` is one over pub/sub |
+
+- **Errors:** `New` panics on a negative `LocalTTL`.
+- **Watch out:** every pod keeps its own copy, so with 50 pods the memory is taken 50 times: bound it
+  with `MaxBytes`. The bus sees only changes made through gashe: a key changed by `redis-cli` stays
+  old up to `LocalTTL`.
 - **Example:** [examples/nearcache](examples/nearcache/main.go)
 
 ## Your own backend
@@ -366,46 +465,67 @@ userCache := gashe.For(c, gashe.Policy[User]{TTL: time.Hour, Prefix: "users:v2:"
 
 ## `GetOrLoad`
 
+Answers the stored result while the policy allows it; otherwise calls the loader, stores the result
+and returns it.
+
+**Options below:** [`TTL`](#ttl-how-long-a-result-is-fresh), [`Jitter`](#jitter-spread-expiry),
+[`StaleWhileRevalidate`](#stalewhilerevalidate-answer-old-data-while-reloading), [`StaleIfError`,
+`StaleIfSlow`](#staleiferror-staleifslow-answer-old-data-while-the-source-fails),
+[`Negative`](#negative-cache-not-found), [`LockOnMiss`](#lockonmiss-one-load-for-all-pods),
+[`Tags`](#tags-invalidate-many-entries-with-one-write), [`CacheIf`,
+`Prefix`](#cacheif-prefix-what-to-store-and-under-which-key), [Type
+shapes](#type-shapes-type-changes-after-a-deploy).
+
 ```go
-u, err := userCache.GetOrLoad(ctx, "42", loadUser)           // userCache := gashe.For(c, userPolicy)
+userCache := gashe.For(c, gashe.Policy[User]{TTL: time.Hour})
+u, err := userCache.GetOrLoad(ctx, "42", loadUser)
 u, err = gashe.GetOrLoad(ctx, c, "42", userPolicy, loadUser) // the same without For
 ```
 
-- **Does:** answers the stored result while the policy allows; otherwise calls the loader, stores
-  the result and returns it.
+**Default:** with only `TTL`, a fresh result is answered from the cache, a miss or an expired result
+calls the loader, and a loader error is returned and not stored.
+
+**How it works:**
+
+1. Concurrent calls for one key and type in a process share steps 2 to 7: one lookup, one load.
+2. It reads the entry and the counters of its tags. If the backend fails, the loader answers,
+   nothing is stored, and the error goes to `OnError`.
+3. A miss, an entry of an older tag counter or of another type shape: with `LockOnMiss`, one process
+   takes the load lock, reads again and loads; the others wait for its result.
+4. A stored "not found" within `Negative.TTL`: `Negative.Err`.
+5. A result within `TTL`: a hit. Within `StaleWhileRevalidate` after it: the old result at once,
+   and one caller across all pods reloads it in the background.
+6. Otherwise the loader runs. Within `StaleIfError`, a loader error that `StaleIf` accepts, or a
+   loader slower than `StaleIfSlow`, gets the old result instead.
+7. The loaded result is stored for `TTL` plus the longer window, spread by `Jitter`, unless
+   `CacheIf` rejects it or its TTL is negative. A loader error that `Negative.If` accepts stores a
+   "not found".
+
+**Options** (`gashe.Policy`; a zero field is off, each one is explained below):
+
+| Field | Default | What it does |
+|---|---|---|
+| `TTL` | required, unless a stale window is set | how long a result is fresh: a `time.Duration`, `"1h"` or a function of the result |
+| `Jitter` | 0 | spreads TTLs randomly by up to this share, from 0 to less than 1 |
+| `StaleWhileRevalidate` | 0 | after `TTL`: answer the old result, reload it in the background |
+| `StaleIfError` | 0 | after `TTL`: answer the old result instead of a loader error |
+| `StaleIf` | nil: any error | which loader errors `StaleIfError` covers |
+| `StaleIfSlow` | 0: wait for the loader | a slower loader gets the old result; needs `StaleIfError` |
+| `Negative` | off while `If` is nil | cache a "not found": `If` picks the errors, `Err` is returned, `TTL` keeps it |
+| `LockOnMiss` | 0 | one process loads a miss, the others wait; the longest the lock is held |
+| `Tags` | none | `InvalidateTags` of any of them makes the result a miss |
+| `CacheIf` | nil: every successful result | which results are stored |
+| `Prefix` | `""` | before the key, after `Options.Prefix` |
+
 - **Returns:** the result as it reads back from the cache.
 - **Errors:** the loader error, unless `StaleIfError` answers it. `Negative.Err` - a "not found" is
   cached. `ctx.Err()` - `ctx` ended while `LockOnMiss` waited. `ErrInvalidOptions` - an invalid
   policy, in the function form.
 - **Redis:** `GET` of the key and its `_tag:` counters in one pipeline; `SET ... PX` to store.
-- **Note:** concurrent calls for one key and type in a process share one load; backend errors go to
-  `OnError`, and the loader answers; the loader gets a `ctx` that may outlive the request.
+  `LockOnMiss` adds `SET _load:<key> NX PX`, `StaleWhileRevalidate` adds `SET _refresh:<key> NX PX`.
+- **Watch out:** the loader gets a `ctx` that may outlive the request; do not read a `GetOrLoad` key
+  with `c.Get`, the basic API stores plain values.
 - **Example:** [examples/cacheaside](examples/cacheaside/main.go)
-
-### `Policy`: every field
-
-```go
-userPolicy := gashe.Policy[User]{
-	TTL:                  time.Hour,              // how long a result is fresh
-	Jitter:               0.1,                    // spreads TTLs by +-10%, from 0 to less than 1
-	StaleWhileRevalidate: time.Minute,            // after TTL: answer the old result, reload in the background
-	StaleIfError:         24 * time.Hour,         // after TTL: answer the old result instead of a loader error
-	StaleIf:              isOutage,               // which loader errors StaleIfError covers; nil means any
-	StaleIfSlow:          200 * time.Millisecond, // a slower loader gets the old result; needs StaleIfError
-	Negative: gashe.Negative{ // cache "not found"; off while If is nil
-		If:  isNotFound,      // which loader errors to cache
-		Err: sql.ErrNoRows,   // what GetOrLoad returns while it is cached
-		TTL: 5 * time.Minute, // how long it is cached
-	},
-	LockOnMiss: 10 * time.Second,   // one process loads a miss, the others wait; the longest hold
-	Tags:       []string{"users"},  // InvalidateTags of any of them makes the result a miss
-	CacheIf:    gashe.NotNil[User], // which results are stored; nil means every successful one
-	Prefix:     "users:v2:",        // before the key, after Options.Prefix; "" means none
-}
-```
-
-- **Does:** says how `GetOrLoad` caches the results of one type; a zero field is off.
-- **Note:** define it once, bind it with `gashe.For`, and share it.
 
 ---
 
@@ -623,45 +743,149 @@ existed, err := userCache.Delete(ctx, "42") // deletes users:v2:42
 
 ## `httpcache`: whole HTTP responses
 
+Stores whole responses of a handler; a hit sends the stored status, headers and body without calling
+the handler.
+
+**Below:** [How the key is made](#how-the-key-is-made), [Headers](#headers-what-each-one-does),
+[Behind a reverse proxy](#behind-a-reverse-proxy).
+
 ```go
 cached := httpcache.New(c, httpcache.Options{
-	Policy: gashe.Policy[httpcache.Response]{ // as in GetOrLoad; a nil CacheIf stores 200 only
-		TTL:          time.Minute,
-		StaleIfError: time.Hour,
-		Tags:         []string{"catalog"}, // c.InvalidateTags(ctx, "catalog") after an edit
-		Prefix:       "http:",
+	Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute, StaleIfError: time.Hour},
+	Vary: httpcache.Vary{
+		Headers: []string{"Accept-Language"},
+		Query:   []string{"page", "sort"},
+		Cookies: []string{"currency"},
 	},
-	Key:          keyOf,   // the key of a request; nil: host, path and query, no Authorization
-	MaxBodyBytes: 4 << 20, // a larger body is sent but not stored; 0 means 1 MB
 })
 mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
 ```
 
-- **Problem:** a heavy page is rendered on every request.
-- **Does:** answers a hit with the stored status, headers and body, without calling the handler.
-- **Note:** it runs on `GetOrLoad`, so every `Policy` field works for pages, and it follows the
-  standards of a shared cache:
-  - **Stored** ([RFC 9111](https://www.rfc-editor.org/rfc/rfc9111#section-3)): `GET` and `HEAD`
-    without `Range` only; never `Set-Cookie`, `Vary` or `Cache-Control` `no-store`, `private`,
-    `no-cache`; never `Authorization` unless `Key` includes the user; hop-by-hop headers dropped
-    ([RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1)).
-  - **Conditional** ([RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2)): every
-    response gets an `ETag`; a matching `If-None-Match` gets `304 Not Modified`.
-  - **`Cache-Status`** ([RFC 9211](https://www.rfc-editor.org/rfc/rfc9211)): `gashe; hit`,
-    `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss`, `gashe; fwd=method` or
-    `gashe; fwd=request`; a hit also gets `Age`.
-  - **Stricter on purpose:** request `Cache-Control` and `Pragma` are ignored; freshness comes from
-    `Policy`, not `max-age`.
+**Default:** `GET` and `HEAD` requests without `Authorization`, `Cookie` and `Range` are cached under
+their host, path and query. A `200` of at most 1 MB, without `Set-Cookie`, a `Vary` header and
+`Cache-Control` `no-store`, `private` or `no-cache`, is stored for `Policy.TTL`.
+
+**How it works:**
+
+1. A request goes past the cache with another method, with `Range`, with `Authorization` unless
+   `Vary.User` is set, or with `Cookie` unless `Vary.Cookies` or `Vary.User` is set.
+2. Its key is the host, the path and what `Vary` names, see [how the key is made](#how-the-key-is-made).
+3. A hit sends the stored response with `ETag`, `Age` and `Cache-Status: gashe; hit`; a matching
+   `If-None-Match` gets `304 Not Modified`.
+4. A miss runs the handler once for all concurrent requests of the key, as `GET` also for `HEAD`.
+5. The response is stored if it passes the [rules of its headers](#headers-what-each-one-does). One
+   that does not is sent only to the request that made it, and the other waiting requests run the
+   handler themselves.
+6. A 5xx is a loader error: within `StaleIfError` the last good page answers it.
+
+**Options** (`httpcache.Options`):
+
+| Field | Default | What it does |
+|---|---|---|
+| `Policy` | required: a `TTL` | how pages are cached, as in `GetOrLoad`; a nil `CacheIf` stores `200` only |
+| `Vary` | host, path and query | which parts of a request a page depends on, and so its key |
+| `MaxBodyBytes` | 1 MB | a larger body is sent but not stored |
+
+**Vary** (`httpcache.Vary`; the host and the path are always part of the key):
+
+| Field | Default | What it does |
+|---|---|---|
+| `Headers` | none | request headers whose values are part of the key; a `Vary` header naming only them is stored |
+| `Query` | nil: the whole query | only these query parameters; an empty list means none |
+| `Cookies` | nil: requests with `Cookie` go past the cache | only these cookies; requests with other cookies are cached too |
+| `User` | nil: pages are shared | who the page is for; pages per user, and `Authorization` and `Cookie` requests are cached |
+| `Custom` | none | anything else the page depends on, added at the end of the key |
+
+- **Errors:** `New` panics on a negative `MaxBodyBytes`.
+- **Watch out:** every part of a request the handler builds a page from, a cookie,
+  `X-Forwarded-Host`, `Accept-Language`, must be in `Vary`, or one request's page is served to
+  others.
 - **Example:** [examples/httpserver](examples/httpserver/main.go)
 
 > [!CAUTION]
-> A response must be the same for everyone who gets its key. If a page depends on a cookie, put the
-> user into `Key`, or do not wrap that route.
+> A response must be the same for everyone who gets its key: a page that depends on something
+> outside `Vary` leaks to other users (web cache deception, web cache poisoning).
+
+---
+
+### How the key is made
+
+```text
+<host><path>?<query> h:<header>=<value> c:<cookie>=<value> u=<user> x=<custom>
+```
+
+- **Does:** the host and the path are always part of the key; of the rest, only what `Vary` names.
+  Two requests that differ only in other headers, cookies or query parameters get the same page.
+- **Note:** with `Vary{Headers: {"Accept-Language"}, Query: {"page"}, Cookies: {"currency"}}`, both
+  `/list?page=2&utm_source=mail` and `/list?page=2&utm_source=ads`, with `Accept-Language: de` and
+  `Cookie: currency=eur; _ga=111`, are `shop.com/list?page=2 h:Accept-Language=de c:currency=eur`:
+  the second one is a hit. Query parameters are sorted, values are escaped, and `Options.Prefix`
+  and `Policy.Prefix` come before the key.
+
+---
+
+### Headers: what each one does
+
+Headers of the request:
+
+| Header | What `httpcache` does |
+|---|---|
+| method | only `GET` and `HEAD` are cached; `HEAD` reads what `GET` stored |
+| `Host` | always part of the key, with the path; the query too, or `Vary.Query` of it |
+| `Authorization` | the request goes past the cache unless `Vary.User` is set: the page may belong to who sent it |
+| `Cookie` | past the cache too, unless `Vary.Cookies` lists the cookies the page depends on or `Vary.User` is set |
+| `Range` | the request goes past the cache |
+| `If-None-Match` | a matching `ETag` gets `304 Not Modified`, compared the weak way of [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2) |
+| `Cache-Control`, `Pragma` | ignored on purpose: a client cannot make the handler run on every request |
+| the headers in `Vary.Headers` | their values are part of the key |
+
+Headers of the response the handler writes ([RFC 9111](https://www.rfc-editor.org/rfc/rfc9111#section-3)):
+
+| Header | What `httpcache` does |
+|---|---|
+| `Cache-Control: no-store`, `private`, `no-cache` | the response is not stored |
+| `Cache-Control: max-age` | ignored: freshness comes from `Policy` |
+| `Set-Cookie` | the response is not stored |
+| `Vary` | stored only if every header it names is in `Options.Vary`: `Vary.Headers`, `Cookie` with `Vary.Cookies` or `Vary.User`, `Authorization` with `Vary.User`; `Vary: *` never |
+| `ETag` | kept; without one, a hash of the body |
+| hop-by-hop, `Date`, `Content-Length` | not stored ([RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1)) |
+| any other | stored and sent with every hit |
+
+Headers `httpcache` adds:
+
+| Header | Value |
+|---|---|
+| `ETag` | on every response |
+| `Age` | on a hit: the seconds since the response was stored |
+| `Cache-Status` ([RFC 9211](https://www.rfc-editor.org/rfc/rfc9211)) | `gashe; hit`, `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss` (not stored), `gashe; fwd=method` or `gashe; fwd=request` (past the cache) |
+
+---
+
+### Behind a reverse proxy
+
+```go
+cached := httpcache.New(c, httpcache.Options{
+	Policy: pages,
+	Vary: httpcache.Vary{
+		Headers: []string{"X-Forwarded-Host", "X-Forwarded-Proto"}, // set by your proxy, not by clients
+	},
+})
+```
+
+- **Problem:** the key must hold the host the handler builds the page for.
+- **Fix:** with Traefik, which keeps `Host` by default, or nginx with `proxy_set_header Host $host`,
+  the default key is right. A proxy that sets `Host` to its upstream needs `X-Forwarded-Host` in
+  `Vary.Headers`, and `X-Forwarded-Proto` if the page has absolute links.
+- **Note:** trust `X-Forwarded-*` only where your proxy sets it and drops what the client sent; never
+  put the client IP, `X-Forwarded-For` or `X-Real-Ip`, in the key: every visitor would get a copy of
+  their own. A random query makes a new entry each time unless `Vary.Query` lists the parameters that
+  matter; a random `Host` too, so bound memory with `MaxBytes`.
 
 # Locks
 
-Some work must never run twice at once across pods: a daily report, a payment. A lock lives in the
-backend and is shared by every process; its TTL frees it if the holder dies.
+Some work must never run twice at once across pods: a daily report, a payment. A lock is a key in the
+backend that holds the random id of its holder; it is shared by every process, and its TTL frees it
+if the holder dies.
 
 > [!CAUTION]
 > Locks are advisory: a holder paused longer than the TTL (GC, a frozen VM) can overlap with the next
@@ -669,16 +893,27 @@ backend and is shared by every process; its TTL frees it if the holder dies.
 
 ## `c.WithLock`
 
+Runs a function while holding the lock, and keeps the lock as long as the function runs.
+
 ```go
 err := c.WithLock(ctx, "job:reindex", time.Minute, func(ctx context.Context) error {
 	return reindex(ctx)
 })
 ```
 
-- **Does:** waits for the lock, runs the function, extends the lock every third of the TTL while it
-  runs, and releases it.
+**Default:** the only option is the TTL; `Options.LockPollInterval`, 100ms, sets how often a busy lock
+is checked.
+
+**How it works:**
+
+1. It takes the lock as `c.Lock` does, waiting while someone else holds it.
+2. It runs the function with a `ctx` of its own.
+3. Every third of the TTL it extends the lock if it is still its own. If an extension fails, it
+   cancels the `ctx` of the function.
+4. When the function returns, it releases the lock.
+
 - **Returns:** the error of the function.
-- **Errors:** `ErrLockLost` - an extension failed, and the `ctx` of the function is cancelled.
+- **Errors:** `ErrLockLost` - an extension failed, and the `ctx` of the function was cancelled.
   `ctx.Err()` - the wait ended first. `ErrInvalidTTL` - the TTL is not positive.
 - **Redis:** as `c.Lock`, `lease.Extend` and `lease.Unlock`.
 - **Example:** [examples/lock](examples/lock/main.go)
@@ -746,11 +981,13 @@ locked, err := c.IsLocked(ctx, "job:reindex")
 
 ## `c.RateLimit`
 
+Counts one call for a key across all pods, and refuses calls over the limit.
+
 ```go
 err := c.RateLimit(ctx, "login:"+ip, gashe.FixedWindow{
-	Calls:  5,                // calls per window, which starts with the first call
-	Per:    time.Minute,      // the window
-	BanFor: 15 * time.Minute, // how long the first call over the limit blocks the key; 0 means Per
+	Calls:  5,
+	Per:    time.Minute,
+	BanFor: 15 * time.Minute,
 })
 err = c.RateLimit(ctx, "api-key:"+key, gashe.PerMinute(600)) // = SlidingWindow{Calls: 600, Per: time.Minute}
 
@@ -761,48 +998,86 @@ if errors.As(err, &limited) {
 }
 ```
 
-- **Problem:** a client or a bug calls an expensive endpoint far too often.
-- **Does:** counts one call for the key across all pods, and refuses calls over the limit.
+**Default:** none: every call names its limit. Call it before the work it guards.
+
+**How it works:**
+
+1. `FixedWindow`: a counter for the key starts with the first call and lives `Per`. The first call
+   over `Calls` blocks the key for `BanFor`, counted from that call.
+2. `SlidingWindow`: a counter per span of `Per`. A call passes while the current one plus the last
+   one, weighted by how much of it still falls inside the last `Per`, stays within `Calls`; a refused
+   call is not counted.
+3. Over the limit, the call gets a `*RateLimitError` with `RetryAfter`.
+4. If the backend fails, the call is let through and the error goes to `OnError`.
+
+**Options:**
+
+| Limit | Field | What it does |
+|---|---|---|
+| `SlidingWindow` | `Calls`, `Per` | about `Calls` in any span of `Per`; also `PerSecond(n)`, `PerMinute(n)`, `PerHour(n)` |
+| `FixedWindow` | `Calls`, `Per` | `Calls` per window of `Per` that starts with the first call |
+| | `BanFor` | how long the first call over the limit blocks the key; 0 means `Per` |
+
 - **Errors:** `*RateLimitError` - over the limit; it is `ErrRateLimited` and has `RetryAfter`.
   `ErrInvalidOptions` - the limit cannot work.
 - **Redis:** `FixedWindow`: `INCRBY _rate:fixed:<key>` with the TTL `Per`, then `PEXPIRE` to `BanFor`
-  or `PTTL`. `SlidingWindow`: `INCRBY` of the current window, `GET` of the last one, `INCRBY -1` when
+  or `PTTL`. `SlidingWindow`: `INCRBY` of the current span, `GET` of the last one, `INCRBY -1` when
   refused.
-- **Note:** call it before the work it guards; a failing backend lets the call through; `RetryAfter`
-  assumes no other calls come; `SlidingWindow` is an estimate, and `FixedWindow` can let twice `Calls`
-  through at the border of two windows.
+- **Watch out:** `RetryAfter` assumes no other calls come; `SlidingWindow` is an estimate and can let
+  slightly more through under bursts; `FixedWindow` can let twice `Calls` through at the border of
+  two windows.
 - **Example:** [examples/ratelimit](examples/ratelimit/main.go)
 
 ## `gashe.Guard`
 
+Runs one call through the circuit breaker of a key: a failing dependency is not called for a while.
+
 ```go
-paymentsBreaker := gashe.CircuitBreakerOptions{
-	FailurePercent: 50,               // opens once this share of calls failed, 1 to 99; required
-	MinCalls:       10,               // calls the window needs before it may open; 0 means 1
-	Window:         30 * time.Second, // the recent span calls are counted over; required
-	OpenFor:        15 * time.Second, // how long the open breaker refuses calls; required
-	HalfOpenCalls:  1,                // test calls after OpenFor; 0 means it just closes
-	IsFailure:      isFailure,        // which errors count; nil means any
+payments := gashe.CircuitBreakerOptions{
+	FailurePercent: 50,
+	MinCalls:       10,
+	Window:         30 * time.Second,
+	OpenFor:        15 * time.Second,
 }
-receipt, err := gashe.Guard(c, "payments-api", paymentsBreaker, func() (Receipt, error) {
+receipt, err := gashe.Guard(c, "payments-api", payments, func() (Receipt, error) {
 	return provider.Charge(ctx, p)
 })
 ```
 
-- **Problem:** a dependency starts failing, every request still waits for it, and the failure spreads.
-- **Does:** runs one call through the breaker of the key and reports its result.
+**Default:** none: `FailurePercent`, `Window` and `OpenFor` are required.
+
+**How it works:**
+
+1. Closed: every call runs, and its outcome is counted over the last `Window`, in 10 parts.
+2. Once the window holds at least `MinCalls` calls and `FailurePercent` of them failed, the breaker
+   opens: for `OpenFor`, calls get `ErrCircuitOpen` and do not run.
+3. After `OpenFor`, with `HalfOpenCalls`, that many test calls run within one `Window`: the first
+   success closes the breaker, a failure opens it again. Without them, it just closes.
+4. A failure is an error `IsFailure` accepts; nil means any error.
+
+**Options** (`gashe.CircuitBreakerOptions`):
+
+| Field | Default | What it does |
+|---|---|---|
+| `FailurePercent` | required | opens once this share of calls failed, from 1 to 99 |
+| `MinCalls` | 1 | calls the window needs before it may open |
+| `Window` | required | the recent span calls are counted over |
+| `OpenFor` | required | how long the open breaker refuses calls |
+| `HalfOpenCalls` | 0: it just closes | test calls after `OpenFor` |
+| `IsFailure` | nil: any error | which errors count as failures |
+
 - **Returns:** what the call returned.
-- **Errors:** `ErrCircuitOpen` - the breaker is open, and the call does not run. `ErrInvalidOptions` -
+- **Errors:** `ErrCircuitOpen` - the breaker is open, and the call did not run. `ErrInvalidOptions` -
   the options cannot work.
-- **Redis:** none: the breaker lives in process memory.
-- **Note:** each pod judges by its own calls; the state of every key lives as long as the `Cache`, so
-  use a few fixed keys, not user ids.
+- **Redis:** none: the breaker lives in process memory, and each pod judges by its own calls.
+- **Watch out:** the state of every key lives as long as the `Cache`: use a few fixed keys, not user
+  ids.
 - **Example:** [examples/breaker](examples/breaker/main.go)
 
 ## `c.CircuitBreaker`
 
 ```go
-done, err := c.CircuitBreaker("payments-api", paymentsBreaker)
+done, err := c.CircuitBreaker("payments-api", payments)
 if err != nil {
 	return err
 }

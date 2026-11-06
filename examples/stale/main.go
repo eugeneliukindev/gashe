@@ -58,7 +58,11 @@ func main() {
 
 	fmt.Println("stale-if-slow:")
 	db = &source{}
-	sis := gashe.Policy[int]{TTL: time.Second, StaleIfError: time.Minute, StaleIfSlow: 100 * time.Millisecond}
+	sis := gashe.Policy[int]{
+		TTL:          time.Second,
+		StaleIfError: time.Minute,
+		StaleIfSlow:  100 * time.Millisecond,
+	}
 	get(ctx, c, "sis", sis, db) // sis: miss, got v1
 	time.Sleep(1100 * time.Millisecond)
 	db.delay = time.Second

@@ -62,7 +62,11 @@ func ExampleCache_RateLimit() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	login := gashe.FixedWindow{Calls: 2, Per: time.Minute, BanFor: 15 * time.Minute}
+	login := gashe.FixedWindow{
+		Calls:  2,
+		Per:    time.Minute,
+		BanFor: 15 * time.Minute,
+	}
 	for range 3 {
 		err := c.RateLimit(ctx, "login:1.2.3.4", login)
 		var limited *gashe.RateLimitError
@@ -82,7 +86,11 @@ func ExampleCache_CircuitBreaker() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
-	db := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: 30 * time.Second}
+	db := gashe.CircuitBreakerOptions{
+		FailurePercent: 50,
+		Window:         time.Minute,
+		OpenFor:        30 * time.Second,
+	}
 
 	for _, callErr := range []error{errors.New("timeout"), nil} {
 		done, err := c.CircuitBreaker("db", db)

@@ -18,7 +18,11 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	login := gashe.FixedWindow{Calls: 5, Per: time.Minute, BanFor: 15 * time.Minute}
+	login := gashe.FixedWindow{
+		Calls:  5,
+		Per:    time.Minute,
+		BanFor: 15 * time.Minute,
+	}
 	// attempts 1-5: allowed; 6-7: 429, retry after 15m0s
 	for attempt := 1; attempt <= 7; attempt++ {
 		fmt.Printf("login attempt %d: %s\n", attempt, verdict(c.RateLimit(ctx, "login:1.2.3.4", login)))
