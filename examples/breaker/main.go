@@ -25,7 +25,11 @@ func main() {
 		return nil
 	}
 	payments := gashe.CircuitBreakerOptions{
-		FailurePercent: 50, MinCalls: 3, Window: time.Minute, OpenFor: 300 * time.Millisecond, HalfOpenCalls: 1,
+		FailurePercent: 50,
+		MinCalls:       3,
+		Window:         time.Minute,
+		OpenFor:        300 * time.Millisecond,
+		HalfOpenCalls:  1,
 	}
 
 	call := func(n int) {

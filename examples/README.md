@@ -20,6 +20,7 @@ go run ./examples/stale
 | [lock](lock/main.go) | `TryLock`: one worker runs a job |
 | [ratelimit](ratelimit/main.go) | fixed window with a ban, sliding window |
 | [breaker](breaker/main.go) | `CircuitBreaker` opening and closing |
+| [fallback](fallback/main.go) | `Policy.Fallback`: one database query instead of a hundred while Redis is down |
 | [monitoring](monitoring/main.go) | `OnResult`: hit ratio and loader time |
 
 Every example uses the memory backend except `nearcache`, which needs Redis:

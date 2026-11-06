@@ -11,12 +11,17 @@ module it is about.
 
 ### Added
 
-- `Options.Fallback`: while the backend fails or `CircuitBreaker` is open, `GetOrLoad`,
-  `GetOrLoadMany`, `Reload` and `httpcache` keep what the loader returns in a backend of their own,
-  usually memory, and answer from it, so the database gets one load per key and process instead of
-  one per call. `MaxTTL`, 30 seconds by default, caps how long an entry stays there. The basic API
-  and locks do not use it. `ResultFallback` reports such an answer.
+- `Policy.MaxConcurrentLoads`: at most this many loads of one kind of data, its type and `Prefix`,
+  run at once in a process; a call over the limit waits as long as its `ctx` allows and then gets
+  `ErrOverloaded`, and one an old result can answer gets it at once. `httpcache` answers a request
+  held back with `503`.
 
+- `Policy.Fallback`: while the backend fails or `CircuitBreaker` is open, every load of the policy,
+  through `GetOrLoad`, `GetOrLoadMany`, `Reload` or `httpcache`, keeps what the loader returns in a
+  backend of its own, usually memory, and answers from it, so the database gets one load per key and
+  process instead of one per call. `MaxTTL`, 30 seconds by default, caps how long an entry stays
+  there, per kind of data. The basic API and locks do not use it. `ResultFallback` reports such an
+  answer.
 - `httpcache.Vary` says which parts of a request a page depends on, as the `Vary` header does for
   headers, and so what its key is made of: `Headers`, such as `Accept-Language` or
   `X-Forwarded-Host`; `Query`, the parameters that matter, so `utm_source` and random ones make no

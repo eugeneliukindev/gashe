@@ -101,6 +101,7 @@ One runnable program per feature: [examples](examples/).
 | Lookups of missing ids always reach the database | [Negative cache](https://en.wikipedia.org/wiki/Negative_cache), cache penetration | [`Negative`](#negative-cache-not-found) |
 | A heavy page is rendered on every request | [Web cache](https://en.wikipedia.org/wiki/Web_cache) | [`httpcache`](#httpcache-whole-http-responses) |
 | One change makes many entries stale | [Cache invalidation](https://en.wikipedia.org/wiki/Cache_invalidation) | [`Tags`, `InvalidateTags`](#tags-invalidate-many-entries-with-one-write) |
+| A thousand different cold keys flood the database at once | [Bulkhead pattern](https://en.wikipedia.org/wiki/Bulkhead_pattern), load shedding | [`MaxConcurrentLoads`](#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once) |
 | A cold key: a thousand identical queries | [Cache stampede](https://en.wikipedia.org/wiki/Cache_stampede), dog-piling | built in for one process, [`LockOnMiss`](#lockonmiss-one-load-for-all-pods) for all pods |
 | N+1 queries on a list page | N+1 query problem | [`GetOrLoadMany`](#getorloadmany) |
 | Keys stored together expire together | [Thundering herd](https://en.wikipedia.org/wiki/Thundering_herd_problem), cache avalanche | [`Jitter`](#jitter-spread-expiry) |
@@ -108,7 +109,7 @@ One runnable program per feature: [examples](examples/).
 | Work must run once at a time across pods | [Mutual exclusion](https://en.wikipedia.org/wiki/Mutual_exclusion), [distributed lock](https://en.wikipedia.org/wiki/Distributed_lock_manager) | [`WithLock`, `TryLock`](#locks) |
 | A client calls far too often | [Rate limiting](https://en.wikipedia.org/wiki/Rate_limiting) | [`RateLimit`](#cratelimit) |
 | A failing dependency drags the service down | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`Guard`, `CircuitBreaker`](#gasheguard) |
-| The cache backend is down, and every request goes to the database | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation), gutter pool | [`Options.Fallback`](#fallback-answer-from-memory-while-the-backend-is-down) |
+| The cache backend is down, and every request goes to the database | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation), gutter pool | [`Policy.Fallback`](#fallback-answer-from-memory-while-the-backend-is-down) |
 | The cache backend is down, and every request waits for its timeout | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`Options.CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down) |
 | A deploy changed a cached type | [Schema evolution](https://en.wikipedia.org/wiki/Schema_evolution) | built in: [shapes](#type-shapes-type-changes-after-a-deploy) |
 
@@ -118,8 +119,7 @@ One runnable program per feature: [examples](examples/).
   [`c.Backend`](#cbackend)
   - [`gashe.New`](#gashenew): [`Prefix`](#prefix-several-services-in-one-backend),
     [`Codec`](#codec-the-format-of-values), [`Compressor`](#compressor-large-values),
-    [`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down),
-    [`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down), [`OnResult`,
+    [`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down), [`OnResult`,
     `OnError`](#onresult-onerror-monitoring)
 - **[Backends](#backends)**: [`backend/memory`](#backendmemory), [`backend/redis`](#backendredis),
   [`backend/nearcache`](#backendnearcache), [Your own backend](#your-own-backend), [Testing your
@@ -134,6 +134,8 @@ One runnable program per feature: [examples](examples/).
     [`StaleIfError`,
     `StaleIfSlow`](#staleiferror-staleifslow-answer-old-data-while-the-source-fails),
     [`Negative`](#negative-cache-not-found), [`LockOnMiss`](#lockonmiss-one-load-for-all-pods),
+    [`MaxConcurrentLoads`](#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once),
+    [`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down),
     [`Tags`](#tags-invalidate-many-entries-with-one-write), [`CacheIf`,
     `Prefix`](#cacheif-prefix-what-to-store-and-under-which-key), [Type
     shapes](#type-shapes-type-changes-after-a-deploy)
@@ -167,8 +169,7 @@ Creates the cache over a backend; each option is explained below.
 
 **Options below:** [`Prefix`](#prefix-several-services-in-one-backend),
 [`Codec`](#codec-the-format-of-values), [`Compressor`](#compressor-large-values),
-[`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down),
-[`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down), [`OnResult`,
+[`CircuitBreaker`](#circuitbreaker-keep-working-when-the-backend-is-down), [`OnResult`,
 `OnError`](#onresult-onerror-monitoring).
 
 ```go
@@ -177,7 +178,6 @@ c := gashe.New(backend, gashe.Options{ // every field may be left out
 	Codec:            gashe.JSON{},          // the format of values; nil means JSON
 	Compressor:       zstd.New(),            // shrinks what Codec produced; nil means none
 	CircuitBreaker:   &cacheBreaker,         // stop calling a failing backend; nil means none
-	Fallback:         &fallback,             // answer from memory while the backend fails; nil means none
 	OnError:          onError,               // errors worked around, not returned; nil drops them
 	OnResult:         onResult,              // how each GetOrLoad was answered; nil drops them
 	LockPollInterval: 20 * time.Millisecond, // how often Lock and LockOnMiss check; 0 means 100ms
@@ -251,41 +251,6 @@ cacheBreaker := gashe.CircuitBreakerOptions{
 > [!WARNING]
 > With the backend down, `LockOnMiss` no longer holds other pods back, and every pod sends its misses
 > to the database. Put a breaker in front of the database for that case.
-
----
-
-### `Fallback`: answer from memory while the backend is down
-
-```go
-fallback := gashe.FallbackOptions{
-	Backend: memory.New(memory.Options{MaxBytes: 32 << 20}), // of its own, not shared with a near cache
-	MaxTTL:  30 * time.Second,
-}
-```
-
-- **Problem:** with the backend down, `GetOrLoad` loads on every call, and the database gets the
-  traffic the cache took, often more than it can carry.
-- **Fix:** while the backend fails or `CircuitBreaker` is open, `GetOrLoad`, `GetOrLoadMany`,
-  `Reload` and `httpcache` keep what the loader returns in `Fallback.Backend` and answer from it
-  (`ResultFallback`): one load per key and process instead of one per call.
-- **Note:** `MaxTTL` only shortens: an entry lives the TTL of its policy, but never longer than
-  `MaxTTL`, since no invalidation reaches it while the backend is down. 0 means 30 seconds. Once the
-  backend answers again, the fallback is no longer read and its entries expire.
-- **Watch out:** every pod keeps its own entries, so pods may answer differently for up to `MaxTTL`.
-  The basic API and locks do not use the fallback: they return the error, so a lock is never taken
-  in the memory of one pod.
-
-How a call goes from a working backend to a failing one and back:
-
-```text
-1. backend works     reads: backend (and a near cache); fallback not read
-        | errors
-2. backend fails     a read waits for the timeout, then the fallback, then the loader
-        | CircuitBreaker opens
-3. breaker open      no timeouts: the fallback answers, the loader runs once per key per MaxTTL
-        | after OpenFor
-4. test calls        a success goes back to 1; a failure back to 3
-```
 
 ---
 
@@ -472,6 +437,8 @@ and returns it.
 [`StaleWhileRevalidate`](#stalewhilerevalidate-answer-old-data-while-reloading), [`StaleIfError`,
 `StaleIfSlow`](#staleiferror-staleifslow-answer-old-data-while-the-source-fails),
 [`Negative`](#negative-cache-not-found), [`LockOnMiss`](#lockonmiss-one-load-for-all-pods),
+[`MaxConcurrentLoads`](#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once),
+[`Fallback`](#fallback-answer-from-memory-while-the-backend-is-down),
 [`Tags`](#tags-invalidate-many-entries-with-one-write), [`CacheIf`,
 `Prefix`](#cacheif-prefix-what-to-store-and-under-which-key), [Type
 shapes](#type-shapes-type-changes-after-a-deploy).
@@ -513,13 +480,16 @@ calls the loader, and a loader error is returned and not stored.
 | `StaleIfSlow` | 0: wait for the loader | a slower loader gets the old result; needs `StaleIfError` |
 | `Negative` | off while `If` is nil | cache a "not found": `If` picks the errors, `Err` is returned, `TTL` keeps it |
 | `LockOnMiss` | 0 | one process loads a miss, the others wait; the longest the lock is held |
+| `MaxConcurrentLoads` | 0: no limit | how many loads of this kind run at once in a process |
+| `Fallback` | nil: none | while the backend fails, keep and answer results from memory, at most `MaxTTL` |
 | `Tags` | none | `InvalidateTags` of any of them makes the result a miss |
 | `CacheIf` | nil: every successful result | which results are stored |
 | `Prefix` | `""` | before the key, after `Options.Prefix` |
 
 - **Returns:** the result as it reads back from the cache.
 - **Errors:** the loader error, unless `StaleIfError` answers it. `Negative.Err` - a "not found" is
-  cached. `ctx.Err()` - `ctx` ended while `LockOnMiss` waited. `ErrInvalidOptions` - an invalid
+  cached. `ctx.Err()` - `ctx` ended while `LockOnMiss` waited. `ErrOverloaded` - every slot of
+  `MaxConcurrentLoads` stayed taken until `ctx` ended. `ErrInvalidOptions` - an invalid
   policy, in the function form.
 - **Redis:** `GET` of the key and its `_tag:` counters in one pipeline; `SET ... PX` to store.
   `LockOnMiss` adds `SET _load:<key> NX PX`, `StaleWhileRevalidate` adds `SET _refresh:<key> NX PX`.
@@ -637,6 +607,67 @@ statsCache := gashe.For(c, gashe.Policy[Stats]{TTL: 10 * time.Minute, LockOnMiss
 - **Note:** make it longer than the slowest load, or a second pod loads when the lock expires;
   waiting calls wait as long as their `ctx` allows.
 - **Example:** [examples/stampede](examples/stampede/main.go)
+
+---
+
+### `MaxConcurrentLoads`: protect the source from too many loads at once
+
+```go
+userCache := gashe.For(c, gashe.Policy[User]{
+	TTL:                time.Hour,
+	StaleIfError:       time.Hour,
+	MaxConcurrentLoads: 20, // at most 20 loads of users at once in this process
+})
+```
+
+- **Problem:** a thousand different cold keys, after a deploy or with the cache down, send a
+  thousand queries to the database at once; sharing a load and `Fallback` only help with the same
+  key.
+- **Fix:** at most this many loads of this kind of data, its type and `Prefix`, run at once in a
+  process; the others wait for a slot as long as their `ctx` allows, then get `ErrOverloaded`. A call
+  that an old result can answer, within `StaleIfError`, or a background reload does not wait: it
+  gets the old result, or skips the reload.
+- **Note:** the limit is per process: with 10 pods, up to 10 times as many loads reach the source.
+  Use the same value for the same kind of data. `httpcache` answers a request held back with `503`.
+
+---
+
+### `Fallback`: answer from memory while the backend is down
+
+```go
+fallback := &gashe.FallbackOptions{
+	Backend: memory.New(memory.Options{MaxBytes: 32 << 20}), // of its own; policies may share it
+	MaxTTL:  30 * time.Second,
+}
+userCache := gashe.For(c, gashe.Policy[User]{TTL: time.Hour, Fallback: fallback})
+```
+
+- **Problem:** with the backend down, `GetOrLoad` loads on every call, and the database gets the
+  traffic the cache took, often more than it can carry.
+- **Fix:** while the backend fails or `Options.CircuitBreaker` is open, every load of the policy,
+  through `GetOrLoad`, `GetOrLoadMany`, `Reload` or `httpcache`, keeps what the loader returns in
+  `Fallback.Backend` and answers from it (`ResultFallback`): one load per key and process instead of
+  one per call.
+- **Note:** set it per kind of data, as a shorter `MaxTTL` for rates than for users. `MaxTTL` only
+  shortens: an entry lives the TTL of its policy, but never longer than `MaxTTL`, since no
+  invalidation reaches it while the backend is down. 0 means 30 seconds. Once the backend answers
+  again, the fallback is no longer read and its entries expire.
+- **Watch out:** every pod keeps its own entries, so pods may answer differently for up to `MaxTTL`.
+  The basic API and locks do not use the fallback: they return the error, so a lock is never taken
+  in the memory of one pod.
+- **Example:** [examples/fallback](examples/fallback/main.go)
+
+How a call goes from a working backend to a failing one and back:
+
+```text
+1. backend works     reads: backend (and a near cache); fallback not read
+        | errors
+2. backend fails     a read waits for the timeout, then the fallback, then the loader
+        | CircuitBreaker opens
+3. breaker open      no timeouts: the fallback answers, the loader runs once per key per MaxTTL
+        | after OpenFor
+4. test calls        a success goes back to 1; a failure back to 3
+```
 
 ---
 
@@ -776,7 +807,8 @@ their host, path and query. A `200` of at most 1 MB, without `Set-Cookie`, a `Va
 5. The response is stored if it passes the [rules of its headers](#headers-what-each-one-does). One
    that does not is sent only to the request that made it, and the other waiting requests run the
    handler themselves.
-6. A 5xx is a loader error: within `StaleIfError` the last good page answers it.
+6. A 5xx is a loader error: within `StaleIfError` the last good page answers it. A request that
+   `Policy.MaxConcurrentLoads` holds back gets `503 Service Unavailable`.
 
 **Options** (`httpcache.Options`):
 
@@ -1282,6 +1314,7 @@ Check them with `errors.Is`.
 | `ErrLockLost` | `Lease.Extend` of a lock that expired |
 | `ErrRateLimited` | `RateLimit` refuses a call; the error is a `*RateLimitError` with `RetryAfter` |
 | `ErrCircuitOpen` | `CircuitBreaker` or `Options.CircuitBreaker` refuses a call |
+| `ErrOverloaded` | `Policy.MaxConcurrentLoads` holds a load back until `ctx` ends |
 
 
 Loader errors are returned unchanged. `GetOrLoad` and `RateLimit` never return backend errors:
