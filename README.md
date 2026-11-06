@@ -630,6 +630,12 @@ userCache := gashe.For(c, gashe.Policy[User]{
 - **Note:** the limit is per process: with 10 pods, up to 10 times as many loads reach the source.
   Use the same value for the same kind of data. `httpcache` answers a request held back with `503`.
 
+> [!WARNING]
+> The wait has no limit but `ctx`: a call without a deadline waits until a slot frees, however long
+> the queue, and every waiting call holds its request and memory. Give requests a deadline, such as
+> `http.Server.WriteTimeout` or `context.WithTimeout`, so calls over the limit get `ErrOverloaded`
+> instead of piling up.
+
 ---
 
 ### `Fallback`: answer from memory while the backend is down

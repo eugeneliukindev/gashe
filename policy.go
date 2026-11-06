@@ -68,8 +68,9 @@ type Policy[V any] struct {
 	// MaxConcurrentLoads is how many loads of this kind of data, its type and Prefix, may run at
 	// once in this process: with 10 processes, up to 10 times as many reach the source. A call over
 	// the limit waits for a slot as long as its ctx allows, then returns ErrOverloaded; one that an
-	// old result can answer, within StaleIfError or a background reload, does not wait. Use the same
-	// value for the same kind of data. 0 means no limit.
+	// old result can answer, within StaleIfError or a background reload, does not wait. The wait has
+	// no limit but ctx: give calls a deadline, or calls over the limit pile up. Use the same value for
+	// the same kind of data. 0 means no limit.
 	MaxConcurrentLoads int
 	// Fallback keeps the results of this kind of data in a backend of its own while the backend of
 	// the cache fails or its CircuitBreaker is open, for the TTL but at most Fallback.MaxTTL, and
