@@ -57,3 +57,98 @@ func (s spare) put(ctx context.Context, key string, raw []byte, ttl time.Duratio
 		s.onError(ctx, fmt.Errorf("gashe: fallback set %q: %w", key, err))
 	}
 }
+
+// withoutBackend answers while the backend fails: from Policy.Fallback if it has the key, a result
+// or a cached "not found", or by loading and keeping the answer there.
+func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
+	if e, ok := l.sparedEntry(ctx, l.key); ok {
+		if e.Neg {
+			var zero V
+			return zero, ResultNegativeHit, l.o.Negative.Err
+		}
+		return e.V, ResultFallback, nil
+	}
+	v, err := l.call(ctx)
+	switch {
+	case err == nil:
+		l.spareResult(ctx, l.key, v)
+	case l.o.Negative.If != nil && l.o.Negative.If(err):
+		l.spareNegative(ctx)
+	}
+	return v, ResultMiss, err
+}
+
+// spared returns the result Policy.Fallback keeps under key, if it has one.
+func (l *loading[V]) spared(ctx context.Context, key string) (V, bool) {
+	e, ok := l.sparedEntry(ctx, key)
+	return e.V, ok && !e.Neg
+}
+
+// sparedEntry returns the entry Policy.Fallback keeps under key, if it is of the current shape of V.
+func (l *loading[V]) sparedEntry(ctx context.Context, key string) (entry[V], bool) {
+	var e entry[V]
+	raw, ok := l.spare.get(ctx, key)
+	if !ok || l.c.decode(key, raw, &e) != nil || !e.sameShape(l.shape) {
+		return e, false
+	}
+	return e, true
+}
+
+// spareNegative keeps a "not found" in Policy.Fallback for Negative.TTL.
+func (l *loading[V]) spareNegative(ctx context.Context) {
+	ttl := l.o.spread(l.o.Negative.TTL)
+	raw, err := l.c.encode(l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, T: l.shape}, 0)
+	if err != nil {
+		l.c.onError(ctx, err)
+		return
+	}
+	l.spare.put(ctx, l.key, raw, ttl)
+}
+
+// spareResult keeps v in Policy.Fallback for its TTL, if the policy stores it.
+func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
+	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
+		return
+	}
+	fresh, ok := l.freshFor(v)
+	if !ok {
+		return
+	}
+	raw, err := l.c.encode(key, entry[V]{At: time.Now().Add(fresh), V: v, T: l.shape}, 0)
+	if err != nil {
+		l.c.onError(ctx, err)
+		return
+	}
+	l.spare.put(ctx, key, raw, fresh)
+}
+
+// manyWithoutBackend answers keys while the backend fails: from Policy.Fallback for the keys it
+// has, and one load for the others, whose results it keeps there.
+func (l *loading[V]) manyWithoutBackend(
+	ctx context.Context,
+	keys []string,
+	load func(ctx context.Context, missing []string) (map[string]V, error),
+) (map[string]V, error) {
+	found := make(map[string]V, len(keys))
+	var missing []string
+	for _, k := range keys {
+		if v, ok := l.spared(ctx, l.o.Prefix+k); ok {
+			found[k] = v
+			l.c.onResult(ctx, Outcome{Key: l.o.Prefix + k, Result: ResultFallback})
+			continue
+		}
+		missing = append(missing, k)
+	}
+	if len(missing) == 0 {
+		return found, nil
+	}
+	loaded, err := l.loadMany(ctx, load, missing)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range loaded {
+		found[k] = v
+		l.spareResult(ctx, l.o.Prefix+k, v)
+	}
+	return found, nil
+}

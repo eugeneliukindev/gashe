@@ -162,37 +162,6 @@ func (l *loading[V]) usable(e *entry[V], now time.Time) bool {
 	return !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) && e.sameShape(l.shape)
 }
 
-// manyWithoutBackend answers keys while the backend fails: from Policy.Fallback for the keys it
-// has, and one load for the others, whose results it keeps there.
-func (l *loading[V]) manyWithoutBackend(
-	ctx context.Context,
-	keys []string,
-	load func(ctx context.Context, missing []string) (map[string]V, error),
-) (map[string]V, error) {
-	found := make(map[string]V, len(keys))
-	var missing []string
-	for _, k := range keys {
-		if v, ok := l.spared(ctx, l.o.Prefix+k); ok {
-			found[k] = v
-			l.c.onResult(ctx, Outcome{Key: l.o.Prefix + k, Result: ResultFallback})
-			continue
-		}
-		missing = append(missing, k)
-	}
-	if len(missing) == 0 {
-		return found, nil
-	}
-	loaded, err := l.loadMany(ctx, load, missing)
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range loaded {
-		found[k] = v
-		l.spareResult(ctx, l.o.Prefix+k, v)
-	}
-	return found, nil
-}
-
 // loadMany runs the loader for missing within Policy.MaxConcurrentLoads: one batch takes one slot.
 func (l *loading[V]) loadMany(
 	ctx context.Context,

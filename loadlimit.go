@@ -57,3 +57,13 @@ func (ls *loadLimits) slots(kind loadKind, n int) chan struct{} {
 	}
 	return s
 }
+
+// acquire takes a slot of Policy.MaxConcurrentLoads for one load of this kind of data.
+func (l *loading[V]) acquire(ctx context.Context) (release func(), err error) {
+	return l.c.loads.acquire(
+		ctx,
+		loadKind{typ: reflect.TypeFor[V](), prefix: l.o.Prefix},
+		l.o.MaxConcurrentLoads,
+		l.stale,
+	)
+}
