@@ -46,7 +46,7 @@ func TestPrefixesAddUp(t *testing.T) {
 	cachedUsers := gashe.Policy[string]{TTL: time.Hour, Prefix: "users:v2:", Tags: []string{"users"}}
 
 	_, _ = gashe.GetOrLoad(ctx, c, "42", cachedUsers, func(context.Context) (string, error) { return "Ann", nil })
-	for _, key := range []string{"orders:users:v2:42", "orders:_tag:users"} {
+	for _, key := range []string{"orders:users:v2:42", "orders:__tag:users"} {
 		if ok, _ := mem.Exists(ctx, key); !ok {
 			t.Fatalf("no %q: Options.Prefix and Policy.Prefix must add up", key)
 		}

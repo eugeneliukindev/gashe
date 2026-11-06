@@ -38,6 +38,8 @@ const (
 	headerSetCookie     = "Set-Cookie"
 	headerVary          = "Vary"
 	headerCacheStatus   = "Cache-Status"
+	headerConnection    = "Connection"
+	headerContentLength = "Content-Length"
 )
 
 // cacheStatus is the Cache-Status header of RFC 9211: how this cache handled the request.
@@ -62,6 +64,15 @@ var (
 	// errNotStored marks a response that must not be stored or shared with other requests.
 	errNotStored = errors.New("httpcache: response not stored")
 )
+
+// serverError is a 5xx response, shared with the requests that waited for the same render when no
+// header keeps it to one client.
+type serverError struct {
+	resp *Response
+}
+
+func (e *serverError) Error() string        { return errServer.Error() }
+func (e *serverError) Is(target error) bool { return target == errServer }
 
 // Response is a stored response. Policy.CacheIf receives it.
 type Response struct {
@@ -100,12 +111,17 @@ type Options struct {
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
 // response from the cache, and Cache-Status (RFC 9211), with fwd=stale and fwd-status on a stale
-// page StaleIfError answered; a matching If-None-Match gets 304.
+// page StaleIfError answered; a matching If-None-Match gets 304. It panics on a negative
+// MaxBodyBytes and on Policy.Negative, which cannot apply: CacheIf stores 404 responses.
 //
 //nolint:gocritic // options by value, like gashe.New
 func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 	if o.MaxBodyBytes < 0 {
 		panic("httpcache: negative MaxBodyBytes")
+	}
+	if o.Policy.Negative.If != nil {
+		// The loader returns only server errors and responses not to store, never "not found".
+		panic("httpcache: Policy.Negative does not apply; store 404 responses with CacheIf")
 	}
 	m := &middleware{
 		c:       c,
@@ -118,11 +134,6 @@ func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 	staleIf := o.Policy.StaleIf
 	m.policy.StaleIf = func(err error) bool {
 		return !errors.Is(err, errNotStored) && (staleIf == nil || staleIf(err))
-	}
-	if negIf := o.Policy.Negative.If; negIf != nil {
-		m.policy.Negative.If = func(err error) bool {
-			return !errors.Is(err, errNotStored) && !errors.Is(err, errServer) && negIf(err)
-		}
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { m.serve(w, r, next) })
@@ -147,23 +158,49 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 	// is read and written atomically.
 	var own atomic.Pointer[Response]
 	resp, err := gashe.GetOrLoad(r.Context(), m.c, m.vary.of(r), m.policy,
-		func(ctx context.Context) (Response, error) {
-			rendered, storable := m.render(ctx, r, next)
-			own.Store(&rendered)
-			switch {
-			case rendered.Status >= http.StatusInternalServerError:
-				return Response{}, errServer
-			case !storable:
-				return Response{}, errNotStored
-			}
-			return rendered, nil
-		})
-	mine := own.Load()
+		func(ctx context.Context) (Response, error) { return m.load(ctx, r, next, &own) })
+	m.answer(w, r, next, &resp, err, own.Load())
+}
+
+// load renders r for the cache and keeps the response in own: the error says why it is not stored.
+func (m *middleware) load(
+	ctx context.Context,
+	r *http.Request,
+	next http.Handler,
+	own *atomic.Pointer[Response],
+) (Response, error) {
+	rendered, storable, shared := m.render(ctx, r, next)
+	own.Store(&rendered)
+	switch {
+	case ctx.Err() != nil:
+		return Response{}, ctx.Err() // every client left: the page may be cut short
+	case rendered.Status >= http.StatusInternalServerError && shared:
+		return Response{}, &serverError{resp: &rendered}
+	case rendered.Status >= http.StatusInternalServerError:
+		return Response{}, errServer
+	case !storable:
+		return Response{}, errNotStored
+	}
+	return rendered, nil
+}
+
+// answer writes what GetOrLoad returned: resp and err, with mine the response this request rendered.
+func (m *middleware) answer(
+	w http.ResponseWriter,
+	r *http.Request,
+	next http.Handler,
+	resp *Response,
+	err error,
+	mine *Response,
+) {
+	var shared *serverError
 	switch {
 	case err == nil:
-		write(w, r, &resp, statusOf(&resp, mine))
+		write(w, r, resp, statusOf(resp, mine))
 	case mine != nil:
 		write(w, r, mine, statusMiss)
+	case errors.As(err, &shared):
+		write(w, r, shared.resp, statusMiss) // the 5xx another request rendered for this key
 	case errors.Is(err, gashe.ErrOverloaded), errors.Is(err, context.DeadlineExceeded):
 		// Policy.MaxConcurrentLoads is full, or the request is out of time while it waits for a
 		// load: rendering anyway would load what the limit holds back, or answer too late.
@@ -212,13 +249,17 @@ func (m *middleware) bypass(r *http.Request) (cacheStatus, bool) {
 }
 
 // render runs the handler as GET, also for HEAD, so the body can be stored; it reports whether
-// the response may be stored.
-func (m *middleware) render(ctx context.Context, r *http.Request, next http.Handler) (Response, bool) {
+// the response may be stored, and whether it may be shared with other requests at all.
+func (m *middleware) render(
+	ctx context.Context,
+	r *http.Request,
+	next http.Handler,
+) (resp Response, storable, shared bool) {
 	req := r.Clone(ctx)
 	req.Method = http.MethodGet
 	rec := &recorder{header: http.Header{}}
 	next.ServeHTTP(rec, req)
-	resp := Response{
+	resp = Response{
 		Status: cmp.Or(rec.status, http.StatusOK),
 		Header: stored(rec.header),
 		Body:   rec.body.Bytes(),
@@ -230,15 +271,21 @@ func (m *middleware) render(ctx context.Context, r *http.Request, next http.Hand
 		_, _ = h.Write(resp.Body)
 		resp.ETag = fmt.Sprintf(`"%016x"`, h.Sum64())
 	}
-	ok := m.storable(&resp, rec.header)
-	return resp, ok
+	shared = m.shareable(rec.header)
+	return resp, shared && m.storable(&resp), shared
 }
 
-func (m *middleware) storable(resp *Response, h http.Header) bool {
+// shareable reports whether a response with headers h may go to other requests than the one that
+// rendered it.
+func (m *middleware) shareable(h http.Header) bool {
+	return h.Get(headerSetCookie) == "" && m.vary.covers(h.Values(headerVary)) &&
+		!hasDirective(h.Values(headerCacheControl), "no-store", "private", "no-cache")
+}
+
+// storable reports whether a shareable response is stored.
+func (m *middleware) storable(resp *Response) bool {
 	switch {
-	case len(resp.Body) > m.maxBody, h.Get(headerSetCookie) != "", !m.vary.covers(h.Values(headerVary)):
-		return false
-	case hasDirective(h.Values(headerCacheControl), "no-store", "private", "no-cache"):
+	case len(resp.Body) > m.maxBody:
 		return false
 	case m.cacheIf != nil:
 		return m.cacheIf(*resp)
@@ -252,13 +299,14 @@ func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheS
 	maps.Copy(h, resp.Header)
 	h.Set(headerETag, resp.ETag)
 	h.Set(headerCacheStatus, string(status))
-	if status != statusStored {
+	if status != statusStored && status != statusMiss { // from the cache, fresh or stale
 		h.Set(headerAge, strconv.Itoa(int(time.Since(resp.Stored).Seconds())))
 	}
 	if resp.Status == http.StatusOK && etagMatches(r.Header.Get(headerIfNoneMatch), resp.ETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
+	h.Set(headerContentLength, strconv.Itoa(len(resp.Body))) // HEAD has the headers of GET
 	w.WriteHeader(resp.Status)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(resp.Body) // a failed write means the client is gone
@@ -268,6 +316,11 @@ func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheS
 // stored returns the headers worth storing: without hop-by-hop ones and those the server sets.
 func stored(h http.Header) http.Header {
 	out := h.Clone()
+	for _, v := range h.Values(headerConnection) { // fields it names are hop-by-hop too (RFC 9110 7.6.1)
+		for _, name := range strings.Split(v, ",") {
+			out.Del(strings.TrimSpace(name))
+		}
+	}
 	for _, k := range []string{
 		"Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer",
 		"Transfer-Encoding", "Upgrade", "Date", "Content-Length", "Etag",

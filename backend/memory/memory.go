@@ -361,14 +361,15 @@ func (m *Backend) live(key string) *entry {
 }
 
 // put stores data under key, replacing any entry, and evicts the least recently used entries
-// while a limit is exceeded. A value that does not fit into MaxBytes alone is not stored.
+// while a limit is exceeded. A value that does not fit into MaxBytes alone is not stored, and the
+// entry it replaces is gone too: the old value must not answer after a write.
 func (m *Backend) put(key string, data []byte, expireAt time.Time) error {
+	if el, ok := m.items[key]; ok {
+		m.remove(el)
+	}
 	size := entrySize(key, data)
 	if m.maxBytes > 0 && size > m.maxBytes {
 		return ErrTooLarge
-	}
-	if el, ok := m.items[key]; ok {
-		m.remove(el)
 	}
 	el := m.lru.PushFront(&entry{key: key, data: data, expireAt: expireAt})
 	m.items[key] = el

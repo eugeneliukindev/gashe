@@ -17,8 +17,15 @@ const maxGeneration = math.MaxInt64 / 2
 // backend.
 func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error {
 	for _, tag := range tags {
+		// A missing counter starts at a random generation first: INCRBY alone would start it at 1,
+		// which entries stored before an eviction may hold.
+		//nolint:gosec // a generation, not a secret
+		start := strconv.AppendInt(nil, rand.Int64N(maxGeneration), 10)
+		if _, err := c.backend.SetIfAbsent(ctx, ownTag+tag, start, 0); err != nil {
+			return fmt.Errorf("gashe: invalidate tag %q: %w", tag, err)
+		}
 		if _, err := c.backend.IncrBy(ctx, ownTag+tag, 1, 0); err != nil {
-			return err
+			return fmt.Errorf("gashe: invalidate tag %q: %w", tag, err)
 		}
 	}
 	return nil

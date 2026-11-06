@@ -107,3 +107,51 @@ func TestBreakerContract(t *testing.T) {
 		return gashe.New(mem, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
 	})
 }
+
+// hung answers no Get until its ctx ends, like a Redis that stopped answering.
+type hung struct {
+	gashe.Backend
+
+	gets int
+}
+
+func (h *hung) Get(ctx context.Context, _ string) ([]byte, error) {
+	h.gets++
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// A backend that hangs fails every call by its deadline: those deadlines count, or the breaker
+// would never open while every request waits.
+func TestBreakerCountsDeadlinesOfAHungBackend(t *testing.T) {
+	mem := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = mem.Close() })
+	b := &hung{Backend: mem}
+	c := gashe.New(b, gashe.Options{CircuitBreaker: &cacheBreaker})
+	var s string
+	for range 5 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+		_ = c.Get(ctx, "k", &s)
+		cancel()
+	}
+	if b.gets != cacheBreaker.MinCalls {
+		t.Fatalf("the hung backend got %d calls, want %d: then the breaker opens", b.gets, cacheBreaker.MinCalls)
+	}
+}
+
+// A call whose ctx ended before it reached the backend says nothing about the backend.
+func TestBreakerIgnoresCallsAlreadyOutOfTime(t *testing.T) {
+	mem := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = mem.Close() })
+	b := &hung{Backend: mem}
+	c := gashe.New(b, gashe.Options{CircuitBreaker: &cacheBreaker})
+	late, cancel := context.WithTimeout(context.Background(), -time.Second)
+	defer cancel()
+	var s string
+	for range 5 {
+		_ = c.Get(late, "k", &s)
+	}
+	if b.gets != 5 {
+		t.Fatalf("the backend got %d calls, want 5: late calls must not open the breaker", b.gets)
+	}
+}

@@ -95,7 +95,7 @@ func TestClusterBus(t *testing.T) {
 	ctx := context.Background()
 	client := newClusterClient(t)
 	flushCluster(t, client)
-	newPod := func() *nearcache.Backend {
+	newProcess := func() *nearcache.Backend {
 		local := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = local.Close() })
 		b := nearcache.New(local, gasheredis.New(client), nearcache.Options{
@@ -105,7 +105,7 @@ func TestClusterBus(t *testing.T) {
 		t.Cleanup(func() { _ = b.Close() })
 		return b
 	}
-	a, b := newPod(), newPod()
+	a, b := newProcess(), newProcess()
 	read := func(want string) func() bool {
 		return func() bool { v, err := a.Get(ctx, "price"); return err == nil && string(v) == want }
 	}

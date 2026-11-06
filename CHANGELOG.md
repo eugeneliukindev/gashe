@@ -42,12 +42,44 @@ module it is about.
 - `httpcache.Options.Key`, a function, becomes `httpcache.Options.Vary`, a `httpcache.Vary`:
   `Key: keyOf` becomes `Vary: httpcache.Vary{Custom: keyOf}`, and a key that held the user becomes
   `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in.
+- The keys the cache keeps for itself start with `__` instead of `_`: `__tag:`, `__load:`,
+  `__refresh:`, `__rate:sliding:`, `__rate:fixed:`; keys of yours may start with `_` now, not with
+  `__`. After the upgrade, tagged entries load once and rate limit counters start from zero; old
+  tag counters never expire, `DeleteMatch("_tag:*")` removes them.
 - `backend/redis` requires go-redis `v9.18.0`, which fixes GO-2025-3540; before, `v9.0.0`.
 - `backend/redis`: a `Bus` that fails to read a message drops all local copies, as after a
   reconnect, since messages may have been lost.
 
 ### Fixed
 
+- Concurrent calls for one key share a load that no longer runs with the `ctx` of the first
+  caller: when that caller left, the others got its `context canceled`, and `httpcache` stored the
+  page its cancelled handler wrote. The load is cancelled once every caller has left.
+- `InvalidateTags` on a counter the backend evicted started it at 1, so entries stored with
+  generation 1 were valid again; it starts at a random generation now, as a read does.
+- `backend/memory`: a value over `MaxBytes` left the old value readable; the old entry is gone.
+- `backend/nearcache`: a read whose key another process changed while the reply was on its way kept
+  the old value for `LocalTTL`; it keeps no copy now.
+- `LockOnMiss` with `Negative`: a process that waited for the lock loaded again instead of taking the
+  "not found" the holder stored.
+- `Reload` stored a "not found" when `Negative.If` accepted the error; any error leaves the stored
+  result alone, as documented.
+- `StaleIfError` hid a "not found" with the old result while it stored the "not found"; a "not
+  found" is an answer now, not a failure.
+- Type shapes count `msgpack` tags: with `codec/msgpack`, a renamed tag read old entries with empty
+  fields. Types without `msgpack` tags keep their shape, so nothing reloads.
+- `Options.CircuitBreaker` did not count calls that ended by their deadline, so it never opened for
+  a hung backend. A call whose `ctx` ended before it started is not counted.
+- `CircuitBreaker`: a failing call slower than a bucket wiped the newer counts, a late test call
+  reopened a breaker another one closed, and the share of failures was checked only on failures.
+- `backend/redis`: `ExtendLock` with less than a millisecond deleted the lock; it rounds up.
+- `backend/redis`: after a failed read, `Bus` and `TrackingBus` dropped every copy each second
+  while Redis was down, so a near cache served nothing; copies stay until the bus reconnects, and
+  `FLUSHDB` no longer delays `TrackingBus` by a second.
+- `httpcache`: a 5xx without `StaleIfError` made every waiting request render again; it is shared
+  unless a header keeps it to one client. Headers named in `Connection` were stored, `Age` was set
+  on responses rendered for the request, and `HEAD` had no `Content-Length`.
+- `httpcache`: `Policy.Negative` never applied; `New` panics on it now.
 - `httpcache`: a request whose `ctx` deadline passed while it waited for the render of another
   request got an empty `200`, as if its client were gone; it gets `503` now.
 - `httpcache`: a stale page `StaleIfError` answers instead of a 5xx is marked

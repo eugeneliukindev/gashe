@@ -72,7 +72,7 @@ func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
 	switch {
 	case err == nil:
 		l.spareResult(ctx, l.key, v)
-	case l.o.Negative.If != nil && l.o.Negative.If(err):
+	case l.notFound(err):
 		l.spareNegative(ctx)
 	}
 	return v, ResultMiss, err

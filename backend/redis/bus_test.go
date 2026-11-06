@@ -31,7 +31,7 @@ func TestBusOverRedis(t *testing.T) {
 	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
-	newPod := func() *nearcache.Backend {
+	newProcess := func() *nearcache.Backend {
 		local := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = local.Close() })
 		b := nearcache.New(local, gasheredis.New(client), nearcache.Options{
@@ -41,7 +41,7 @@ func TestBusOverRedis(t *testing.T) {
 		t.Cleanup(func() { _ = b.Close() })
 		return b
 	}
-	a, b := newPod(), newPod()
+	a, b := newProcess(), newProcess()
 	read := func(want string) func() bool {
 		return func() bool { v, err := a.Get(ctx, "price"); return err == nil && string(v) == want }
 	}
@@ -75,13 +75,13 @@ func TestTrackingBusSeesChangesBehindGashe(t *testing.T) {
 	}
 	local := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = local.Close() })
-	pod := nearcache.New(local, gasheredis.New(client), nearcache.Options{
+	process := nearcache.New(local, gasheredis.New(client), nearcache.Options{
 		LocalTTL: time.Hour,
 		Bus:      gasheredis.NewTrackingBus(newClient(t), "t:"),
 	})
-	t.Cleanup(func() { _ = pod.Close() })
+	t.Cleanup(func() { _ = process.Close() })
 	read := func(want string) func() bool {
-		return func() bool { v, err := pod.Get(ctx, "t:price"); return err == nil && string(v) == want }
+		return func() bool { v, err := process.Get(ctx, "t:price"); return err == nil && string(v) == want }
 	}
 	set := func(v string) {
 		t.Helper()
@@ -91,26 +91,26 @@ func TestTrackingBusSeesChangesBehindGashe(t *testing.T) {
 	}
 
 	set("1")
-	eventually(t, "the pod never read 1", read("1")) // the pod now keeps a local copy for an hour
+	eventually(t, "the process never read 1", read("1")) // the process now keeps a local copy for an hour
 	set("2")
-	eventually(t, "the pod kept its copy after a change behind gashe", read("2"))
+	eventually(t, "the process kept its copy after a change behind gashe", read("2"))
 
 	if err := client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, "the pod kept its copy after FLUSHDB", func() bool {
-		_, err := pod.Get(ctx, "t:price")
+	eventually(t, "the process kept its copy after FLUSHDB", func() bool {
+		_, err := process.Get(ctx, "t:price")
 		return errors.Is(err, gashe.ErrNotFound)
 	})
 
-	// A lost connection: after it reconnects, the pod drops everything and tracks again.
+	// A lost connection: after it reconnects, the process drops everything and tracks again.
 	set("3")
-	eventually(t, "the pod never read 3", read("3"))
+	eventually(t, "the process never read 3", read("3"))
 	if err := client.Do(ctx, "CLIENT", "KILL", "TYPE", "pubsub").Err(); err != nil {
 		t.Skipf("the server cannot drop pub/sub clients (%v), so the reconnect is not checked", err)
 	}
 	set("4")
-	eventually(t, "the pod kept its copy after the bus reconnected", read("4"))
+	eventually(t, "the process kept its copy after the bus reconnected", read("4"))
 	set("5")
-	eventually(t, "the pod stopped tracking after the reconnect", read("5"))
+	eventually(t, "the process stopped tracking after the reconnect", read("5"))
 }

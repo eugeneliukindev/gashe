@@ -101,3 +101,19 @@ func TestCloseTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A Set too large to store still replaces the entry: the old value must not answer afterwards.
+func TestSetTooLargeDropsTheOldValue(t *testing.T) {
+	ctx := context.Background()
+	m := memory.New(memory.Options{MaxBytes: 16, PurgeInterval: -1})
+	t.Cleanup(func() { _ = m.Close() })
+	if err := m.Set(ctx, "k", []byte("old"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Set(ctx, "k", make([]byte, 100), 0); !errors.Is(err, memory.ErrTooLarge) {
+		t.Fatalf("Set too large = %v, want ErrTooLarge", err)
+	}
+	if v, err := m.Get(ctx, "k"); !errors.Is(err, gashe.ErrNotFound) {
+		t.Fatalf("Get after a too large Set = %q, %v; want ErrNotFound", v, err)
+	}
+}

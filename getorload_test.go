@@ -3,10 +3,12 @@ package gashe_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
+	"github.com/eugeneliukindev/gashe/backend/memory"
 )
 
 // downBackend fails every Get and Set, like an unreachable Redis.
@@ -239,5 +241,123 @@ func TestGetOrLoadSharesOnlySameType(t *testing.T) {
 	got, err := gashe.GetOrLoad(ctx, c, "k", strs, func(context.Context) (string, error) { return "one", nil })
 	if err != nil || got != "one" {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+// A shared load outlives the caller that started it: one caller leaving must not fail the others.
+func TestSharedLoadOutlivesTheCallerThatStartedIt(t *testing.T) {
+	c := newCache(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	load := func(ctx context.Context) (string, error) {
+		close(started)
+		select {
+		case <-release:
+			return "value", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	policy := gashe.Policy[string]{TTL: time.Minute}
+
+	first, cancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := gashe.GetOrLoad(first, c, "k", policy, load)
+		firstDone <- err
+	}()
+	<-started
+	second := make(chan string, 1)
+	go func() {
+		v, err := gashe.GetOrLoad(context.Background(), c, "k", policy, load)
+		if err != nil {
+			v = "error: " + err.Error()
+		}
+		second <- v
+	}()
+	time.Sleep(20 * time.Millisecond) // the second call joins the load
+	cancel()
+	if err := <-firstDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the first caller got %v, want its own context.Canceled", err)
+	}
+	close(release)
+	if v := <-second; v != "value" {
+		t.Fatalf("the second caller got %q, want the result of the shared load", v)
+	}
+}
+
+// With LockOnMiss, a process that waited for the lock takes the "not found" the holder stored: one
+// load for all processes, also when the answer is "not found".
+func TestLockOnMissSharesANegativeAnswer(t *testing.T) {
+	ctx := context.Background()
+	mem := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = mem.Close() })
+	procA := gashe.New(mem, gashe.Options{LockPollInterval: time.Millisecond})
+	procB := gashe.New(mem, gashe.Options{LockPollInterval: time.Millisecond})
+	errMissing := errors.New("missing")
+	p := gashe.Policy[string]{
+		TTL:        time.Minute,
+		LockOnMiss: 5 * time.Second,
+		Negative: gashe.Negative{
+			If:  func(err error) bool { return errors.Is(err, errMissing) },
+			Err: errMissing,
+			TTL: time.Minute,
+		},
+	}
+	var loads atomic.Int32
+	started, release := make(chan struct{}), make(chan struct{})
+	slow := func(context.Context) (string, error) {
+		if loads.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		return "", errMissing
+	}
+	done := make(chan error, 1)
+	go func() { _, err := gashe.GetOrLoad(ctx, procA, "k", p, slow); done <- err }()
+	<-started // process A holds the load lock
+	waited := make(chan error, 1)
+	go func() { _, err := gashe.GetOrLoad(ctx, procB, "k", p, slow); waited <- err }()
+	time.Sleep(20 * time.Millisecond) // process B waits for the lock
+	close(release)
+	if err := <-done; !errors.Is(err, errMissing) {
+		t.Fatalf("process A got %v", err)
+	}
+	if err := <-waited; !errors.Is(err, errMissing) {
+		t.Fatalf("process B got %v", err)
+	}
+	if n := loads.Load(); n != 1 {
+		t.Fatalf("the loader ran %d times, want 1 for both processes", n)
+	}
+}
+
+// Reload leaves the stored result alone on any loader error, one Negative.If accepts too.
+func TestReloadErrorKeepsTheStoredResult(t *testing.T) {
+	ctx := context.Background()
+	c := newCache(t)
+	errMissing := errors.New("missing")
+	p := gashe.Policy[string]{
+		TTL: time.Hour,
+		Negative: gashe.Negative{
+			If:  func(err error) bool { return errors.Is(err, errMissing) },
+			Err: errMissing,
+			TTL: time.Minute,
+		},
+	}
+	_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (string, error) { return "kept", nil })
+	if _, err := gashe.Reload(
+		ctx,
+		c,
+		"k",
+		p,
+		func(context.Context) (string, error) { return "", errMissing },
+	); !errors.Is(
+		err,
+		errMissing,
+	) {
+		t.Fatalf("Reload = %v, want the loader error", err)
+	}
+	v, err := gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (string, error) { return "loaded", nil })
+	if err != nil || v != "kept" {
+		t.Fatalf("after a failed Reload: %q, %v; want the stored result", v, err)
 	}
 }

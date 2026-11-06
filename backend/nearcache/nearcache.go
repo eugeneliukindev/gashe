@@ -6,9 +6,11 @@ package nearcache
 import (
 	"cmp"
 	"context"
+	"hash/maphash"
 	"iter"
 	"maps"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -45,12 +47,35 @@ type Backend struct {
 	shared gashe.Backend
 	ttl    time.Duration
 	bus    Bus
+	drops  drops
 
 	stop context.CancelFunc // safe to call more than once
 	done chan struct{}
 }
 
 var _ gashe.Backend = (*Backend)(nil)
+
+// drops counts the local copies dropped, per stripe of keys and for all keys at once. A read
+// keeps its copy only if no drop of its key came while it read the shared backend: the reply may
+// hold a value changed meanwhile, and the copy would answer it for LocalTTL.
+type drops struct {
+	seed maphash.Seed
+	all  atomic.Uint64
+	keys [256]atomic.Uint64
+}
+
+func (d *drops) stripe(key string) *atomic.Uint64 {
+	return &d.keys[maphash.String(d.seed, key)%uint64(len(d.keys))]
+}
+
+// version changes whenever a copy of key may have been dropped.
+func (d *drops) version(key string) uint64 { return d.all.Load() + d.stripe(key).Load() }
+
+func (d *drops) drop(keys []string) {
+	for _, k := range keys {
+		d.stripe(k).Add(1)
+	}
+}
 
 // New returns a near cache Backend. local is usually a memory.Backend, shared a Redis backend; both
 // are owned by the caller, and Close closes neither. With a Bus, New starts listening to it and
@@ -64,6 +89,7 @@ func New(local, shared gashe.Backend, o Options) *Backend {
 		shared: shared,
 		ttl:    cmp.Or(o.LocalTTL, defaultLocalTTL),
 		bus:    o.Bus,
+		drops:  drops{seed: maphash.MakeSeed()},
 		stop:   func() {},
 		done:   make(chan struct{}),
 	}
@@ -85,11 +111,14 @@ func (b *Backend) Get(ctx context.Context, key string) ([]byte, error) {
 	if v, err := b.local.Get(ctx, key); err == nil {
 		return v, nil
 	}
+	version := b.drops.version(key)
 	v, err := b.shared.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	_ = b.local.Set(ctx, key, v, b.ttl) // a failed local copy only costs the next read
+	if b.drops.version(key) == version {
+		_ = b.local.Set(ctx, key, v, b.ttl) // a failed local copy only costs the next read
+	}
 	return v, nil
 }
 
@@ -110,13 +139,17 @@ func (b *Backend) GetMany(ctx context.Context, keys ...string) ([][]byte, error)
 	if len(missing) == 0 {
 		return out, nil
 	}
+	versions := make([]uint64, len(missing))
+	for j, k := range missing {
+		versions[j] = b.drops.version(k)
+	}
 	values, err := b.shared.GetMany(ctx, missing...)
 	if err != nil {
 		return nil, err
 	}
 	for j, v := range values {
 		out[at[j]] = v
-		if v != nil {
+		if v != nil && b.drops.version(missing[j]) == versions[j] {
 			_ = b.local.Set(ctx, missing[j], v, b.ttl)
 		}
 	}
@@ -161,6 +194,7 @@ func (b *Backend) DeleteMany(ctx context.Context, keys ...string) error {
 
 // DeleteMatch implements gashe.Backend. Other processes drop all their local copies.
 func (b *Backend) DeleteMatch(ctx context.Context, pattern string) error {
+	b.drops.all.Add(1)
 	_ = b.local.DeleteMatch(ctx, pattern)
 	defer b.publish(ctx, nil)
 	return b.shared.DeleteMatch(ctx, pattern)
@@ -220,6 +254,7 @@ func (b *Backend) drop(ctx context.Context, keys ...string) {
 	if len(keys) == 0 {
 		return
 	}
+	b.drops.drop(keys)
 	_ = b.local.DeleteMany(ctx, keys...) // a stale local copy lives at most LocalTTL
 	b.publish(ctx, keys)
 }
@@ -233,8 +268,10 @@ func (b *Backend) publish(ctx context.Context, keys []string) {
 // changed drops the local copies other processes reported; nil drops all of them.
 func (b *Backend) changed(ctx context.Context, keys []string) {
 	if keys == nil {
+		b.drops.all.Add(1)
 		_ = b.local.DeleteMatch(ctx, "*")
 		return
 	}
+	b.drops.drop(keys)
 	_ = b.local.DeleteMany(ctx, keys...)
 }

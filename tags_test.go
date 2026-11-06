@@ -48,10 +48,36 @@ func TestEvictedTagCounterDoesNotRevalidateEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The backend evicts the counter, as Redis may under maxmemory-policy allkeys-lru.
-	if _, err := c.Backend().Delete(ctx, "_tag:users"); err != nil {
+	if _, err := c.Backend().Delete(ctx, "__tag:users"); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := gashe.GetOrLoad(ctx, c, "u", o, load); got != 2 || calls.Load() != 2 {
 		t.Fatalf("got v%d after the counter was evicted; the invalidated v1 came back", got)
+	}
+}
+
+// InvalidateTags on an evicted counter must not bring back entries stored before the eviction: a
+// counter it creates starts at a random generation, as one a read creates.
+func TestInvalidateTagsAfterTheCounterWasEvicted(t *testing.T) {
+	ctx := context.Background()
+	c := newCache(t)
+	loads := 0
+	p := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"t"}}
+	load := func(context.Context) (int, error) { loads++; return loads, nil }
+
+	if err := c.InvalidateTags(ctx, "t"); err != nil { // creates the counter
+		t.Fatal(err)
+	}
+	if _, err := gashe.GetOrLoad(ctx, c, "k", p, load); err != nil { // stored with that counter
+		t.Fatal(err)
+	}
+	if _, err := c.Backend().Delete(ctx, "__tag:t"); err != nil { // the backend evicts the counter
+		t.Fatal(err)
+	}
+	if err := c.InvalidateTags(ctx, "t"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := gashe.GetOrLoad(ctx, c, "k", p, load); v != 2 {
+		t.Fatalf("got %d, want 2: the entry stored before InvalidateTags is valid again", v)
 	}
 }

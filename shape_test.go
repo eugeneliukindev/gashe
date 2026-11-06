@@ -87,3 +87,26 @@ func TestShapeFollowsWhatJSONStores(t *testing.T) {
 			return withPrivate{}, nil
 		})
 }
+
+type packedV1 struct {
+	Name string `msgpack:"name"`
+}
+
+type packedV2 struct {
+	Name string `msgpack:"full_name"`
+}
+
+// The msgpack codec names fields by their msgpack tags: a renamed tag must be a miss, or old
+// entries would read with empty fields.
+func TestShapeFollowsMsgpackTags(t *testing.T) {
+	ctx := context.Background()
+	c := newCache(t)
+	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV1]{TTL: time.Hour},
+		func(context.Context) (packedV1, error) { return packedV1{Name: "Ann"}, nil })
+	missed := false
+	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV2]{TTL: time.Hour},
+		func(context.Context) (packedV2, error) { missed = true; return packedV2{}, nil })
+	if !missed {
+		t.Fatal("a renamed msgpack tag must change the shape")
+	}
+}

@@ -38,7 +38,7 @@ func (b *Bus) Publish(ctx context.Context, keys []string) error {
 }
 
 // Subscribe calls changed with every published list of keys until ctx is done. After every
-// (re)subscription and failed read it calls changed(nil), since messages may have been lost.
+// (re)subscription it calls changed(nil), since messages may have been lost.
 func (b *Bus) Subscribe(ctx context.Context, changed func(keys []string)) error {
 	listen(ctx, b.client.Subscribe(ctx, b.channel), changed, func(m *goredis.Message) []string {
 		var keys []string
@@ -51,7 +51,7 @@ func (b *Bus) Subscribe(ctx context.Context, changed func(keys []string)) error 
 }
 
 // listen calls changed with the keys of every message of sub until ctx is done, and changed(nil)
-// after every (re)subscription and failed read. It closes sub.
+// after every (re)subscription and every message it cannot read. It closes sub.
 func listen(
 	ctx context.Context,
 	sub *goredis.PubSub,
@@ -67,9 +67,14 @@ func listen(
 			return
 		}
 		if err != nil {
-			// Messages may be lost, or this one was unreadable, as the one of FLUSHDB in go-redis:
-			// drop everything. go-redis reconnects and subscribes again on the next Receive.
-			changed(nil)
+			if sub.Ping(ctx) == nil {
+				// The connection works, so the message was unreadable, as the one of FLUSHDB in
+				// go-redis: drop everything at once.
+				changed(nil)
+				continue
+			}
+			// The connection is gone: copies stay until go-redis reconnects and subscribes
+			// again on the next Receive, which drops them, since messages may have been lost.
 			select {
 			case <-ctx.Done():
 				return

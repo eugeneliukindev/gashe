@@ -40,7 +40,7 @@ func ownKeys(t *testing.T, o gashe.Options) []string {
 func TestOwnKeys(t *testing.T) {
 	for _, prefix := range []string{"", "orders:"} {
 		keys := ownKeys(t, gashe.Options{Prefix: prefix})
-		want := []string{prefix + "_rate:fixed:ip", prefix + "_rate:sliding:ip:", prefix + "_tag:users"}
+		want := []string{prefix + "__rate:fixed:ip", prefix + "__rate:sliding:ip:", prefix + "__tag:users"}
 		if len(keys) != len(want) {
 			t.Fatalf("Prefix %q: keys %v", prefix, keys)
 		}

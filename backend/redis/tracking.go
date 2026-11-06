@@ -29,7 +29,7 @@ func NewTrackingBus(client *goredis.Client, prefix string) *TrackingBus {
 func (*TrackingBus) Publish(context.Context, []string) error { return nil }
 
 // Subscribe calls changed with the keys Redis reports until ctx is done, and changed(nil) after
-// every (re)connection, failed read and FLUSHDB. If Redis refuses tracking, it keeps trying every second, and
+// every (re)connection and FLUSHDB. If Redis refuses tracking, it keeps trying every second, and
 // local copies live up to LocalTTL.
 func (b *TrackingBus) Subscribe(ctx context.Context, changed func(keys []string)) error {
 	o := *b.options

@@ -177,3 +177,22 @@ func newCache(t *testing.T) *gashe.Cache {
 	}
 	return gashe.New(gasheredis.New(client), gashe.Options{})
 }
+
+// A lock extended by less than a millisecond is kept, not deleted by PEXPIRE 0: the TTL rounds up.
+func TestExtendLockBelowAMillisecond(t *testing.T) {
+	ctx := context.Background()
+	client := newClient(t)
+	b := gasheredis.New(client)
+	if _, err := client.Del(ctx, "lock").Result(); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := b.SetIfAbsent(ctx, "lock", []byte("me"), time.Minute); err != nil || !ok {
+		t.Fatalf("SetIfAbsent = %v, %v", ok, err)
+	}
+	if ok, err := b.ExtendLock(ctx, "lock", []byte("me"), 500*time.Microsecond); err != nil || !ok {
+		t.Fatalf("ExtendLock = %v, %v", ok, err)
+	}
+	if ttl, err := client.PTTL(ctx, "lock").Result(); err != nil || ttl <= 0 {
+		t.Fatalf("PTTL after ExtendLock(500us) = %v, %v; want the lock kept for about 1ms", ttl, err)
+	}
+}

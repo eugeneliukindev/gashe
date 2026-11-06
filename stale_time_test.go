@@ -149,8 +149,35 @@ func TestGetOrLoadMissLock(t *testing.T) {
 		if n := calls.Load(); n != 1 {
 			t.Fatalf("loader ran %d times for one miss, want 1", n)
 		}
-		if ok, _ := c.IsLocked(ctx, "_load:k"); ok {
+		if ok, _ := c.IsLocked(ctx, "__load:k"); ok {
 			t.Fatal("load lock left behind")
+		}
+	})
+}
+
+// "Not found" is an answer, not a failure: StaleIfError does not hide it with the old result, and
+// the call and the next ones agree.
+func TestStaleIfErrorDoesNotHideNotFound(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		p := gashe.Policy[int]{
+			TTL:          time.Minute,
+			StaleIfError: time.Hour,
+			Negative: gashe.Negative{
+				If:  func(err error) bool { return errors.Is(err, errNotFound) },
+				Err: errNotFound,
+				TTL: time.Minute,
+			},
+		}
+		c := newCache(t)
+		_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (int, error) { return 1, nil })
+		time.Sleep(2 * time.Minute) // stale, within StaleIfError
+		deleted := func(context.Context) (int, error) { return 0, errNotFound }
+		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, errNotFound) {
+			t.Fatalf("the call got %v, want not found: the data is gone", err)
+		}
+		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, errNotFound) {
+			t.Fatalf("the next call got %v, want the cached not found", err)
 		}
 	})
 }

@@ -57,8 +57,8 @@ func (f *fakeBus) listeners() int {
 	return len(f.subs)
 }
 
-// pod is the near cache of one process over the shared backend.
-func pod(t *testing.T, shared gashe.Backend, bus *fakeBus) *nearcache.Backend {
+// process is the near cache of one process over the shared backend.
+func process(t *testing.T, shared gashe.Backend, bus *fakeBus) *nearcache.Backend {
 	t.Helper()
 	b := nearcache.New(newMemory(t), shared, nearcache.Options{LocalTTL: time.Hour, Bus: bus})
 	t.Cleanup(func() { _ = b.Close() })
@@ -69,7 +69,7 @@ func pod(t *testing.T, shared gashe.Backend, bus *fakeBus) *nearcache.Backend {
 func TestBusDropsCopiesOfOtherProcesses(t *testing.T) {
 	ctx := context.Background()
 	shared, bus := newMemory(t), newBus()
-	a, b := pod(t, shared, bus), pod(t, shared, bus)
+	a, b := process(t, shared, bus), process(t, shared, bus)
 
 	_ = shared.Set(ctx, "price", []byte("1"), 0)
 	if v, _ := a.Get(ctx, "price"); string(v) != "1" { // a keeps a local copy for an hour
@@ -84,7 +84,7 @@ func TestBusDropsCopiesOfOtherProcesses(t *testing.T) {
 func TestBusMakesTagInvalidationInstant(t *testing.T) {
 	ctx := context.Background()
 	shared, bus := newMemory(t), newBus()
-	ca, cb := gashe.New(pod(t, shared, bus), gashe.Options{}), gashe.New(pod(t, shared, bus), gashe.Options{})
+	ca, cb := gashe.New(process(t, shared, bus), gashe.Options{}), gashe.New(process(t, shared, bus), gashe.Options{})
 	users := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"users"}}
 	calls, load := versions()
 	if err := cb.InvalidateTags(ctx, "users"); err != nil { // the counter exists, so a can copy it
@@ -104,7 +104,7 @@ func TestBusMakesTagInvalidationInstant(t *testing.T) {
 func TestBusResetDropsEverything(t *testing.T) {
 	ctx := context.Background()
 	shared, bus := newMemory(t), newBus()
-	a := pod(t, shared, bus)
+	a := process(t, shared, bus)
 
 	_ = shared.Set(ctx, "k", []byte("1"), 0)
 	_, _ = a.Get(ctx, "k")
@@ -134,4 +134,45 @@ func TestCloseStopsListening(t *testing.T) {
 func versions() (calls *atomic.Int32, load func(context.Context) (int, error)) {
 	var n atomic.Int32
 	return &n, func(context.Context) (int, error) { return int(n.Add(1)), nil }
+}
+
+// slowGet answers Get from what Backend held when the call started, after release: like a reply
+// that is still on the wire while another process writes.
+type slowGet struct {
+	gashe.Backend
+
+	started, release chan struct{}
+}
+
+func (s *slowGet) Get(ctx context.Context, key string) ([]byte, error) {
+	v, err := s.Backend.Get(ctx, key)
+	s.started <- struct{}{}
+	<-s.release
+	return v, err
+}
+
+// A read whose key changed while its reply was on the way keeps no copy: the old value would
+// answer for LocalTTL, though the bus told the process at once.
+func TestReadDuringAChangeKeepsNoCopy(t *testing.T) {
+	ctx := context.Background()
+	mem, bus := newMemory(t), newBus()
+	_ = mem.Set(ctx, "price", []byte("1"), 0)
+	shared := &slowGet{Backend: mem, started: make(chan struct{}), release: make(chan struct{})}
+	a, b := process(t, shared, bus), process(t, mem, bus)
+
+	read := make(chan string)
+	go func() { v, _ := a.Get(ctx, "price"); read <- string(v) }()
+	<-shared.started // a read 1, the reply is on its way
+	// b writes; the bus tells a while its reply is still on the way.
+	if err := b.Set(ctx, "price", []byte("2"), 0); err != nil {
+		t.Fatal(err)
+	}
+	close(shared.release)
+	if v := <-read; v != "1" {
+		t.Fatalf("the racing read got %q, want the value it read", v)
+	}
+	go func() { <-shared.started }() // the next read goes to the shared backend again
+	if v, _ := a.Get(ctx, "price"); string(v) != "2" {
+		t.Fatalf("a answers %q after b changed it; the racing read kept a copy", v)
+	}
 }

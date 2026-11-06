@@ -42,10 +42,11 @@ func getOrLoad[V any](
 	load func(context.Context) (V, error),
 ) (V, error) {
 	l := newLoading(c, o, ttl, key, load)
-	shared, err := c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, func() (any, error) {
+	run := func(ctx context.Context) (any, error) {
 		v, r, getErr := l.get(ctx)
 		return answer[V]{v: v, r: r, took: l.took}, getErr
-	})
+	}
+	shared, err := c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, run)
 	a, _ := shared.(answer[V]) // empty when the wait was cancelled
 	if a.r != 0 {
 		c.onResult(ctx, Outcome{Key: l.key, Result: a.r, Load: a.took})
@@ -90,7 +91,11 @@ func reload[V any](
 		return v, loadErr
 	}
 	l.gens = gens
-	return l.loadAndStore(ctx)
+	v, err := l.call(ctx)
+	if err != nil { // any error, "not found" too, leaves the stored result alone
+		return v, err
+	}
+	return l.storeResult(ctx, v), nil
 }
 
 // answer is what concurrent callers of one GetOrLoad share.
@@ -230,17 +235,27 @@ func (l *loading[V]) readEntry(ctx context.Context) (entry[V], error) {
 func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 	v, err := l.call(ctx)
 	if err != nil {
-		if l.o.Negative.If != nil && l.o.Negative.If(err) {
+		if l.notFound(err) {
 			l.storeNegative(ctx)
 		}
 		return v, err
 	}
+	return l.storeResult(ctx, v), nil
+}
+
+// notFound reports whether err is an answer Negative caches, not a failure.
+func (l *loading[V]) notFound(err error) bool {
+	return l.o.Negative.If != nil && l.o.Negative.If(err)
+}
+
+// storeResult stores v as the policy says and returns it as it reads back.
+func (l *loading[V]) storeResult(ctx context.Context, v V) V {
 	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
-		return v, nil
+		return v
 	}
 	fresh, ok := l.freshFor(v)
 	if !ok {
-		return v, nil
+		return v
 	}
 	return store(
 		ctx,
@@ -249,7 +264,7 @@ func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 		l.key,
 		entry[V]{At: time.Now().Add(fresh), V: v, G: l.gens, T: l.shape},
 		fresh+l.o.keep(),
-	).V, nil
+	).V
 }
 
 // freshFor returns the jittered fresh TTL of v, and false if v must not be stored.
@@ -281,8 +296,14 @@ func (l *loading[V]) loadLocked(ctx context.Context) (V, Result, error) {
 		return v, ResultMiss, loadErr
 	}
 	defer l.unlock(ctx, lease)
-	if e, readErr := l.read(ctx); readErr == nil && !e.Neg && time.Now().Before(e.At.Add(l.o.StaleWhileRevalidate)) {
-		return e.V, ResultHit, nil
+	if e, readErr := l.read(ctx); readErr == nil {
+		switch now := time.Now(); {
+		case e.Neg && now.Before(e.At): // the holder before stored "not found"
+			var zero V
+			return zero, ResultNegativeHit, l.o.Negative.Err
+		case !e.Neg && now.Before(e.At.Add(l.o.StaleWhileRevalidate)):
+			return e.V, ResultHit, nil
+		}
 	}
 	v, err := l.loadAndStore(ctx)
 	return v, ResultMiss, err

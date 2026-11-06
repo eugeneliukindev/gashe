@@ -28,7 +28,8 @@ func (l *loading[V]) reloadStale(ctx context.Context, e entry[V], now time.Time)
 	} else {
 		v, err = l.loadAndStore(ctx)
 	}
-	if err != nil && staleOK && (l.o.StaleIf == nil || l.o.StaleIf(err)) {
+	// "Not found" is an answer, stored by loadAndStore: the old result must not hide it.
+	if err != nil && staleOK && !l.notFound(err) && (l.o.StaleIf == nil || l.o.StaleIf(err)) {
 		l.c.onError(ctx, fmt.Errorf("gashe: %q answered with an old result: %w", l.key, err))
 		return e.V, ResultStaleIfError, nil
 	}

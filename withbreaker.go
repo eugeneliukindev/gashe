@@ -18,10 +18,10 @@ func withBreaker(b Backend, o CircuitBreakerOptions) Backend {
 	return breakerBackend{Backend: b, breaker: &breaker{}, o: o}
 }
 
-// backendFailed reports whether err means the backend is unwell rather than a normal answer.
+// backendFailed reports whether err means the backend is unwell rather than a normal answer. A
+// deadline counts: a hung backend fails every call that way. A cancel does not: the caller left.
 func backendFailed(err error) bool {
-	return !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrWrongType) &&
-		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+	return !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrWrongType) && !errors.Is(err, context.Canceled)
 }
 
 type breakerBackend struct {
@@ -31,58 +31,64 @@ type breakerBackend struct {
 	o       CircuitBreakerOptions
 }
 
-// guard runs call through the breaker.
-func guard[T any](p breakerBackend, call func() (T, error)) (T, error) {
+// guard runs call through the breaker. A call whose ctx was done before it started is not
+// counted: its error says nothing about the backend.
+func guard[T any](ctx context.Context, p breakerBackend, call func() (T, error)) (T, error) {
 	done, err := p.breaker.allow(p.o, time.Now())
 	if err != nil {
 		var zero T
 		return zero, err
 	}
+	late := ctx.Err() != nil
 	v, err := call()
-	done(err)
+	if late {
+		done(nil)
+	} else {
+		done(err)
+	}
 	return v, err
 }
 
 // guardErr runs a call that returns only an error through the breaker.
-func guardErr(p breakerBackend, call func() error) error {
-	_, err := guard(p, func() (struct{}, error) { return struct{}{}, call() })
+func guardErr(ctx context.Context, p breakerBackend, call func() error) error {
+	_, err := guard(ctx, p, func() (struct{}, error) { return struct{}{}, call() })
 	return err
 }
 
 func (p breakerBackend) Get(ctx context.Context, key string) ([]byte, error) {
-	return guard(p, func() ([]byte, error) { return p.Backend.Get(ctx, key) })
+	return guard(ctx, p, func() ([]byte, error) { return p.Backend.Get(ctx, key) })
 }
 
 func (p breakerBackend) GetMany(ctx context.Context, keys ...string) ([][]byte, error) {
-	return guard(p, func() ([][]byte, error) { return p.Backend.GetMany(ctx, keys...) })
+	return guard(ctx, p, func() ([][]byte, error) { return p.Backend.GetMany(ctx, keys...) })
 }
 
 func (p breakerBackend) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	return guardErr(p, func() error { return p.Backend.Set(ctx, key, value, ttl) })
+	return guardErr(ctx, p, func() error { return p.Backend.Set(ctx, key, value, ttl) })
 }
 
 func (p breakerBackend) SetMany(ctx context.Context, values map[string][]byte, ttl time.Duration) error {
-	return guardErr(p, func() error { return p.Backend.SetMany(ctx, values, ttl) })
+	return guardErr(ctx, p, func() error { return p.Backend.SetMany(ctx, values, ttl) })
 }
 
 func (p breakerBackend) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.SetIfAbsent(ctx, key, value, ttl) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.SetIfAbsent(ctx, key, value, ttl) })
 }
 
 func (p breakerBackend) SetIfPresent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.SetIfPresent(ctx, key, value, ttl) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.SetIfPresent(ctx, key, value, ttl) })
 }
 
 func (p breakerBackend) Delete(ctx context.Context, key string) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.Delete(ctx, key) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.Delete(ctx, key) })
 }
 
 func (p breakerBackend) DeleteMany(ctx context.Context, keys ...string) error {
-	return guardErr(p, func() error { return p.Backend.DeleteMany(ctx, keys...) })
+	return guardErr(ctx, p, func() error { return p.Backend.DeleteMany(ctx, keys...) })
 }
 
 func (p breakerBackend) DeleteMatch(ctx context.Context, pattern string) error {
-	return guardErr(p, func() error { return p.Backend.DeleteMatch(ctx, pattern) })
+	return guardErr(ctx, p, func() error { return p.Backend.DeleteMatch(ctx, pattern) })
 }
 
 func (p breakerBackend) Scan(ctx context.Context, pattern string) iter.Seq2[string, error] {
@@ -106,25 +112,25 @@ func (p breakerBackend) Scan(ctx context.Context, pattern string) iter.Seq2[stri
 }
 
 func (p breakerBackend) Exists(ctx context.Context, key string) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.Exists(ctx, key) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.Exists(ctx, key) })
 }
 
 func (p breakerBackend) IncrBy(ctx context.Context, key string, by int64, ttl time.Duration) (int64, error) {
-	return guard(p, func() (int64, error) { return p.Backend.IncrBy(ctx, key, by, ttl) })
+	return guard(ctx, p, func() (int64, error) { return p.Backend.IncrBy(ctx, key, by, ttl) })
 }
 
 func (p breakerBackend) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.Expire(ctx, key, ttl) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.Expire(ctx, key, ttl) })
 }
 
 func (p breakerBackend) TTL(ctx context.Context, key string) (time.Duration, error) {
-	return guard(p, func() (time.Duration, error) { return p.Backend.TTL(ctx, key) })
+	return guard(ctx, p, func() (time.Duration, error) { return p.Backend.TTL(ctx, key) })
 }
 
 func (p breakerBackend) Unlock(ctx context.Context, key string, owner []byte) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.Unlock(ctx, key, owner) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.Unlock(ctx, key, owner) })
 }
 
 func (p breakerBackend) ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error) {
-	return guard(p, func() (bool, error) { return p.Backend.ExtendLock(ctx, key, owner, ttl) })
+	return guard(ctx, p, func() (bool, error) { return p.Backend.ExtendLock(ctx, key, owner, ttl) })
 }

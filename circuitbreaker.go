@@ -29,7 +29,8 @@ type CircuitBreakerOptions struct {
 	// closes after OpenFor.
 	HalfOpenCalls int
 	// IsFailure decides which errors count as failures. nil means any error; for
-	// Options.CircuitBreaker, any error but ErrNotFound, ErrWrongType and a done context.
+	// Options.CircuitBreaker, any error but ErrNotFound, ErrWrongType and a cancelled context; a
+	// call whose context ended before it started is not counted.
 	IsFailure func(error) bool
 }
 
@@ -125,20 +126,33 @@ func (b *breaker) allow(o CircuitBreakerOptions, now time.Time) (DoneFunc, error
 		return b.trial(o)
 	case breakerClosed:
 	}
-	width := max(o.Window/breakerBuckets, 1)
-	n := now.UnixNano() / int64(width)
+	width := int64(max(o.Window/breakerBuckets, 1))
+	n := now.UnixNano() / width
 	b.slot(n).total++
 	return func(err error) {
-		if !failed(o, err) {
-			return
-		}
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		b.slot(n).failures++
-		if b.overLimit(o, n) {
-			b.trip(o, time.Now())
+		reported := time.Now()
+		if failed(o, err) {
+			b.fail(n, reported.UnixNano()/width)
+		}
+		if b.state(reported) == breakerClosed && b.overLimit(o, reported.UnixNano()/width) {
+			b.trip(o, reported)
 		}
 	}, nil
+}
+
+// fail counts a failure of a call counted in bucket n and reported in bucket now. If the ring has
+// moved past n, the call is counted again in bucket now, so it neither wipes newer counts nor gets
+// lost. b.mu is held.
+func (b *breaker) fail(n, now int64) {
+	if s := &b.buckets[n%breakerBuckets]; s.n == n {
+		s.failures++
+		return
+	}
+	s := b.slot(now)
+	s.total++
+	s.failures++
 }
 
 // trial lets one test call through while trials are left; its outcome closes or reopens the
@@ -148,9 +162,13 @@ func (b *breaker) trial(o CircuitBreakerOptions) (DoneFunc, error) {
 		return nil, ErrCircuitOpen
 	}
 	b.trialsLeft--
+	phase := b.trialUntil
 	return func(err error) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
+		if !b.trialUntil.Equal(phase) {
+			return // another test call already closed or reopened the breaker
+		}
 		if failed(o, err) {
 			b.trip(o, time.Now())
 			return

@@ -35,6 +35,8 @@ func (ls *loadLimits) acquire(ctx context.Context, kind loadKind, n int, now boo
 	if now {
 		return nil, ErrOverloaded
 	}
+	markQueued(ctx, true)
+	defer markQueued(ctx, false)
 	select {
 	case slots <- struct{}{}:
 		return func() { <-slots }, nil

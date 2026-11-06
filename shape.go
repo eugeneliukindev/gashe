@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// shapeOf returns a hash of the form of t: the exported field names, json tags and types, nested
-// types included. A stored result keeps the hash of its type, so after a deploy that changes the
+// shapeOf returns a hash of the form of t: the exported field names, json and msgpack tags and
+// types, nested types included. A stored result keeps the hash of its type, so after a deploy that changes the
 // type, old entries are misses instead of decoding into empty fields.
 func (c *Cache) shapeOf(t reflect.Type) uint64 {
 	if h, ok := c.shapes.Load(t); ok {
@@ -48,6 +48,11 @@ func writeShape(b *strings.Builder, t reflect.Type, seen map[reflect.Type]bool) 
 				continue // encoding/json does not store it
 			}
 			b.WriteString(f.Name + " " + f.Tag.Get("json") + " ")
+			if packed := f.Tag.Get("msgpack"); packed != "" {
+				// The msgpack codec names fields by this tag. Only a set tag is written, so the
+				// shapes of types without one stay as they were before msgpack tags counted.
+				b.WriteString("msgpack:" + packed + " ")
+			}
 			writeShape(b, f.Type, seen)
 			b.WriteString(";")
 		}

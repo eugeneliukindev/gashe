@@ -13,6 +13,7 @@ import (
 var (
 	errBackendDown = errors.New("backend down")
 	errAPI         = errors.New("api down")
+	errNotFound    = errors.New("not found")
 )
 
 type user struct {

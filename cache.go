@@ -13,8 +13,9 @@ type Options struct {
 	// Prefix is put in front of every key the cache stores, its own keys included, so several
 	// services can share one Redis: "orders:" stores "orders:user:42".
 	// Keys and All yield keys without it, and DeleteMatch never reaches past it. "" means none.
-	// The cache keeps its own keys, tag counters, locks and rate counters, under Prefix too, each
-	// starting with "_": keys of yours must not start with "_".
+	// The cache keeps its own keys, tag counters, the locks of LockOnMiss and StaleWhileRevalidate
+	// and rate counters, under Prefix too, each starting with "__": keys of yours must not start
+	// with "__". Locks of Lock, TryLock and WithLock use the key you give them.
 	Prefix string
 	// Codec turns values into bytes: the format of what is stored. nil means JSON.
 	Codec Codec

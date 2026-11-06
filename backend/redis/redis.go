@@ -283,7 +283,8 @@ func (b *Backend) Unlock(ctx context.Context, key string, owner []byte) (bool, e
 
 // ExtendLock implements gashe.Backend.
 func (b *Backend) ExtendLock(ctx context.Context, key string, owner []byte, ttl time.Duration) (bool, error) {
-	n, err := b.extendLock.Run(ctx, b.client, []string{key}, owner, ttl.Milliseconds()).Int64()
+	ms := (ttl + time.Millisecond - 1).Milliseconds() // up, as go-redis does: PEXPIRE 0 would delete
+	n, err := b.extendLock.Run(ctx, b.client, []string{key}, owner, ms).Int64()
 	return n > 0, wrap("extend lock", err)
 }
 

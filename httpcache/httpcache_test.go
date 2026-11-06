@@ -466,6 +466,34 @@ func TestRequestPastItsDeadlineGets503(t *testing.T) {
 	}
 }
 
+// A render cut short because every client left is not stored: a handler that stops on a done ctx
+// writes a partial page, which must not be served to the next client.
+func TestRenderOfAGoneClientIsNotStored(t *testing.T) {
+	started := make(chan struct{})
+	h := serve(t, newCache(t), &httpcache.Options{}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case started <- struct{}{}:
+			<-r.Context().Done()
+			_, _ = io.WriteString(w, "partial") // a cancelled query, a page with nothing in it
+		default:
+			_, _ = io.WriteString(w, "full")
+		}
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(ctx, http.MethodGet, "/", http.NoBody))
+		close(done)
+	}()
+	<-started
+	cancel()
+	<-done
+	time.Sleep(20 * time.Millisecond) // the render finishes after its client left
+	if w := get(h, http.MethodGet, "/"); w.Body.String() != "full" {
+		t.Fatalf("the next client got %q, want a page rendered for it", w.Body.String())
+	}
+}
+
 // deadBackend fails every call, like a Redis that is gone.
 type deadBackend struct {
 	gashe.Backend
@@ -493,5 +521,74 @@ func TestFallbackServesPagesWhileTheBackendIsDown(t *testing.T) {
 	}
 	if p.runs.Load() != 1 {
 		t.Fatalf("handler ran %d times, want once: the fallback must answer the rest", p.runs.Load())
+	}
+}
+
+// A 5xx is shared with the requests that waited for the same render, as a page would be: an
+// origin that already fails must not render once per waiting request.
+func TestServerErrorIsSharedWithWaiters(t *testing.T) {
+	release := make(chan struct{})
+	var runs atomic.Int32
+	h := serve(t, newCache(t), &httpcache.Options{}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		runs.Add(1)
+		<-release
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	codes := make(chan int, 4)
+	for range 4 {
+		go func() { codes <- get(h, http.MethodGet, "/").Code }()
+	}
+	time.Sleep(50 * time.Millisecond) // all four wait for one render
+	close(release)
+	for range 4 {
+		if code := <-codes; code != http.StatusInternalServerError {
+			t.Fatalf("a request got %d, want the shared 500", code)
+		}
+	}
+	if n := runs.Load(); n != 1 {
+		t.Fatalf("the handler ran %d times, want 1", n)
+	}
+}
+
+func TestNegativeIsRejected(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("no panic: Policy.Negative cannot work in httpcache, CacheIf stores 404s")
+		}
+	}()
+	httpcache.New(newCache(t), httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
+		TTL:      time.Minute,
+		Negative: gashe.Negative{If: func(error) bool { return true }, TTL: time.Minute},
+	}})
+}
+
+// Headers a response names in Connection are hop-by-hop (RFC 9110 7.6.1): they are not stored.
+func TestHeadersNamedInConnectionAreNotStored(t *testing.T) {
+	p := &page{body: "page", header: func(h http.Header) {
+		h.Set("Connection", "X-Hop")
+		h.Set("X-Hop", "secret")
+	}}
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+	get(h, http.MethodGet, "/")
+	if w := get(h, http.MethodGet, "/"); w.Header().Get("X-Hop") != "" {
+		t.Fatalf("the hit sent X-Hop: %q", w.Header().Get("X-Hop"))
+	}
+}
+
+// Age is for a response from the cache; one rendered for this request has none, stored or not.
+func TestAgeOnlyOnResponsesFromTheCache(t *testing.T) {
+	p := &page{body: "page", header: func(h http.Header) { h.Set("Set-Cookie", "a=1") }} // not stored
+	h := serve(t, newCache(t), &httpcache.Options{}, p)
+	if w := get(h, http.MethodGet, "/"); w.Header().Get("Age") != "" {
+		t.Fatalf("a response rendered for this request has Age %q", w.Header().Get("Age"))
+	}
+}
+
+// HEAD answers with the headers GET would, Content-Length included.
+func TestHeadHasContentLength(t *testing.T) {
+	h := serve(t, newCache(t), &httpcache.Options{}, &page{body: "12345"})
+	get(h, http.MethodGet, "/")
+	if w := get(h, http.MethodHead, "/"); w.Header().Get("Content-Length") != "5" {
+		t.Fatalf("HEAD Content-Length %q, want 5", w.Header().Get("Content-Length"))
 	}
 }
