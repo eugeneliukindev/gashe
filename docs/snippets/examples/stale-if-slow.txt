@@ -1,0 +1,11 @@
+The database has v1:
+  page: miss
+  got v1
+Past the TTL, the database is slow and has v2:
+  page: stale-if-slow
+  got v1
+  page: hit
+  got v2
+Past the TTL, the database is down:
+  page: stale-if-error
+  got "v2", err: <nil>

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -18,36 +17,25 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	check(c.Set(ctx, "greeting", "hello", time.Minute))
+	c.Set(ctx, "greeting", "hello", time.Minute)
 	var s string
-	check(c.Get(ctx, "greeting", &s))
+	c.Get(ctx, "greeting", &s)
 	fmt.Println("Get greeting:", s) // Get greeting: hello
 
-	if err := c.Get(ctx, "missing", &s); errors.Is(err, gashe.ErrNotFound) {
+	err := c.Get(ctx, "missing", &s)
+	if errors.Is(err, gashe.ErrNotFound) {
 		fmt.Println("Get missing: gashe.ErrNotFound")
 	}
 
-	values, err := c.GetMany(ctx, "greeting", "missing")
-	check(err)
+	values, _ := c.GetMany(ctx, "greeting", "missing")
 	for _, v := range values {
-		// GetMany greeting: found=true, then GetMany missing: found=false
-		fmt.Printf("GetMany %s: found=%v\n", v.Key(), v.Found())
+		fmt.Printf("GetMany %s: found=%v\n", v.Key(), v.Found()) // greeting: found=true, missing: found=false
 	}
 
-	_, err = c.IncrBy(ctx, "visits", 1, time.Hour)
-	check(err)
-	visits, err := c.IncrBy(ctx, "visits", 1, time.Hour)
-	check(err)
+	c.IncrBy(ctx, "visits", 1, time.Hour)
+	visits, _ := c.IncrBy(ctx, "visits", 1, time.Hour)
 	fmt.Println("visits:", visits) // visits: 2
 
-	left, err := c.TTL(ctx, "greeting")
-	check(err)
+	left, _ := c.TTL(ctx, "greeting")
 	fmt.Println("greeting expires in", left.Round(time.Second)) // greeting expires in 1m0s
-}
-
-// check stops the example on an error it does not expect.
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
 }

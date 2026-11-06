@@ -15,8 +15,8 @@
 </p>
 
 One `*gashe.Cache` stores results of expensive calls, keeps answering when a dependency is slow or
-down, and guards dependencies with locks, rate limits and circuit breakers. Over a shared backend,
-such as Redis, all of it is shared by every pod.
+down, and guards dependencies with locks, rate limits and circuit breakers. Each process has its
+own memory; over Redis, entries, tags, locks and limits are shared by every process.
 
 **[Documentation](https://eugeneliukindev.github.io/gashe/)**
 
@@ -51,13 +51,14 @@ type User struct {
 func main() {
 	ctx := context.Background()
 	client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
+	defer client.Close()
 	c := gashe.New(gasheredis.New(client), gashe.Options{Prefix: "app:"})
 	defer c.Shutdown(ctx)
 
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:                  time.Hour,
 		StaleWhileRevalidate: 10 * time.Minute, // answer at once, reload in the background
-		LockOnMiss:           5 * time.Second,  // a cold key loads once for all pods
+		LockOnMiss:           5 * time.Second,  // a cold key loads once for all processes
 		Prefix:               "user:",
 	})
 

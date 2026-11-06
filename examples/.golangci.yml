@@ -1,0 +1,23 @@
+version: "2"
+
+# The examples are read in the documentation: they show the API of gashe in one straight main,
+# so the strict rules of the released modules do not apply. Only real mistakes are reported.
+run:
+  go: "1.23"
+
+linters:
+  default: standard
+  disable:
+    # An example may drop errors the reader does not need to see: `u, _ := users.GetOrLoad(...)`.
+    - errcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/eugeneliukindev/gashe)

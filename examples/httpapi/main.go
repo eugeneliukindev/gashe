@@ -28,12 +28,6 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func run() error {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
@@ -48,18 +42,22 @@ func run() error {
 			Query:   []string{"page"},            // utm_source and others make no new entry
 		},
 	})
-	report := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:          time.Second,
-		StaleIfError: time.Hour, // a 5xx gets the last good page
-		Prefix:       "report:",
-	}})
-	export := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:                time.Minute,
-		MaxConcurrentLoads: 1, // one render at a time in this process
-		Prefix:             "export:",
-	}})
+	report := httpcache.New(c, httpcache.Options{
+		Policy: gashe.Policy[httpcache.Response]{
+			TTL:          time.Second,
+			StaleIfError: time.Hour, // a 5xx gets the last good page
+			Prefix:       "report:",
+		},
+	})
+	export := httpcache.New(c, httpcache.Options{
+		Policy: gashe.Policy[httpcache.Response]{
+			TTL:                time.Minute,
+			MaxConcurrentLoads: 1, // one render at a time in this process
+			Prefix:             "export:",
+		},
+	})
 
-	var reports atomic.Int64
+	var reports atomic.Int64 // handlers run concurrently
 	mux := http.NewServeMux()
 	mux.Handle("/products", products(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -67,7 +65,7 @@ func run() error {
 		if r.Header.Get("Accept-Language") == "ru" {
 			greeting = "Товары"
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		json.NewEncoder(w).Encode(map[string]any{
 			"title": greeting,
 			"page":  cmp.Or(r.URL.Query().Get("page"), "1"),
 			"items": []string{"Mug", "Kettle"},
@@ -78,12 +76,19 @@ func run() error {
 			http.Error(w, "database is down", http.StatusInternalServerError)
 			return
 		}
-		_, _ = fmt.Fprintln(w, "report: 42 orders")
+		fmt.Fprintln(w, "report: 42 orders")
 	})))
-	mux.Handle("/export", deadline(export(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	exportPage := export(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(2 * time.Second) // a heavy page
-		_, _ = fmt.Fprintln(w, "export done")
-	}))))
+		fmt.Fprintln(w, "export done")
+	}))
+	mux.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
+		// Half a second to get the render slot: a request over MaxConcurrentLoads gets 503
+		// instead of piling up.
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		exportPage.ServeHTTP(w, r.WithContext(ctx))
+	})
 
 	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -98,21 +103,10 @@ func run() error {
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return
 		}
-		_, _ = fmt.Fprintln(w, "login form")
+		fmt.Fprintln(w, "login form")
 	})
 
 	addr := cmp.Or(os.Getenv("ADDR"), "localhost:8080")
-	log.Printf("listening on %q", addr) //nolint:gosec // ADDR is set by whoever runs the example
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	return srv.ListenAndServe()
-}
-
-// deadline gives every request half a second to get a render slot, so requests over
-// Policy.MaxConcurrentLoads get 503 instead of piling up.
-func deadline(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
-		defer cancel()
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	log.Printf("listening on %q", addr)
+	log.Fatal(http.ListenAndServe(addr, mux))
 }

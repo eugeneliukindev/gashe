@@ -1,8 +1,12 @@
 # Benchmarks { #benchmarks }
 
-Encoding and decoding with every codec and compressor, the median of 5 runs of `just bench -count=5`
-on an Intel Core i9-9900KF, Go 1.26, linux/amd64. The code is in [benchmarks](https://github.com/eugeneliukindev/gashe/tree/main/benchmarks/). The data
-is generated from 12 words, so it compresses better than real text does.
+How fast and how small every codec and compressor is, to choose `Codec` and `Compressor`.
+
+| What | How |
+|---|---|
+| Runs | the median of 5 runs of `just bench -count=5` on an Intel Core i9-9900KF, Go 1.26, linux/amd64 |
+| Code | [benchmarks](https://github.com/eugeneliukindev/gashe/tree/main/benchmarks/) |
+| Data | generated from 12 words, so it compresses better than real text does |
 
 **A user**, 4 fields:
 

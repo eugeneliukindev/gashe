@@ -22,6 +22,7 @@ first. The full list of changes is the
 | `httpcache.Options{Key: keyOf}` | `httpcache.Options{Vary: httpcache.Vary{Custom: keyOf}}` |
 | a `Key` function that put the user into the key | `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in |
 | `backend/redis` on go-redis `v9.0.0` | go-redis `v9.18.0` or newer |
+| keys of yours that start with `_` | allowed now; keys of yours must not start with `__` |
 
 **Behaviour:**
 
@@ -29,9 +30,17 @@ first. The full list of changes is the
 |---|---|---|
 | a request with a `Cookie` header | cached by `httpcache` | goes past the cache, unless `Vary.Cookies` lists the cookies the page depends on or `Vary.User` stores pages per user |
 | a response with a `Vary` header | never stored | stored when its `Vary` names only headers of `Options.Vary` |
-| a `Bus` fails to read a message | - | it drops all local copies, as after a reconnect |
+| a `Bus` fails to read a message | - | its near cache drops every copy, as after a reconnect |
 
-**Stored data:** the changelog names no change.
+**Stored data:** the keys the cache keeps for itself start with `__` instead of `_`: `__tag:`,
+`__load:`, `__refresh:`, `__rate:sliding:`, `__rate:fixed:`.
+
+| What | After the upgrade |
+|---|---|
+| entries with tags | load once: their tag counters start again under the new keys |
+| rate limit counters | start from zero |
+| locks of `LockOnMiss` and `StaleWhileRevalidate` | a process on the old version and one on the new do not see each other's locks while both run |
+| the old `_` keys | stay until they expire; tag counters never expire: delete them with `DeleteMatch("_tag:*")` once every process runs the new version |
 
 ## 0.4.0 { #040 }
 

@@ -28,23 +28,14 @@ func main() {
 	})
 
 	load := func(context.Context) (int, error) {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond) // a query of 50ms
 		return 1, nil
 	}
 	for _, key := range []string{"a", "a", "a", "b", "b", "c"} {
-		_, err := gashe.GetOrLoad(ctx, c, key, gashe.Policy[int]{TTL: time.Minute}, load)
-		check(err)
+		gashe.GetOrLoad(ctx, c, key, gashe.Policy[int]{TTL: time.Minute}, load)
 	}
 
 	hits, misses := results[gashe.ResultHit], results[gashe.ResultMiss]
-	// hits 3, misses 3, hit ratio 50%
-	fmt.Printf("hits %d, misses %d, hit ratio %.0f%%\n", hits, misses, 100*float64(hits)/float64(hits+misses))
-	fmt.Println("time spent in the loader:", loadTime.Round(time.Millisecond)) // about 150ms: three loads
-}
-
-// check stops the example on an error it does not expect.
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	fmt.Printf("hits %d, misses %d, hit ratio %d%%\n", hits, misses, 100*hits/(hits+misses))   // hits 3, misses 3, hit ratio 50%
+	fmt.Println("three loads, 150ms or more in the loader:", loadTime >= 150*time.Millisecond) // true
 }

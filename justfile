@@ -18,8 +18,9 @@ oldest_go := "1.23.12"
 govulncheck := "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 gorelease := "go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
 
-# The documentation site is built by Zensical, run through uv at a pinned version.
-zensical := "uv run --no-project --with zensical==0.1.0 python docs/build.py"
+# The documentation site is built by Zensical, installed by uv from docs/pyproject.toml and
+# docs/uv.lock.
+zensical := "uv run --project docs --locked python docs/build.py"
 
 [default]
 [private]
@@ -110,7 +111,7 @@ integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
 [group('test')]
 [working-directory('examples')]
 examples: work
-    for e in */ tutorial/*/; do case "$e" in nearcache/|httpapi/|tutorial/) continue;; esac; echo "== example ${e%/}"; go run "./$e" > /dev/null; done
+    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi|lockonmiss/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
 
 # Run the benchmarks; flags go to go test, such as `just bench -count=5`. docs/en/internals/benchmarks.md has the results.
 [group('test')]
@@ -132,14 +133,15 @@ docs-serve lang="en":
 # Run the examples and curl against examples/httpapi, and write their outputs into docs/snippets/.
 [group('docs')]
 docs-output: work
-    python3 docs/outputs.py
+    uv run --project docs --locked python docs/outputs.py
 
 # Check the external links of the documentation with lychee, in Docker.
 [group('docs')]
 docs-links:
     docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2 --config lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
 
-# List translated pages whose English page changed since they were translated.
+# List translated pages whose English page changed since they were translated, and highlighted
+# lines of program variants that no longer match the programs.
 [group('docs')]
 docs-check:
     {{ zensical }} check

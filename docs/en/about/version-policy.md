@@ -1,5 +1,7 @@
 # Version policy { #version-policy }
 
+How gashe is versioned, which Go and Redis versions it supports, and what counts as breaking.
+
 ## Versions { #versions }
 
 Versions follow [Semantic Versioning](https://semver.org/). While the version is `0.x`, a minor
@@ -34,7 +36,7 @@ their versions differ.
 
 ## Go versions { #go-versions }
 
-| | |
+| What | Go |
 |---|---|
 | Lowest | Go 1.23, the `go` line of every `go.mod` |
 | Supported | Go 1.23 and newer: five releases at the moment |
@@ -44,18 +46,8 @@ their versions differ.
 ## Redis and Valkey servers { #redis-and-valkey-servers }
 
 `backend/redis` requires go-redis `v9.0.0` up to `backend/redis/v0.3.0`, and `v9.18.0` from its next
-release.
-
-| Server | Status |
-|---|---|
-| Redis 7.0 and newer, Valkey 8 | tested on every release |
-| Redis Cluster | tested before every tag, on three masters |
-| Dragonfly, KeyDB | pass the same tests; on Dragonfly, which lacks `CLIENT KILL`, the reconnect test of `Bus` is skipped |
-| Sentinel | works through `UniversalClient` |
-| Managed Redis and Valkey: ElastiCache, MemoryDB, Azure Cache for Redis, Memorystore, Upstash | not tested |
-
-`NewTrackingBus` needs Redis 6 or newer or Valkey, and does not work on a Cluster. What a server
-needs is listed in [Backends](../concepts/backends.md#backendredis).
+release. Which servers are tested, and what a server needs:
+[`backend/redis`](../concepts/backends.md#backendredis).
 
 ## What counts as a breaking change { #what-counts-as-a-breaking-change }
 
@@ -72,7 +64,7 @@ The changes that broke an upgrade so far:
 
 Stored data counts: an upgrade can make old entries misses, so they load again, or reset counters.
 The changelog says what each release does to stored data. Whether `0.x` releases keep the stored
-format is not decided; read the changelog before you upgrade pods that share one Redis.
+format is not decided; read the changelog before you upgrade processes that share one Redis.
 
 Not breaking, as the changelog of 0.2.0 says: results named in signatures, since calls do not
 change.

@@ -5,7 +5,7 @@ and your own backend.
 
 ## The code { #the-code }
 
-The code under test takes the cache and the query, so a test passes both:
+The code under test, `users.go`, takes the cache and the query, so a test passes both:
 
 ```go
 package users
@@ -34,7 +34,8 @@ func (u *Users) Get(ctx context.Context, id string) (User, error) {
 }
 ```
 
-The tests; `testing/synctest` needs Go 1.25 or newer:
+The tests, `users_test.go` in the same package: they use `User` and `New` from `users.go`.
+`testing/synctest` needs Go 1.25 or newer:
 
 ```go
 package users
@@ -140,13 +141,15 @@ func TestLoggingBackendKeepsTheContract(t *testing.T) {
 | Test | How |
 |---|---|
 | one query for many calls | `backend/memory` with `PurgeInterval: -1`: an empty cache per test, no goroutine to stop |
-| expiry after `TTL` | `synctest.Test` runs in fake time: `time.Sleep(time.Hour)` returns at once, and the memory backend sees the hour pass |
-| the cache backend is down | embed a real backend and override `Get`, `GetMany` and `Set` to fail: `GetOrLoad` still answers from the loader |
-| your own backend | `backendtest.Run` checks the contract the bundled backends pass; give it an empty backend per subtest |
+| expiry after `TTL` | `synctest.Test` runs in fake time: `time.Sleep(time.Hour + time.Second)` returns at once, and the memory backend sees the TTL pass |
+| the cache backend is down | `downBackend`, the failing backend of [testing your code](../concepts/backends.md#testing-your-code): embed a real backend and override what must fail, here `Get`, `GetMany` and `Set`, so no read or write reaches it; `GetOrLoad` still answers from the loader |
+| your own backend | `backendtest.Run` checks the contract the bundled backends pass; give it an empty backend per subtest; [your own backend](../concepts/backends.md#your-own-backend) |
+| what the cache worked around | `OnError: t.Log` shows it in the output of a failed test |
 
-- `OnError: t.Log` shows what the cache worked around in the output of a failed test.
-- Background reloads of `StaleWhileRevalidate`: call `synctest.Wait()` inside the bubble before
-  checking what they stored.
-- Leave `Jitter` out of policies where a test checks exact TTLs.
-  More: [testing your code](../concepts/backends.md#testing-your-code),
-  [your own backend](../concepts/backends.md#your-own-backend).
+## Variations { #variations }
+
+| If you need | Do |
+|---|---|
+| to check what a `StaleWhileRevalidate` reload stored | call `synctest.Wait()` inside the bubble first: it waits for the background reload |
+| to check exact TTLs | leave `Jitter` out of the policy |
+| only reads to fail | override `Get` and `GetMany` alone; writes then reach the real backend |

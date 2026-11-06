@@ -23,24 +23,24 @@ func main() {
 		Per:    time.Minute,
 		BanFor: 15 * time.Minute,
 	}
-	// attempts 1-5: allowed; 6-7: 429, retry after 15m0s
 	for attempt := 1; attempt <= 7; attempt++ {
-		fmt.Printf("login attempt %d: %s\n", attempt, verdict(c.RateLimit(ctx, "login:1.2.3.4", login)))
+		err := c.RateLimit(ctx, "login:1.2.3.4", login)
+		var limited *gashe.RateLimitError // errors.Is(err, gashe.ErrRateLimited) holds too
+		if errors.As(err, &limited) {
+			// attempts 6-7: banned for 15 minutes
+			fmt.Printf("login attempt %d: 429, retry after %v\n", attempt, limited.RetryAfter.Round(time.Second))
+			continue
+		}
+		fmt.Printf("login attempt %d: allowed\n", attempt)
 	}
 
-	// calls 1-3: allowed; 4: 429, retry after a second or less
 	for call := 1; call <= 4; call++ {
-		fmt.Printf("api call %d: %s\n", call, verdict(c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3))))
+		err := c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // a sliding window of a second
+		var limited *gashe.RateLimitError
+		if errors.As(err, &limited) {
+			fmt.Printf("api call %d: 429, RetryAfter set for the Retry-After header: %v\n", call, limited.RetryAfter > 0)
+			continue
+		}
+		fmt.Printf("api call %d: allowed\n", call)
 	}
-}
-
-func verdict(err error) string {
-	var limited *gashe.RateLimitError // errors.Is(err, gashe.ErrRateLimited) holds too
-	switch {
-	case errors.As(err, &limited):
-		return "429, retry after " + limited.RetryAfter.Round(time.Second).String()
-	case err != nil:
-		return err.Error()
-	}
-	return "allowed"
 }

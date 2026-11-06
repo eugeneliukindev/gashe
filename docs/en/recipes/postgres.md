@@ -6,7 +6,7 @@ Cache users read from Postgres in Redis, and keep the cache right after an `UPDA
 
 ```bash
 go get github.com/eugeneliukindev/gashe github.com/eugeneliukindev/gashe/backend/redis
-go get github.com/eugeneliukindev/gashe/codec/msgpack github.com/eugeneliukindev/gashe/compress/zstd
+go get github.com/eugeneliukindev/gashe/codec/msgpack
 go get github.com/jackc/pgx/v5 github.com/redis/go-redis/v9
 ```
 
@@ -28,7 +28,6 @@ import (
 	"github.com/eugeneliukindev/gashe"
 	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 	"github.com/eugeneliukindev/gashe/codec/msgpack"
-	"github.com/eugeneliukindev/gashe/compress/zstd"
 )
 
 type User struct {
@@ -47,8 +46,8 @@ func NewUsers(db *sql.DB, c *gashe.Cache) *Users {
 	return &Users{db: db, cache: c, users: gashe.For(c, gashe.Policy[User]{
 		TTL:          10 * time.Minute, // fresh for 10 minutes
 		Jitter:       0.1,              // keys stored together do not expire together
-		StaleIfError: time.Hour,        // Postgres is down: answer the old user for up to an hour
-		LockOnMiss:   5 * time.Second,  // a cold key loads once for all pods
+		StaleIfError: time.Hour,        // Postgres is down: answer the stale user for up to an hour
+		LockOnMiss:   5 * time.Second,  // a cold key loads once for all processes
 		Negative: gashe.Negative{ // a missing id is asked once per 30 seconds, not on every call
 			If:  func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
 			Err: sql.ErrNoRows,
@@ -89,9 +88,8 @@ func main() {
 	defer client.Close()
 
 	c := gashe.New(gasheredis.New(client), gashe.Options{
-		Prefix:     "app:",          // every key of this service: app:user:42
-		Codec:      msgpack.Codec{}, // binary: smaller and faster to decode than JSON
-		Compressor: zstd.New(),      // shrinks values before they reach Redis
+		Prefix: "app:",          // every key of this service: app:user:42
+		Codec:  msgpack.Codec{}, // binary: smaller and faster to decode than JSON
 	})
 	defer c.Shutdown(ctx)
 
@@ -111,11 +109,11 @@ func main() {
 
 | Part | What it does |
 |---|---|
-| `msgpack.Codec{}`, `zstd.New()` | the recommended setup over Redis: smaller values, faster to decode than JSON; [codec](../concepts/setup.md#codec-the-format-of-values), [compressor](../concepts/setup.md#compressor-large-values) |
-| `GetOrLoad` | the query runs on a miss only; concurrent calls for one id share it, [`LockOnMiss`](../concepts/stampedes.md#lockonmiss-one-load-for-all-pods) makes it one query for all pods |
-| `Rename` | the `UPDATE` first, then [`Cached.Set`](../concepts/invalidation.md#cachedset): every pod reads the new name next; a failed `UPDATE` leaves the cache alone |
-| `StaleIfError` | Postgres is down: the last user answers for up to an hour; [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
-| `Negative` | `sql.ErrNoRows` is cached for 30 seconds; [not found](../concepts/negative.md#negative-cache-not-found) |
+| `msgpack.Codec{}` | over Redis: smaller values, faster to decode than JSON; no compressor, which makes a small `User` bigger and slower; [codec](../concepts/setup.md#codec-the-format-of-values), [benchmarks](../internals/benchmarks.md#benchmarks) |
+| `GetOrLoad` | the query runs on a miss only; concurrent calls for one id in a process share it, [`LockOnMiss`](../concepts/stampedes.md) makes it one query for all processes |
+| `Rename` | the `UPDATE` first, then [`Cached.Set`](../concepts/invalidation.md#cachedset): every process reads the new name next from Redis; a failed `UPDATE` leaves the cache alone |
+| `StaleIfError` | Postgres is down: the stale user answers for up to an hour; [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
+| `Negative` | `sql.ErrNoRows` is cached for 30s; [not found](../concepts/negative.md#negative-cache-not-found) |
 | `defer c.Shutdown` | runs before `client.Close`: defers run in reverse order |
 
 ## Invalidate with tags { #invalidate-with-tags }
@@ -159,7 +157,7 @@ func OrdersOf(ctx context.Context, db *sql.DB, c *gashe.Cache, userID string) ([
 	})
 }
 
-// DeleteUser writes first, then makes every entry tagged with the user a miss, in every pod.
+// DeleteUser writes first, then makes every entry tagged with the user a miss, in every process.
 func DeleteUser(ctx context.Context, db *sql.DB, c *gashe.Cache, userID string) error {
 	if _, err := db.ExecContext(ctx, "DELETE FROM users WHERE id = $1", userID); err != nil {
 		return err
@@ -168,9 +166,10 @@ func DeleteUser(ctx context.Context, db *sql.DB, c *gashe.Cache, userID string) 
 }
 ```
 
-- The tag differs per user, so the policy is built per call and passed to `gashe.GetOrLoad`.
-- `InvalidateTags` is one `INCRBY` per tag, no scan: every entry with the tag is a miss in every pod;
-  [tags](../concepts/invalidation.md#tags-invalidate-many-entries-with-one-write).
+| Part | What it does |
+|---|---|
+| `Policy` per call | the tag differs per user, so the policy is built per call and passed to `gashe.GetOrLoad` |
+| `InvalidateTags` | one `INCRBY` per tag, no scan: every entry with the tag is a miss in every process; [tags](../concepts/invalidation.md#tags-invalidate-many-entries-with-one-write) |
 
 ## Variations { #variations }
 
@@ -179,4 +178,5 @@ func DeleteUser(ctx context.Context, db *sql.DB, c *gashe.Cache, userID string) 
 | to invalidate without the new row at hand | `users.Reload(ctx, id, load)` to load and store it now, or `users.Delete(ctx, id)`; [`Reload`](../concepts/invalidation.md#reload) |
 | `pgxpool` instead of `database/sql` | call `pool.QueryRow(ctx, ...).Scan(...)` in the loader: gashe sees only the function |
 | a page of users by ids | one query for the missing ones: [`GetOrLoadMany`](../concepts/lists.md#getorloadmany) with `WHERE id = ANY($1)` |
-| to keep answering while Redis is down | [`Policy.Fallback`](../concepts/outages.md#fallback-answer-from-memory-while-the-backend-is-down) |
+| values over about 1 KB, such as pages or long lists | add `Compressor: zstd.New()` from `gashe/compress/zstd`, in a cache of their own; [compressor](../concepts/setup.md#compressor-large-values) |
+| to keep answering while Redis is down | [`Policy.Fallback`](../concepts/outages.md#fallback-answer-from-memory-while-the-backend-is-down) <span class="version-badge">Added in v0.5</span> |

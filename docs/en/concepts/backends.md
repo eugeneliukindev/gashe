@@ -1,6 +1,12 @@
 # Backends { #backends }
 
-## `backend/memory` { #backendmemory }
+Where entries live: in process memory, in Redis, or in a near cache in front of Redis.
+
+## `backend/memory`: entries in process memory { #backendmemory }
+
+An LRU in process memory with a TTL per entry; every process has its own.
+
+API: [`memory.New`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/memory#New), [`memory.Options`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/memory#Options)
 
 ```go
 backend := memory.New(memory.Options{
@@ -11,14 +17,27 @@ backend := memory.New(memory.Options{
 defer backend.Close() // stops the background purge
 ```
 
-An LRU in process memory with a TTL per entry, one per process.
+**Options** (`memory.Options`):
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `MaxEntries` | `int` | 0: 1000 | the most entries, not bytes; the least recently used one is evicted first |
+| `MaxBytes` | `int64` | 0: no limit | the most bytes keys and values take together, without the overhead of the Go runtime: leave headroom |
+| `PurgeInterval` | `time.Duration` | 0: 1 second | how often expired entries are purged in the background; negative: never, expired entries are still never returned |
 
 | What | How |
 |---|---|
-| Errors | `memory.ErrTooLarge` - a value over `MaxBytes` |
-| Values | copied in and out; set `MaxBytes` with headroom |
+| Errors | `memory.ErrTooLarge` - a value over `MaxBytes` alone: it is not stored, and the old value under the key is gone. `New` panics on a negative `MaxEntries` or `MaxBytes` |
+| Values | copied in and out |
 
-## `backend/redis` { #backendredis }
+---
+
+## `backend/redis`: entries shared by every process { #backendredis }
+
+A backend on [go-redis v9](https://github.com/redis/go-redis), shared by every process; a separate
+module.
+
+API: [`redis.New`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/redis#New)
 
 ```go
 client := goredis.NewUniversalClient(&goredis.UniversalOptions{
@@ -30,12 +49,12 @@ defer client.Close()
 backend := gasheredis.New(client)
 ```
 
-A backend on [go-redis v9](https://github.com/redis/go-redis), shared by every process; a separate
-module. Timeouts, pool and TLS are options of the client.
-
 | What | How |
 |---|---|
-| Errors | `gashe/redis: <op>: <error>`; a missing key is `gashe.ErrNotFound` |
+| Errors | `gashe/redis: <op>: <error>`; a missing key is `gashe.ErrNotFound`; a key of another Redis type, or `INCRBY` on a value that is not an integer, is `gashe.ErrWrongType` |
+| Client | timeouts, pool and TLS are options of the client; the caller owns it and closes it. A stopped Redis takes longer than `ReadTimeout`: see [outages](outages.md#circuitbreaker-keep-working-when-the-backend-is-down) |
+| TTLs | go-redis sends `SET ... EX` for whole seconds and `PX` otherwise |
+| `*redis.Ring` | not supported: `SCAN` sees one shard only, so `Keys`, `All` and `DeleteMatch` miss keys |
 | Entries | read them with `redis-cli --scan`, never write them by hand |
 
 | Server | Status |
@@ -43,12 +62,16 @@ module. Timeouts, pool and TLS are options of the client.
 | Redis 7.0 and newer, Valkey 8 | tested on every release |
 | Dragonfly, KeyDB | pass the same tests; Dragonfly lacks `CLIENT KILL`, so the reconnect test of `Bus` is skipped there |
 | Redis Cluster and Sentinel | through `UniversalClient`; on a Cluster, calls on several keys go key by key, and `SCAN` visits every master |
-| managed Redis and Valkey (ElastiCache, MemoryDB, Azure Cache for Redis, Memorystore, Upstash) | not tested; they need `SET` with `NX`, `XX` and `PX`, `UNLINK`, `SCAN`, `MULTI`, Lua scripts for locks, pub/sub for `Bus` and `CLIENT TRACKING` for `TrackingBus` |
+| managed Redis and Valkey (ElastiCache, MemoryDB, Azure Cache for Redis, Memorystore, Upstash) | not tested; they need `SET` with `NX`, `XX`, `EX` and `PX`, `UNLINK`, `SCAN`, `MULTI`, Lua scripts for locks, pub/sub for `Bus` and `CLIENT TRACKING` for `TrackingBus` |
 
-## `backend/nearcache` { #backendnearcache }
+---
+
+## `backend/nearcache`: hot keys without a round trip { #backendnearcache }
 
 Keeps a copy of what it reads from the shared backend in process memory, so a hot key costs no round
 trip.
+
+API: [`nearcache.New`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/nearcache#New), [`nearcache.Options`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/nearcache#Options), [`nearcache.Bus`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/nearcache#Bus)
 
 ```go
 local := memory.New(memory.Options{MaxBytes: 64 << 20})
@@ -61,29 +84,13 @@ backend := nearcache.New(local, gasheredis.New(client), nearcache.Options{
 defer backend.Close() // stops listening to the bus
 ```
 
-**Default:** without a `Bus`, a copy lives 5 seconds in each process, so a change made by another pod
-is seen after at most 5 seconds.
-
-**Options** (`nearcache.Options`):
-
-| Field | Default | What it does |
-|---|---|---|
-| `LocalTTL` | 5s | how long a copy stays in memory; also how long another pod may see an old value |
-| `Bus` | nil: copies expire after `LocalTTL` | tells pods which keys changed: see [Which bus](#which-bus) |
-
-- **Errors:** `New` panics on a negative `LocalTTL`.
-
-!!! warning
-    Every pod keeps its own copy, so with 50 pods the memory is taken 50 times: bound it with
-    `MaxBytes`.
-
-A read and a write, with two pods and a `Bus`:
+A read and a write, with two processes and a `Bus`:
 
 ```mermaid
 sequenceDiagram
-    participant A as Pod A
+    participant A as Process A
     participant R as Redis
-    participant B as Pod B
+    participant B as Process B
     A->>R: GET k: a local miss
     R-->>A: v1, kept for LocalTTL
     Note over A: Get k: a local hit, no round trip
@@ -93,47 +100,105 @@ sequenceDiagram
     R-->>A: v2
 ```
 
-| Call | Local memory | Shared backend | Other pods |
+**Options** (`nearcache.Options`):
+
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `LocalTTL` | `time.Duration` | 0: 5 seconds | how long a copy stays in memory; also how long another process may answer with a value already changed |
+| `Bus` | `nearcache.Bus` | nil: copies expire after `LocalTTL` | tells the other processes which keys changed: see [Which bus](#which-bus) |
+
+| Call | Local memory | Shared backend | Other processes |
 |---|---|---|---|
 | `Get`, `GetMany` | read first, filled on a miss | read on a local miss | - |
 | `Set`, `SetMany`, `SetIfAbsent`, `SetIfPresent`, `IncrBy`, `Expire` | the copy dropped | written | told by the bus |
 | `Delete`, `DeleteMany`, `Unlock` | the copy dropped | written | told by the bus |
 | `DeleteMatch` | matching copies dropped | written | drop all their copies |
 | `Exists`, `TTL`, `Scan`, locks | not read | read | - |
-| a reconnect to the `Bus`, or a failed read from it | all copies dropped: messages may be lost | - | - |
+| a reconnect to the `Bus`, or a message it cannot read, as after `FLUSHDB` | all copies dropped: messages may be lost | - | - |
+
+| What | How |
+|---|---|
+| Memory | every process has its own memory and keeps its own copies: with 50 processes the memory is taken 50 times, so bound it with `MaxBytes` |
+| Redis is down | the bus keeps the copies until it reconnects |
+| A read that raced a change | keeps no copy: the reply may hold the value from before the change |
+| Errors | `New` panics on a negative `LocalTTL` |
+
+!!! warning
+    A copy lives `LocalTTL` even after the shared entry expired. `GetOrLoad` entries are safe, they
+    carry their own expiry; a basic API value with a TTL shorter than `LocalTTL` is answered past its
+    TTL.
+
+- **Example:** [examples/nearcache](https://github.com/eugeneliukindev/gashe/blob/main/examples/nearcache/main.go)
+
+???+ example "examples/nearcache/main.go"
+
+    ```go hl_lines="31-33"
+    --8<-- "examples/nearcache/main.go"
+    ```
+
+---
 
 ### Which bus { #which-bus }
 
-A bus only tells pods which keys changed; a pod drops its copy and reads the new value on the next
-request.
+A bus only tells processes which keys changed; a process drops its copy and reads the new value on
+the next request.
 
 | Bus | Sees changes | Needs | Cluster |
 |---|---|---|---|
-| `gasheredis.NewTrackingBus(client, "orders:")` | every change of a key under the prefix: gashe, `redis-cli`, other services, `FLUSHDB` | Redis 6+ or Valkey, a `*redis.Client` | no |
-| `gasheredis.NewBus(client, "orders:invalidate")` | changes made through gashe; a key changed by `redis-cli` stays old up to `LocalTTL` | pub/sub, one channel per service | yes |
+| [`gasheredis.NewTrackingBus(client, "orders:")`](#newtrackingbus) | every change of a key under the prefix: gashe, `redis-cli`, other services, `FLUSHDB` | Redis 6+ or Valkey, a `*redis.Client` | no |
+| [`gasheredis.NewBus(client, "orders:invalidate")`](#newbus) | changes made through gashe; a key changed by `redis-cli` stays stale up to `LocalTTL` | pub/sub, one channel per service | yes |
 
 Use `NewTrackingBus` on a single node or Sentinel, `NewBus` on a Cluster.
 
-`NewBus`: gashe publishes the keys it changed, so a change made by `redis-cli` reaches nobody.
+---
+
+### `gasheredis.NewBus`: changes made through gashe { #newbus }
+
+gashe publishes the keys it changed, so a change made by `redis-cli` reaches nobody.
+
+API: [`redis.NewBus`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/redis#NewBus)
 
 ```mermaid
 sequenceDiagram
-    participant B as Pod B
+    participant B as Process B
     participant R as Redis
-    participant A as Pod A
+    participant A as Process A
     B->>R: SET k
     B->>R: PUBLISH orders:invalidate k
     R-->>A: k changed: drop k
     Note over R,A: redis-cli SET k: nobody is told
 ```
 
-`NewTrackingBus`: Redis itself reports every change under the prefix, `FLUSHDB` included.
+| What | How |
+|---|---|
+| Client | any `UniversalClient`, a Cluster too |
+| Errors | `NewBus` panics on an empty channel |
+
+---
+
+### `gasheredis.NewTrackingBus`: every change Redis sees { #newtrackingbus }
+
+<span class="version-badge">Added in v0.5</span>
+
+Redis itself reports every change under the prefix, `FLUSHDB` included.
+
+API: [`redis.NewTrackingBus`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backend/redis#NewTrackingBus)
+
+```go hl_lines="6"
+client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"}) // a *redis.Client, not a Cluster
+defer client.Close()
+
+backend := nearcache.New(local, gasheredis.New(client), nearcache.Options{
+	LocalTTL: time.Minute,
+	Bus:      gasheredis.NewTrackingBus(client, "orders:"), // every change of a key under orders:
+})
+```
 
 ```mermaid
 sequenceDiagram
-    participant A as Pod A
+    participant A as Process A
     participant R as Redis
-    participant X as Pod B, redis-cli
+    participant X as Process B, redis-cli
     A->>R: CLIENT TRACKING ON BCAST PREFIX orders:
     X->>R: SET k
     R-->>A: k changed: drop k
@@ -143,18 +208,19 @@ sequenceDiagram
 
 | What | How |
 |---|---|
-| `TrackingBus` | opens a connection of its own; `""` means every key; nothing is published, Redis reports the writes of gashe too |
+| Client | a `*redis.Client`; on a Cluster use `NewBus` |
+| Connection | opens one of its own with the options of the client, and sets its own `OnConnect` on it |
+| Prefix | `""` means every key; nothing is published, Redis reports the writes of gashe too |
 | Redis refuses `CLIENT TRACKING`, as an ACL may | the bus retries every second, and copies live up to `LocalTTL` |
 
-- **Example:** [examples/nearcache](https://github.com/eugeneliukindev/gashe/blob/main/examples/nearcache/main.go)
+---
 
-??? example "examples/nearcache/main.go"
+## `backendtest.Run`: check a backend of your own { #your-own-backend }
 
-    ```go
-    --8<-- "examples/nearcache/main.go"
-    ```
+Implement `gashe.Backend`, whose contract is the comments in `backend.go`, and check it with the
+suite the bundled backends pass.
 
-## Your own backend { #your-own-backend }
+API: [`backendtest.Run`](https://pkg.go.dev/github.com/eugeneliukindev/gashe/backendtest#Run), [`gashe.Backend`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Backend)
 
 ```go
 func TestContract(t *testing.T) {
@@ -164,10 +230,15 @@ func TestContract(t *testing.T) {
 }
 ```
 
-Implement `gashe.Backend`, whose contract is the comments in `backend.go`, and check it with the suite
-the bundled backends pass. To change one method, embed `gashe.Backend` and override it.
+| What | How |
+|---|---|
+| One method changed | embed `gashe.Backend` and override it |
+
+---
 
 ## Testing your code { #testing-your-code }
+
+A cache for tests, and a backend that fails.
 
 ```go
 func newCache(t *testing.T) *gashe.Cache {
@@ -179,8 +250,6 @@ type downBackend struct{ gashe.Backend } // a failing backend: embed a real one,
 
 func (downBackend) Get(context.Context, string) ([]byte, error) { return nil, errDown }
 ```
-
-A cache for tests, and a backend that fails.
 
 | What | How |
 |---|---|

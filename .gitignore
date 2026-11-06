@@ -3,3 +3,6 @@ go.work
 go.work.sum
 site/
 .docs-build/
+__pycache__/
+.venv/
+docs/gocheck/blocks/

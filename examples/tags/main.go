@@ -5,14 +5,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backend/memory"
 )
-
-type Profile struct{ Name string }
 
 func main() {
 	ctx := context.Background()
@@ -20,32 +17,25 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	db := map[string]string{"42": "Ann"}
-	read := func(id string) {
-		p, err := gashe.GetOrLoad(ctx, c, "profile:"+id, gashe.Policy[Profile]{
-			TTL:  time.Hour,
-			Tags: []string{"user:" + id}, // one tag per user
-		}, func(context.Context) (Profile, error) {
-			fmt.Println("  load from the database")
-			return Profile{Name: db[id]}, nil
-		})
-		check(err)
-		fmt.Println("  profile:", p.Name)
+	name := "Ann" // the users table
+	policy := gashe.Policy[string]{
+		TTL:  time.Hour,
+		Tags: []string{"user:42"}, // one tag per user
+	}
+	loadProfile := func(context.Context) (string, error) {
+		fmt.Println("  load from the database")
+		return name, nil
 	}
 
 	fmt.Println("read twice:")
-	read("42") // load from the database, profile: Ann
-	read("42") // profile: Ann, from the cache
+	p, _ := gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile)
+	fmt.Println("  profile:", p) // loaded from the database
+	p, _ = gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile)
+	fmt.Println("  profile:", p) // from the cache
 
 	fmt.Println("rename the user, then invalidate the tag:")
-	db["42"] = "Anna" // UPDATE users SET name = 'Anna' WHERE id = 42
-	check(c.InvalidateTags(ctx, "user:42"))
-	read("42") // load from the database, profile: Anna
-}
-
-// check stops the example on an error it does not expect.
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	name = "Anna" // UPDATE users SET name = 'Anna' WHERE id = 42
+	c.InvalidateTags(ctx, "user:42")
+	p, _ = gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile)
+	fmt.Println("  profile:", p) // loaded again: Anna
 }

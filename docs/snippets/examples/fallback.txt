@@ -1,3 +1,0 @@
-Redis up:                          100 requests,   1 database queries
-Redis down, no fallback:           100 requests, 100 database queries
-Redis down, with Policy.Fallback:  100 requests,   1 database queries

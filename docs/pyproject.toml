@@ -1,0 +1,13 @@
+# The tools of the documentation site, run with uv: `uv sync --project docs` installs them into
+# docs/.venv, and `just docs` runs docs/build.py through `uv run --project docs`. Go does not use it.
+[project]
+name = "gashe-docs"
+version = "0"
+description = "Builds the documentation site of gashe"
+requires-python = ">=3.11" # tomllib
+dependencies = [
+  "zensical==0.1.0", # the site generator; docs/build.py and docs/outputs.py need nothing else
+]
+
+[tool.uv]
+package = false # only a set of tools: nothing to build or install

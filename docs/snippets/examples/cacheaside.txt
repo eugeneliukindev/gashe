@@ -1,4 +1,4 @@
-{ID:42 Name:Ann} in 100ms
-{ID:42 Name:Ann} in 0s
-{ID:42 Name:Ann} in 0s
-database queries: 1
+load from the database
+got {ID:42 Name:Ann}
+got {ID:42 Name:Ann}
+got {ID:42 Name:Ann}

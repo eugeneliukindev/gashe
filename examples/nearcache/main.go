@@ -1,15 +1,12 @@
-// Command nearcache runs two "pods" with a local memory cache in front of one Redis. With a Bus,
-// a change made by one pod drops the local copy of the other at once.
-//
-// It needs Redis: docker run --rm -p 6379:6379 redis:7, or set REDIS_ADDR.
+// Command nearcache runs two near caches in front of one Redis, standing for two processes: each
+// keeps its own local memory, and only Redis is shared. With a Bus, a change made by one process
+// drops the local copy of the other at once.
 package main
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -22,42 +19,41 @@ import (
 
 func main() {
 	ctx := context.Background()
-	client := goredis.NewClient(&goredis.Options{Addr: cmp.Or(os.Getenv("REDIS_ADDR"), "localhost:6379")})
+	client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
+	defer client.Close()
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Fatalf("this example needs Redis (docker run --rm -p 6379:6379 redis:7): %v", err)
+		log.Fatalf("this example needs Redis on localhost:6379: %v", err)
 	}
-	defer func() { _ = client.Close() }()
 
-	pod := func() (*gashe.Cache, func()) {
-		local := memory.New(memory.Options{})
-		near := nearcache.New(local, gasheredis.New(client), nearcache.Options{
-			LocalTTL: time.Hour, // long on purpose: without the Bus, a change would stay unseen for an hour
-			Bus:      gasheredis.NewBus(client, "gashe-example:invalidate"),
-		})
-		return gashe.New(near, gashe.Options{}), func() { _ = near.Close(); _ = local.Close() }
-	}
-	a, closeA := pod()
-	defer closeA()
-	b, closeB := pod()
-	defer closeB()
-	time.Sleep(100 * time.Millisecond) // let both pods subscribe
+	// Process A: its own local memory in front of the shared Redis.
+	localA := memory.New(memory.Options{})
+	defer localA.Close()
+	nearA := nearcache.New(localA, gasheredis.New(client), nearcache.Options{
+		LocalTTL: time.Hour, // long on purpose: without the Bus, a change would stay unseen for an hour
+		Bus:      gasheredis.NewBus(client, "gashe-example:invalidate"),
+	})
+	defer nearA.Close()
+	a := gashe.New(nearA, gashe.Options{})
 
-	check(b.Set(ctx, "price", 100, 0))
-	fmt.Println("pod A reads:", read(ctx, a)) // pod A reads: 100, now kept in its memory
-	check(b.Set(ctx, "price", 120, 0))
-	time.Sleep(50 * time.Millisecond)                           // the message travels through Redis
-	fmt.Println("pod B changed it, pod A reads:", read(ctx, a)) // pod B changed it, pod A reads: 120
-}
+	// Process B: the same, with a local memory of its own.
+	localB := memory.New(memory.Options{})
+	defer localB.Close()
+	nearB := nearcache.New(localB, gasheredis.New(client), nearcache.Options{
+		LocalTTL: time.Hour,
+		Bus:      gasheredis.NewBus(client, "gashe-example:invalidate"),
+	})
+	defer nearB.Close()
+	b := gashe.New(nearB, gashe.Options{})
 
-func read(ctx context.Context, c *gashe.Cache) int {
+	time.Sleep(100 * time.Millisecond) // let both processes subscribe
+
 	var price int
-	check(c.Get(ctx, "price", &price))
-	return price
-}
+	b.Set(ctx, "price", 100, 0)
+	a.Get(ctx, "price", &price)
+	fmt.Println("process A reads:", price) // process A reads: 100, now kept in its memory
 
-// check stops the example on an error it does not expect.
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	b.Set(ctx, "price", 120, 0)
+	time.Sleep(50 * time.Millisecond) // the message travels through Redis
+	a.Get(ctx, "price", &price)
+	fmt.Println("process B changed it, process A reads:", price) // process B changed it, process A reads: 120
 }

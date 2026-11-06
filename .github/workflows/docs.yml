@@ -24,11 +24,13 @@ jobs:
     steps:
       - uses: actions/configure-pages@v6
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-go@v7
         with:
-          python-version: "3.12"
-      - run: pip install zensical==0.1.0
-      - run: python docs/build.py build
+          go-version: stable # docs/build.py check compiles the Go blocks of the pages
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --project docs --locked # the tools of docs/pyproject.toml, at docs/uv.lock
+      - run: uv run --project docs --locked python docs/build.py check
+      - run: uv run --project docs --locked python docs/build.py build
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

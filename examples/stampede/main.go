@@ -19,8 +19,12 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	var loads atomic.Int32
-	report := func(context.Context) (string, error) {
+	policy := gashe.Policy[string]{
+		TTL:        time.Minute,
+		LockOnMiss: 10 * time.Second, // over Redis: one load for all processes
+	}
+	var loads atomic.Int32 // the requests run at once
+	loadReport := func(context.Context) (string, error) {
 		loads.Add(1)
 		time.Sleep(200 * time.Millisecond) // a heavy aggregate query
 		return "report", nil
@@ -31,8 +35,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = gashe.GetOrLoad(ctx, c, "report:today",
-				gashe.Policy[string]{TTL: time.Minute, LockOnMiss: 10 * time.Second}, report)
+			gashe.GetOrLoad(ctx, c, "report:today", policy, loadReport)
 		}()
 	}
 	wg.Wait()

@@ -3,12 +3,9 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -24,43 +21,37 @@ func main() {
 	renders := 0
 	listProducts := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		renders++
-		time.Sleep(100 * time.Millisecond) // a heavy page
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"name":"Mug"},{"name":"Kettle"}]`))
+		w.Write([]byte(`[{"name":"Mug"},{"name":"Kettle"}]`))
 	})
 
-	cached := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:          time.Minute,
-		StaleIfError: time.Hour, // a 5xx gets the last good page
-		Prefix:       "http:",
-	}})
+	cached := httpcache.New(c, httpcache.Options{
+		Policy: gashe.Policy[httpcache.Response]{
+			TTL:          time.Minute,
+			StaleIfError: time.Hour, // a 5xx gets the last good page
+			Prefix:       "http:",
+		},
+	})
 	mux := http.NewServeMux()
 	mux.Handle("/products", cached(listProducts))
 	srv := httptest.NewServer(mux) // a real server would be http.ListenAndServe(":8080", mux)
 	defer srv.Close()
+	url := srv.URL + "/products"
 
-	etag := request(srv.URL, http.MethodGet, "") // GET 200 Cache-Status: "gashe; fwd=uri-miss; stored"
-	request(srv.URL, http.MethodGet, "")         // GET 200 Cache-Status: "gashe; hit"
-	request(srv.URL, http.MethodGet, etag)       // GET 304 Cache-Status: "gashe; hit", no body
-	request(srv.URL, http.MethodPost, "")        // POST 200 Cache-Status: "gashe; fwd=method"
+	resp, _ := http.Get(url)
+	etag := resp.Header.Get("ETag")
+	fmt.Println("GET:", resp.StatusCode, resp.Header.Get("Cache-Status"), "ETag:", etag) // fwd=uri-miss; stored
+
+	resp, _ = http.Get(url)
+	fmt.Println("GET:", resp.StatusCode, resp.Header.Get("Cache-Status")) // hit
+
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("If-None-Match", etag)
+	resp, _ = http.DefaultClient.Do(req)
+	fmt.Println("GET If-None-Match:", resp.StatusCode, resp.Header.Get("Cache-Status")) // 304 with no body
+
+	resp, _ = http.Post(url, "", nil)
+	fmt.Println("POST:", resp.StatusCode, resp.Header.Get("Cache-Status")) // fwd=method: never cached
+
 	fmt.Println("handler ran", renders, "times") // handler ran 2 times: the first GET and the POST
-}
-
-// request sends one request, prints how it was answered and returns its ETag.
-func request(url, method, ifNoneMatch string) string {
-	req, err := http.NewRequestWithContext(context.Background(), method, url+"/products", strings.NewReader(""))
-	if err != nil {
-		log.Fatal(err)
-	}
-	if ifNoneMatch != "" {
-		req.Header.Set("If-None-Match", ifNoneMatch)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	fmt.Printf("%-4s %d  Cache-Status: %-30q ETag: %s\n", method, resp.StatusCode,
-		resp.Header.Get("Cache-Status"), resp.Header.Get("ETag"))
-	return resp.Header.Get("ETag")
 }

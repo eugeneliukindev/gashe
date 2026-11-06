@@ -1,5 +1,7 @@
 # About { #about }
 
+Where gashe stands among other caches, how it is versioned, and how to upgrade.
+
 | Page | What it says |
 |---|---|
 | [Alternatives and comparisons](alternatives.md) | other Go caches, what each does well, and when to choose it instead |

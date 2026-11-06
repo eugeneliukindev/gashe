@@ -1,5 +1,0 @@
-Redis is down: 10 requests
-  miss: 1
-  fallback: 9
-database queries: 1
-calls to Redis: 4

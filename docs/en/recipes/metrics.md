@@ -84,16 +84,18 @@ gashe_results_total{result="miss"} 3
 
 | Metric | From | Use it for |
 |---|---|---|
-| `gashe_results_total{result}` | `Outcome.Result`, every `GetOrLoad` and every key of `GetOrLoadMany` | hit ratio; how often old data answers (`stale-if-error`, `fallback`) |
+| `gashe_results_total{result}` | `Outcome.Result`, every `GetOrLoad` and every key of `GetOrLoadMany` | hit ratio; how often a stale result or the fallback answers (`stale-if-error`, `fallback`) |
 | `gashe_load_seconds` | `Outcome.Load`, when the loader ran | what a miss costs: pick TTLs and `LockOnMiss` by it |
-| `gashe_errors_total` | `OnError`: backend failures, old results answered instead of an error | alerts: the cache works around a problem |
+| `gashe_errors_total` | `OnError`: backend failures, stale results answered instead of an error | alerts: the cache works around a problem |
 
-- **Hit ratio** in PromQL, anything the loader did not answer counted as a hit:
-  `sum(rate(gashe_results_total{result!="miss"}[5m])) / sum(rate(gashe_results_total[5m]))`.
-- **Labels:** never the key: it has no bound, and every key would make a series.
-- **Cost:** both run synchronously on every call: a counter is fine, a network call is not.
-- **Pods:** each process counts its own calls; sum them in the query.
-  More on the hooks: [`OnResult`, `OnError`](../concepts/setup.md#onresult-onerror-monitoring).
+| Point | What to know |
+|---|---|
+| Hit ratio | in PromQL, anything the loader did not answer counted as a hit: `sum(rate(gashe_results_total{result!="miss"}[5m])) / sum(rate(gashe_results_total[5m]))` |
+| Labels | never the key: it has no bound, and every key would make a series |
+| Cost | both hooks run synchronously on every call: a counter is fine, a network call is not |
+| Processes | each process has its own counters in its own memory; sum them in the query |
+
+More on the hooks: [`OnResult`, `OnError`](../concepts/setup.md#onresult-onerror-monitoring).
 
 ## OpenTelemetry { #opentelemetry }
 

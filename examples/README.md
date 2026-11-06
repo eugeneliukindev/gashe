@@ -1,31 +1,34 @@
 # Examples
 
-Runnable programs, one per feature. Run one from the repository root:
+Runnable programs, one per feature. The examples are a module of their own, so run them from
+`examples/`:
 
 ```bash
-go run ./examples/stale
+cd examples && go run ./stale/while-revalidate
 ```
 
 | Example | Shows |
 |---|---|
 | [basic](basic/main.go) | `Set`, `Get`, `GetMany`, `IncrBy`, `TTL` |
 | [cacheaside](cacheaside/main.go) | `GetOrLoad`: one query, then answers from the cache |
-| [stale](stale/main.go) | stale-while-revalidate, stale-if-error and stale-if-slow |
-| [negative](negative/main.go) | caching "not found" |
+| [stale](stale) | one key past its TTL: [ttl-only](stale/ttl-only/main.go), [while-revalidate](stale/while-revalidate/main.go), [if-error](stale/if-error/main.go), [if-slow](stale/if-slow/main.go) |
+| [negative](negative) | caching "not found": [without](negative/without/main.go) and [with](negative/with/main.go) `Negative` |
 | [stampede](stampede/main.go) | a thousand concurrent requests, one load |
 | [batch](batch/main.go) | `GetOrLoadMany`: one query for the missing items of a list |
 | [tags](tags/main.go) | `InvalidateTags` after a write |
-| [nearcache](nearcache/main.go) | two pods, local caches and a `Bus`; needs Redis |
+| [nearcache](nearcache/main.go) | two caches standing in for two processes, each with a near cache and a `Bus`; needs Redis |
 | [httpserver](httpserver/main.go) | `httpcache`: `Cache-Status`, `ETag`, `304` |
 | [httpapi](httpapi/main.go) | `httpcache` behind a real server, for curl: `Vary`, cookies, `StaleIfError`, `503` |
-| [lock](lock/main.go) | `TryLock`: one worker runs a job |
+| [lock](lock/main.go) | `c.TryLock`: one worker runs a job |
 | [ratelimit](ratelimit/main.go) | fixed window with a ban, sliding window |
 | [breaker](breaker/main.go) | `CircuitBreaker` opening and closing |
-| [fallback](fallback/main.go) | `Policy.Fallback`: one database query instead of a hundred while Redis is down |
+| [fallback](fallback) | `Policy.Fallback`: one database query instead of a hundred while Redis is down, [without](fallback/without/main.go) and [with](fallback/with/main.go) |
 | [monitoring](monitoring/main.go) | `OnResult`: hit ratio and loader time |
+| [quickstart](quickstart/main.go) | the program of the [quickstart](../docs/en/quickstart.md): `GetOrLoad`, the loader once, then hits |
+| [lockonmiss](lockonmiss) | three processes over one Redis, [without](lockonmiss/without/main.go) and [with](lockonmiss/with/main.go) `LockOnMiss`, which loads a cold key once for all; needs Redis |
 
-Every example uses the memory backend except `nearcache`, which needs Redis:
-`docker run --rm -p 6379:6379 redis:7`, or set `REDIS_ADDR`.
+Every example uses the memory backend except `nearcache` and `lockonmiss`, which need a Redis on
+`localhost:6379`, such as `docker run --rm -p 6379:6379 redis:7`.
 
 The examples are a separate module, so their dependencies never reach the gashe modules; its
 `go.mod` replaces gashe with the code of this repository.

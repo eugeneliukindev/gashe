@@ -5,14 +5,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backend/memory"
 )
-
-type Product struct{ Name string }
 
 func main() {
 	ctx := context.Background()
@@ -20,35 +17,27 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	db := map[string]Product{"1": {"Mug"}, "2": {"Kettle"}, "3": {"Spoon"}}
-	loadProducts := func(_ context.Context, missing []string) (map[string]Product, error) {
+	db := map[string]string{"1": "Mug", "2": "Kettle", "3": "Spoon"}
+	policy := gashe.Policy[string]{
+		TTL:    time.Hour,
+		Prefix: "product:",
+	}
+	// The loader gets only the ids the cache does not have.
+	loadProducts := func(_ context.Context, missing []string) (map[string]string, error) {
 		fmt.Println("  database query for", missing) // SELECT ... WHERE id = ANY($1)
-		out := map[string]Product{}
+		found := map[string]string{}
 		for _, id := range missing {
-			if p, ok := db[id]; ok {
-				out[id] = p
+			if name, ok := db[id]; ok {
+				found[id] = name
 			}
 		}
-		return out, nil
+		return found, nil
 	}
 
 	for _, ids := range [][]string{{"1", "2"}, {"1", "2", "3"}, {"1", "2", "3", "99"}} {
 		fmt.Println("page asks for", ids)
-		products, err := gashe.GetOrLoadMany(ctx, c, ids, gashe.Policy[Product]{
-			TTL:    time.Hour,
-			Prefix: "product:",
-		}, loadProducts)
-		check(err)
-		// got map[1:{Mug} 2:{Kettle}], after a query for [1 2]
-		// got map[1:{Mug} 2:{Kettle} 3:{Spoon}], after a query for [3] only
-		// got map[1:{Mug} 2:{Kettle} 3:{Spoon}], after a query for [99]: it does not exist, so it is left out
+		products, _ := gashe.GetOrLoadMany(ctx, c, ids, policy, loadProducts)
+		// a query for [1 2], then for [3] only, then for [99]: it does not exist, so it is left out
 		fmt.Println("  got", products)
-	}
-}
-
-// check stops the example on an error it does not expect.
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
 	}
 }

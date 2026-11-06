@@ -1,6 +1,6 @@
 # Alternatives and comparisons { #alternatives-and-comparisons }
 
-gashe was built for one case: a Go service that runs as many pods over a shared Redis and must keep
+gashe was built for one case: a Go service that runs as many processes over a shared Redis and must keep
 answering while its dependencies are slow or down. Many good Go caches solve other cases better.
 This page says what each one is, what it does well, what it lacks next to gashe and when to choose
 it instead.
@@ -14,7 +14,7 @@ it instead.
 
 ## In-process caches { #in-process-caches }
 
-They keep Go values in the memory of one process: fast, no network, no encoding, but every pod has
+They keep Go values in the memory of one process: fast, no network, no encoding, but every process has
 its own copy and its own misses.
 
 ### Ristretto { #ristretto }
@@ -37,7 +37,7 @@ its own copy and its own misses.
   concurrent loads, asynchronous refresh of a stale entry, statistics, saving to a file; no
   third-party dependencies outside tests.
 - **Lacks next to gashe:** one process only; a failed refresh keeps the old value, but nothing
-  answers old data past its expiry; a loader that returns `ErrNotFound` removes the entry instead of
+  answers stale data past its expiry; a loader that returns `ErrNotFound` removes the entry instead of
   caching the miss; no tags, locks, limits or breakers. Needs Go 1.24, and supports the two newest Go
   releases.
 - **Choose it when:** one process and you want the best in-memory cache with loading and refresh.
@@ -51,7 +51,7 @@ its own copy and its own misses.
 - **Does well:** stampede protection, early refreshes in the background, caching of missing
   records, batch fetches cached per record, refresh coalescing of many ids into one batch call.
 - **Lacks next to gashe:** the distributed storage is an interface you implement, and you set its
-  TTL and eviction yourself; no lock that makes one pod load a cold key for all pods; no tags,
+  TTL and eviction yourself; no lock that makes one process load a cold key for all processes; no tags,
   locks, rate limits, breakers or HTTP middleware.
 - **Choose it when:** the service mostly calls batch APIs and needs few calls to them, with memory
   as the main cache.
@@ -78,7 +78,7 @@ its own copy and its own misses.
 | [hashicorp/golang-lru](https://github.com/hashicorp/golang-lru) | a fixed-size LRU, with an `expirable` variant | a bounded map in one process |
 | [jellydator/ttlcache](https://github.com/jellydator/ttlcache) | a generic cache with TTL, a `Loader` and events | one process, a loader is enough |
 
-None of them is shared between processes or answers old data while a source fails.
+None of them is shared between processes or answers stale data while a source fails.
 
 ## Shared and distributed caches { #shared-and-distributed-caches }
 
@@ -89,8 +89,8 @@ None of them is shared between processes or answers old data while a source fail
 - **Is:** a cache over Redis, with an optional local in-process cache (TinyLFU) in front.
 - **Does well:** small and simple; `Once` loads a missing key once per process (singleflight);
   MessagePack encoding and compression; `SetNX` and `SetXX`.
-- **Lacks next to gashe:** the local cache of other pods is not told about a change, so it stays
-  old until its TTL; no stale data, tags, locks for loads across pods, rate limits or breakers.
+- **Lacks next to gashe:** the local cache of other processes is not told about a change, so it
+  stays stale until its TTL; no stale data, tags, locks for loads across processes, rate limits or breakers.
 - **Choose it when:** you want the shortest path from go-redis to typed values in Redis.
 
 ### gocache { #gocache }
@@ -102,8 +102,8 @@ None of them is shared between processes or answers old data while a source fail
 - **Does well:** the widest choice of stores; a chain cache (memory, then Redis) that fills upper
   stores from lower ones; a loadable cache with singleflight; tags; Prometheus metrics;
   `SetIfNotExists` for simple locks.
-- **Lacks next to gashe:** stale data, negative caching and loads coordinated across pods are not
-  described; the memory layer of a chain is not invalidated on other pods; tag entries can be evicted
+- **Lacks next to gashe:** stale data, negative caching and loads coordinated across processes are
+  not described; the memory layer of a chain is not invalidated in other processes; tag entries can be evicted
   by the store, after which invalidation removes nothing (its README warns of this); no rate
   limits, breakers or HTTP middleware.
 - **Choose it when:** you need a store gashe has no backend for, such as Memcache or Hazelcast, or
@@ -147,9 +147,9 @@ As of 2026-11-06. `yes`: built in; `partial`: see the note; `no`: not offered; `
 
 | | gashe | Ristretto | Otter | sturdyc | BigCache | FreeCache | go-redis/cache | gocache | rueidis | groupcache |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Shared across pods (Redis) | yes | no | no | partial (1) | no | no | yes | yes | yes | partial (2) |
+| Shared across processes (Redis) | yes | no | no | partial (1) | no | no | yes | yes | yes | partial (2) |
 | Stampede protection, one process | yes | no | yes | yes | no | no | yes | yes | yes (3) | yes |
-| Stampede protection, across pods | yes | no | no | no | no | no | no | no | yes (3) | yes |
+| Stampede protection, across processes | yes | no | no | no | no | no | no | no | yes (3) | yes |
 | Stale-while-revalidate | yes | no | yes | yes | no | no | no | no | no | no |
 | Stale-if-error | yes | no | partial (4) | partial (4) | no | no | no | no | no | no |
 | Negative caching | yes | no | no | yes | no | no | ? | ? | partial (5) | no |
@@ -167,7 +167,7 @@ As of 2026-11-06. `yes`: built in; `partial`: see the note; `no`: not offered; `
 3. Through `rueidisaside`: the first miss locks the key in Redis, the others wait.
 4. A failed refresh keeps the old value until it expires; nothing answers past the expiry.
 5. Redis nils are cached client-side; caching a miss of your source is done by hand.
-6. A local cache in front of Redis; other pods are not told of a change and keep their copy until
+6. A local cache in front of Redis; other processes are not told of a change and keep their copy until
    its TTL.
 7. `SetIfNotExists`, which its README calls a building block for simple locks; no unlock or extend.
 8. Third-party imports of the main module, outside tests and examples. gashe: the core module;
@@ -187,9 +187,9 @@ As of 2026-11-06. `yes`: built in; `partial`: see the note; `no`: not offered; `
 
 Choose gashe when most of these are true:
 
-- the service runs as several pods over Redis or Valkey;
-- a cold or expired key must load once for all pods: [`LockOnMiss`](../concepts/stampedes.md#lockonmiss-one-load-for-all-pods);
-- old data is better than an error while the source is slow or down: [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails);
+- the service runs as several processes over Redis or Valkey;
+- a cold or expired key must load once for all processes: [`LockOnMiss`](../concepts/stampedes.md);
+- a stale result is better than an error while the source is slow or down: [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails);
 - one change drops many entries: [tags](../concepts/invalidation.md#tags-invalidate-many-entries-with-one-write);
 - the same cache should also give [locks](../concepts/locks.md#locks), [rate limits](../concepts/rate-limits.md#cratelimit)
   and [circuit breakers](../concepts/breakers.md#gasheguard).

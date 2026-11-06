@@ -10,18 +10,10 @@ edit_uri = "edit/main/docs/en/"
 docs_dir = "docs/en"
 site_dir = "site"
 copyright = "MIT license"
+extra_css = ["assets/stylesheets/extra.css"]
 nav = [
   { "Home" = "index.md" },
-  { "Learn" = [
-    "tutorial/index.md",
-    "tutorial/first-cache.md",
-    "tutorial/ttl.md",
-    "tutorial/stale.md",
-    "tutorial/invalidation.md",
-    "tutorial/redis.md",
-    "tutorial/outages.md",
-    "tutorial/http.md",
-  ] },
+  { "Quickstart" = "quickstart.md" },
   { "Concepts" = [
     "concepts/setup.md",
     "concepts/backends.md",
@@ -48,6 +40,7 @@ nav = [
     "recipes/warm-up.md",
   ] },
   { "Errors" = "errors.md" },
+  { "Troubleshooting" = "troubleshooting.md" },
   { "Reference" = [
     "reference.md",
     { "Internals" = ["internals/storage.md", "internals/benchmarks.md"] },
@@ -67,6 +60,8 @@ language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
 features = [
+  "content.action.edit",
+  "content.action.view",
   "content.code.annotate",
   "content.code.copy",
   "content.tabs.link",
@@ -103,17 +98,20 @@ markdown_description = "gashe is a caching library for Go services that run as m
 
 [project.plugins.llmstxt.sections]
 "Start" = [{ "index.md" = "what gashe is, a full example, the problems it solves" }]
-"Learn" = ["tutorial/*.md"]
+"Quickstart" = [{ "quickstart.md" = "install, a first cache, Redis, a policy to start with" }]
 "Concepts" = ["concepts/*.md"]
 "Recipes" = ["recipes/*.md"]
-"Errors" = [{ "errors.md" = "every error and when it comes" }]
+"Errors" = [
+  { "errors.md" = "every error and when it comes" },
+  { "troubleshooting.md" = "symptoms, their causes and fixes" },
+]
 "Reference" = [
   { "reference.md" = "the packages, with links to pkg.go.dev" },
   "internals/*.md",
   { "changelog.md" = "notable changes of every release" },
   { "glossary.md" = "the terms of the domain" },
-  "about/*.md",
 ]
+"About" = ["about/*.md"]
 
 # Open Graph images: a card with the title of the page when a link is shared.
 [project.plugins.social]

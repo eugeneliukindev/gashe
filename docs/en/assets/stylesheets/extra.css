@@ -1,0 +1,17 @@
+/* Highlighted code lines are the lines a variant adds: green, as added lines in a diff. */
+:root > * {
+  --md-code-hl-color: rgba(46, 160, 67, 1);
+  --md-code-hl-color--light: rgba(46, 160, 67, 0.18);
+}
+
+/* "Added in v0.5": API that is not in a release yet. */
+.version-badge {
+  display: inline-block;
+  padding: 0.1em 0.6em;
+  border-radius: 1em;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--md-accent-bg-color);
+  background-color: var(--md-accent-fg-color);
+}

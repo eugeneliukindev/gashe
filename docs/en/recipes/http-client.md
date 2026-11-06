@@ -1,6 +1,6 @@
 # Cache an HTTP API { #cache-an-http-api }
 
-Cache the answers of an external HTTP API: the last answer while it is down, a `404` for 10 minutes.
+Cache the answers of an external HTTP API: the stale answer while it is down, a `404` for 10m.
 
 ## The code { #the-code }
 
@@ -141,18 +141,20 @@ The loader turns every answer of the API into a result or an error; the policy d
 |---|---|---|
 | `200` | the `Weather` | stores it for `TTL` |
 | `404` | `ErrNoCity` | caches it for `Negative.TTL`: no call meanwhile; [not found](../concepts/negative.md#negative-cache-not-found) |
-| `5xx`, `429`, a timeout, no connection | `errAPIDown` | the last answer, up to `TTL + StaleIfError` old, the error to `OnError`; [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
+| `5xx`, `429`, a timeout, no connection | `errAPIDown` | the stale answer, up to `TTL + StaleIfError` old, the error to `OnError`; [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
 | anything else | another error | returns it, stores nothing |
 
-- `StaleIf` keeps `ErrNoCity` out of `StaleIfError`: a city that is gone is not answered from old data.
-- `http.Client.Timeout` bounds the call; without it a hung API holds the request.
+| Part | What it does |
+|---|---|
+| `StaleIf` | keeps `ErrNoCity` out of `StaleIfError`: a city that is gone is not answered with a stale result |
+| `http.Client.Timeout` | bounds the call; without it a hung API holds the request |
 
 ## Variations { #variations }
 
 | If you need | Do |
 |---|---|
-| to answer at once when the API is slow | `StaleIfSlow: 300 * time.Millisecond`: the old answer after 300ms, the call goes on in the background |
+| to answer at once when the API is slow | `StaleIfSlow: 300 * time.Millisecond`: the stale answer after 300ms, the call goes on in the background |
 | the API to set the TTL, by `Cache-Control: max-age` | put the max-age into the result and use `TTL: func(w Weather) time.Duration { return w.MaxAge }`; [TTL](../concepts/loading.md#ttl-how-long-a-result-is-fresh) |
-| to stay within the rate limit of the API | [`LockOnMiss`](../concepts/stampedes.md#lockonmiss-one-load-for-all-pods): one call per key for all pods; [`MaxConcurrentLoads`](../concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once): at most N calls at once per process |
+| to stay within the rate limit of the API | [`LockOnMiss`](../concepts/stampedes.md): one call per key for all processes; [`MaxConcurrentLoads`](../concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once) <span class="version-badge">Added in v0.5</span>: at most N calls at once per process |
 | popular keys never to wait | [`StaleWhileRevalidate`](../concepts/stale.md#stalewhilerevalidate-answer-old-data-while-reloading) |
 | to cache the pages of your own server instead | [`httpcache`](../concepts/httpcache.md#httpcache-whole-http-responses) |

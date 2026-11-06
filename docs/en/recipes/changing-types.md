@@ -30,20 +30,20 @@ func main() {
 		OnResult: func(_ context.Context, o gashe.Outcome) { fmt.Println(" ", o.Key, o.Result) },
 	})
 
-	fmt.Println("old pods:")
+	fmt.Println("old processes:")
 	v1 := gashe.For(c, gashe.Policy[UserV1]{TTL: time.Hour, Prefix: "users:"})
 	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
 	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
 
-	fmt.Println("new pods, same prefix:") // another shape: a miss, not an empty FullName
+	fmt.Println("new processes, same prefix:") // another shape: a miss, not an empty FullName
 	v2 := gashe.For(c, gashe.Policy[UserV2]{TTL: time.Hour, Prefix: "users:"})
 	u, _ := v2.GetOrLoad(ctx, "42", func(context.Context) (UserV2, error) { return UserV2{FullName: "Ann Lee"}, nil })
 	fmt.Printf("  %+v\n", u)
 
-	fmt.Println("an old pod during the rollout:") // and back: each version overwrites the other
+	fmt.Println("an old process during the rollout:") // and back: each version overwrites the other
 	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
 
-	fmt.Println("new pods with users:v2: the versions keep apart:")
+	fmt.Println("new processes with users:v2: the versions keep apart:")
 	v2p := gashe.For(c, gashe.Policy[UserV2]{TTL: time.Hour, Prefix: "users:v2:"})
 	for range 2 {
 		_, _ = v2p.GetOrLoad(ctx, "42", func(context.Context) (UserV2, error) { return UserV2{FullName: "Ann Lee"}, nil })
@@ -55,15 +55,15 @@ func main() {
 Output:
 
 ```text
-old pods:
+old processes:
   users:42 miss
   users:42 hit
-new pods, same prefix:
+new processes, same prefix:
   users:42 miss
   {FullName:Ann Lee}
-an old pod during the rollout:
+an old process during the rollout:
   users:42 miss
-new pods with users:v2: the versions keep apart:
+new processes with users:v2: the versions keep apart:
   users:v2:42 miss
   users:v2:42 hit
   users:42 hit
@@ -85,17 +85,19 @@ types, nested types included. An entry of another form is a miss, never a value 
 
 ## During a rolling deploy { #during-a-rolling-deploy }
 
-Old and new pods run side by side for the length of the rollout.
+Old and new processes run side by side for the length of the rollout, over the same Redis.
 
 | | The same `Prefix` | A new one, `users:v2:` |
 |---|---|---|
 | Misses | each version overwrites the entries of the other: misses all through the rollout | one per key, for the new version |
 | Backend memory | one entry per key | two, until the old ones expire: `TTL` plus the stale window |
-| `Cached.Set`, `Cached.Delete` of new pods | reach what old pods read | do not: old pods may answer old data until the rollout ends |
+| `Cached.Set`, `Cached.Delete` of new processes | reach what old processes read | do not: old processes may answer stale results until the rollout ends |
 | `InvalidateTags` | reaches both | reaches both: tags are not under `Prefix` |
 | A rollback | misses again | the old entries are still there: hits |
 
-- **The cost:** one load per key read after the deploy, at most the hot keys of that type; without
-  [`LockOnMiss`](../concepts/stampedes.md#lockonmiss-one-load-for-all-pods), once per pod.
-- **Protect the database:** [`MaxConcurrentLoads`](../concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once),
-  or fill the new prefix before the traffic: [warm up](warm-up.md#warm-up-the-cache).
+## Variations { #variations }
+
+| If you need | Do |
+|---|---|
+| to know the cost | one load per key read after the deploy, at most the hot keys of that type; without [`LockOnMiss`](../concepts/stampedes.md), once per process |
+| to protect the database | [`MaxConcurrentLoads`](../concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once) <span class="version-badge">Added in v0.5</span>, or fill the new prefix before the traffic: [warm up](warm-up.md#warm-up-the-cache) |

@@ -2,9 +2,11 @@
 
 Stop calling a failing dependency for a while.
 
-## `gashe.Guard` { #gasheguard }
+## `gashe.Guard`: stop calling a failing dependency { #gasheguard }
 
 Runs one call through the circuit breaker of a key: a failing dependency is not called for a while.
+
+API: [`gashe.Guard`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Guard), [`gashe.CircuitBreakerOptions`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#CircuitBreakerOptions)
 
 ```go
 payments := gashe.CircuitBreakerOptions{
@@ -18,10 +20,6 @@ receipt, err := gashe.Guard(c, "payments-api", payments, func() (Receipt, error)
 })
 ```
 
-**Default:** none: `FailurePercent`, `Window` and `OpenFor` are required.
-
-Calls are counted over the last `Window`, in 10 parts; a failure is an error `IsFailure` accepts.
-
 ```mermaid
 stateDiagram-v2
     state "half-open" as half
@@ -29,39 +27,39 @@ stateDiagram-v2
     closed --> open: FailurePercent of at least MinCalls failed within Window
     open --> half: after OpenFor, with HalfOpenCalls
     open --> closed: after OpenFor, without HalfOpenCalls
-    half --> closed: a test call succeeds, or one Window passes
-    half --> open: a test call fails
+    half --> closed: a half-open call succeeds, or one Window passes
+    half --> open: a half-open call fails
 ```
 
 | State | Calls |
 |---|---|
 | closed | run and are counted |
 | open | get `ErrCircuitOpen` and do not run |
-| half-open | `HalfOpenCalls` test calls run; the rest get `ErrCircuitOpen` |
+| half-open | `HalfOpenCalls` half-open calls run; the rest get `ErrCircuitOpen` |
 
 **Options** (`gashe.CircuitBreakerOptions`):
 
-| Field | Default | What it does |
-|---|---|---|
-| `FailurePercent` | required | opens once this share of calls failed, from 1 to 99 |
-| `MinCalls` | 1 | calls the window needs before it may open |
-| `Window` | required | the recent span calls are counted over |
-| `OpenFor` | required | how long the open breaker refuses calls |
-| `HalfOpenCalls` | 0: it just closes | test calls after `OpenFor` |
-| `IsFailure` | nil: any error | which errors count as failures |
+| Field | Type | Default | What it does |
+|---|---|---|---|
+| `FailurePercent` | `int`, 1 to 99 | required | opens once this share of calls failed |
+| `MinCalls` | `int` | 0: 1 | calls the window needs before it may open |
+| `Window` | `time.Duration` | required | the recent span calls are counted over, in 10 parts |
+| `OpenFor` | `time.Duration` | required | how long the open breaker refuses calls |
+| `HalfOpenCalls` | `int` | 0: it just closes | half-open calls after `OpenFor`: the first that succeeds closes the breaker, one that fails opens it again |
+| `IsFailure` | `func(error) bool` | nil: any error | which errors count as failures |
 
 | What | How |
 |---|---|
 | Returns | what the call returned |
 | Errors | `ErrCircuitOpen` - the breaker is open, and the call did not run. `ErrInvalidOptions` - the options cannot work |
-| Redis | none: the breaker lives in process memory, and each pod judges by its own calls |
+| Redis | none: the breaker lives in process memory, and each process judges by its own calls |
 | Keys | the state of every key lives as long as the `Cache`: use a few fixed keys, not user ids |
 
 - **Example:** [examples/breaker](https://github.com/eugeneliukindev/gashe/blob/main/examples/breaker/main.go)
 
-??? example "examples/breaker/main.go"
+???+ example "examples/breaker/main.go"
 
-    ```go
+    ```go hl_lines="19 35 42 46"
     --8<-- "examples/breaker/main.go"
     ```
 
@@ -73,7 +71,12 @@ stateDiagram-v2
 
 ---
 
-## `c.CircuitBreaker` { #ccircuitbreaker }
+## `c.CircuitBreaker`: a breaker for a call you report yourself { #ccircuitbreaker }
+
+Checks the breaker before a call you report yourself; use it when the call does not fit one
+function, otherwise use `Guard`.
+
+API: [`gashe.Cache.CircuitBreaker`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.CircuitBreaker), [`gashe.DoneFunc`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#DoneFunc)
 
 ```go
 done, err := c.CircuitBreaker("payments-api", payments)
@@ -82,9 +85,6 @@ if err != nil {
 }
 done(provider.Refund(ctx, p)) // once: nil or the error of the call
 ```
-
-Checks the breaker before a call you report yourself; use it when the call does not fit one
-function, otherwise use `Guard`.
 
 | What | How |
 |---|---|

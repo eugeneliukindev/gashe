@@ -4,7 +4,7 @@ The repository holds six modules. Run every command in each of them.
 
 | Module | Holds | Dependencies |
 |---|---|---|
-| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest`, `gashe/httpcache` | none |
+| `.` | `gashe`, `gashe/backend/memory`, `gashe/backend/nearcache`, `gashe/backendtest`, `gashe/httpcache`, `gashe/codec/raw`, `gashe/compress/gzip` | none |
 | `backend/redis/` | `gashe/backend/redis` | go-redis v9 |
 | `codec/msgpack/` | `gashe/codec/msgpack` | vmihailenco/msgpack v5 |
 | `compress/zstd/` | `gashe/compress/zstd` | klauspost/compress |
@@ -47,26 +47,31 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the date, then
-tag the root first (`v0.2.0`), raise the version the other modules require, and tag them with
-their directory in front: `backend/redis/v0.2.0`, `codec/msgpack/v0.2.0`, `compress/zstd/v0.2.0`.
-Copy the section into the GitHub release of the tag.
+tag the root first (`v0.4.0`), raise the version the other modules require, and tag the modules
+that changed with their directory in front (`backend/redis/v0.3.0`). The latest tags are `v0.4.0`,
+`backend/redis/v0.3.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. Copy the section into
+the GitHub release of the tag.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
 
 The documentation site is built with [Zensical](https://zensical.org) from `docs/en/` and
-published to GitHub Pages on every push to `main`; it needs only [uv](https://docs.astral.sh/uv/):
+published to GitHub Pages on every push to `main`. Its tools are Python packages listed in
+`docs/pyproject.toml` and pinned in `docs/uv.lock`; [uv](https://docs.astral.sh/uv/) installs them,
+and the recipes run them through `uv run --project docs`:
 
 ```bash
+uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
 just docs            # build the site into site/; a broken link or anchor fails it
 just docs-serve      # preview it at http://localhost:8000/gashe/
 just docs-output     # run the examples and curl, and refresh their outputs in docs/snippets/
 just docs-links      # external links, with lychee in Docker; CI checks them weekly
 ```
 
-Code comes from `examples/` and outputs from `docs/snippets/`, included with `--8<--`, so they are
-never copied by hand. Headings carry fixed ids (`{ #id }`), so links keep working when a heading is
-reworded.
+The pages include the code of the examples from `examples/` and their outputs from
+`docs/snippets/` with `--8<--`, so those are never copied by hand. Recipes show their code inline:
+`just docs-check` compiles it, and every output must come from a real run. Headings carry fixed
+ids (`{ #id }`), so links keep working when a heading is reworded.
 
 The documentation is in English only until the API settles. `docs/build.py` can build more
 languages: one `[[project.extra.alternate]]` per language in `zensical.toml` and a

@@ -9,6 +9,12 @@ A caching library: it stores results of expensive calls and protects callers fro
 **Cache**:
 The one object a program works with; it stores values in a backend and runs caching, locks, rate limits and circuit breakers on top of it.
 
+**Process**:
+One running copy of the program; in Kubernetes, one per container. Each process has its own
+memory, so its memory backend, near cache and fallback are its own; only a shared backend such as
+Redis is seen by every process.
+_Avoid_: instance
+
 **Backend**:
 A place where entries live, such as process memory or Redis.
 _Avoid_: storage, driver, store
