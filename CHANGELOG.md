@@ -28,6 +28,10 @@ module it is about.
   new entries; `Cookies`, the cookies a page depends on, so an analytics cookie no longer keeps a
   request out; `User`, for pages per user; and `Custom`. A response whose `Vary` header names only
   headers of `Options.Vary` is now stored; before, any `Vary` kept it out.
+- `backend/redis`: `NewTrackingBus`, a `nearcache.Bus` on Redis client side caching
+  (`CLIENT TRACKING`): Redis itself reports every change of a key under a prefix, so near caches see
+  changes made past gashe, by `redis-cli` or another service, and `FLUSHDB`. It needs Redis 6 or
+  Valkey and does not work on a Cluster, where `NewBus` stays the choice.
 - The README lists every header `httpcache` reads and sets, and how it works behind a reverse proxy.
 
 ### Changed
@@ -35,6 +39,9 @@ module it is about.
 - `httpcache.Options.Key`, a function, becomes `httpcache.Options.Vary`, a `httpcache.Vary`:
   `Key: keyOf` becomes `Vary: httpcache.Vary{Custom: keyOf}`, and a key that held the user becomes
   `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in.
+- `backend/redis` requires go-redis `v9.18.0`, which fixes GO-2025-3540; before, `v9.0.0`.
+- `backend/redis`: a `Bus` that fails to read a message drops all local copies, as after a
+  reconnect, since messages may have been lost.
 
 ### Security
 

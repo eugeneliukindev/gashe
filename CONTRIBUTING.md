@@ -14,7 +14,8 @@ The repository holds six modules. Run every command in each of them.
 The tests of `backend/redis` against a real server read its address from `GASHE_REDIS_ADDR` and are
 skipped without it, so `go test` needs no Docker. `just integration` starts a server in Docker,
 runs them against the local code of the repository through `go.work`, and removes the
-server; `just integration-all` runs them on Redis 7.0 and Valkey 8.
+server; `just integration-all` runs them on Redis 7.0 and Valkey 8, and `just integration-cluster`
+on a Redis Cluster of three masters, where keys of one call land on different nodes.
 
 The modules support Go 1.23 and newer, five releases at the moment. Tests that need
 `testing/synctest` are behind `//go:build go1.25`, so on Go 1.23 and 1.24 they are skipped and the
@@ -24,10 +25,11 @@ Tasks run with [just](https://just.systems) and go through every module; `just` 
 
 ```bash
 just check          # before a commit: golangci-lint, tests with -race, govulncheck
-just release-check  # before a tag: check, tests on Go 1.23 through goenv, Redis in Docker, gorelease
+just release-check  # before a tag: check, tests on Go 1.23 through goenv, Redis and a Cluster in Docker, gorelease
 just fmt            # format with the formatters of .golangci.yml
 just bench -count=5 # the benchmarks; update the tables in the README from them
 just integration-all               # the Redis tests on Redis 7.0 and Valkey 8, in Docker
+just integration-cluster           # the Cluster tests on three masters, in Docker
 just integration docker.dragonflydb.io/dragonflydb/dragonfly -v  # any other server
 ```
 

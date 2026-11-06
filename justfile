@@ -73,6 +73,31 @@ integration image="redis:7.0.0" *flags: work
     echo "== {{ image }} on 127.0.0.1:$port"
     GASHE_REDIS_ADDR="127.0.0.1:$port" go test -race -count=1 "${@:2}" ./...
 
+# Run the backend/redis tests against a Redis Cluster of three masters in Docker; flags go to go test.
+# The nodes listen on 127.0.0.1:17000-17002 of the host network, so the addresses the cluster
+# announces are the ones the tests reach.
+[group('test')]
+[positional-arguments]
+[script]
+[working-directory('backend/redis')]
+integration-cluster image="redis:7.0.0" *flags: work
+    id=$(docker run -d --rm --network host {{ image }} sh -c '
+        for p in 17000 17001 17002; do
+            redis-server --port $p --bind 127.0.0.1 --cluster-enabled yes --cluster-config-file /tmp/nodes-$p.conf --save "" --daemonize yes
+        done
+        sleep 1
+        redis-cli --cluster create 127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 --cluster-replicas 0 --cluster-yes > /dev/null
+        exec sleep infinity')
+    trap 'docker rm -f "$id" > /dev/null' EXIT
+    for p in 17000 17001 17002; do # wait until every node serves every slot
+        for _ in $(seq 100); do
+            docker exec "$id" redis-cli -p "$p" cluster info 2> /dev/null | grep -q 'cluster_state:ok' && break
+            sleep 0.2
+        done
+    done
+    echo "== {{ image }} cluster on 127.0.0.1:17000-17002"
+    GASHE_REDIS_CLUSTER="127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002" go test -race -count=1 -run Cluster "${@:2}" ./...
+
 # Run the integration tests on the oldest supported Redis and on Valkey, at once.
 [group('test')]
 [parallel]
@@ -115,4 +140,4 @@ check: lint test vuln
 
 # Everything to run before a release tag.
 [group('all')]
-release-check: check examples test-oldest integration-all api
+release-check: check examples test-oldest integration-all integration-cluster api

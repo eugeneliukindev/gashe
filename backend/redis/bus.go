@@ -38,22 +38,41 @@ func (b *Bus) Publish(ctx context.Context, keys []string) error {
 }
 
 // Subscribe calls changed with every published list of keys until ctx is done. After every
-// (re)subscription it calls changed(nil), since messages sent while it was not subscribed are lost.
+// (re)subscription and failed read it calls changed(nil), since messages may have been lost.
 func (b *Bus) Subscribe(ctx context.Context, changed func(keys []string)) error {
-	sub := b.client.Subscribe(ctx, b.channel)
+	listen(ctx, b.client.Subscribe(ctx, b.channel), changed, func(m *goredis.Message) []string {
+		var keys []string
+		if json.Unmarshal([]byte(m.Payload), &keys) != nil {
+			return nil // an unreadable message: drop everything rather than keep a stale copy
+		}
+		return keys
+	})
+	return nil
+}
+
+// listen calls changed with the keys of every message of sub until ctx is done, and changed(nil)
+// after every (re)subscription and failed read. It closes sub.
+func listen(
+	ctx context.Context,
+	sub *goredis.PubSub,
+	changed func(keys []string),
+	keysOf func(*goredis.Message) []string,
+) {
 	defer func() { _ = sub.Close() }()
 	stop := context.AfterFunc(ctx, func() { _ = sub.Close() }) // Receive ignores ctx while it reads
 	defer stop()
 	for {
 		msg, err := sub.Receive(ctx)
 		if ctx.Err() != nil {
-			return nil
+			return
 		}
 		if err != nil {
-			// go-redis reconnects and subscribes again on the next Receive.
+			// Messages may be lost, or this one was unreadable, as the one of FLUSHDB in go-redis:
+			// drop everything. go-redis reconnects and subscribes again on the next Receive.
+			changed(nil)
 			select {
 			case <-ctx.Done():
-				return nil
+				return
 			case <-time.After(retryDelay):
 			}
 			continue
@@ -62,11 +81,7 @@ func (b *Bus) Subscribe(ctx context.Context, changed func(keys []string)) error 
 		case *goredis.Subscription:
 			changed(nil)
 		case *goredis.Message:
-			var keys []string
-			if json.Unmarshal([]byte(m.Payload), &keys) != nil {
-				keys = nil // an unreadable message: drop everything rather than keep a stale copy
-			}
-			changed(keys)
+			changed(keysOf(m))
 		}
 	}
 }

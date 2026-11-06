@@ -2,9 +2,11 @@ package redis_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backend/memory"
 	"github.com/eugeneliukindev/gashe/backend/nearcache"
 	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
@@ -61,4 +63,54 @@ func TestBusOverRedis(t *testing.T) {
 		t.Skipf("the server cannot drop pub/sub clients (%v), so the reconnect is not checked", err)
 	}
 	eventually(t, "a kept its copy after the bus reconnected", read("3"))
+}
+
+var _ nearcache.Bus = (*gasheredis.TrackingBus)(nil)
+
+func TestTrackingBusSeesChangesBehindGashe(t *testing.T) {
+	ctx := context.Background()
+	client := newClient(t)
+	if err := client.FlushDB(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
+	local := memory.New(memory.Options{PurgeInterval: -1})
+	t.Cleanup(func() { _ = local.Close() })
+	pod := nearcache.New(local, gasheredis.New(client), nearcache.Options{
+		LocalTTL: time.Hour,
+		Bus:      gasheredis.NewTrackingBus(newClient(t), "t:"),
+	})
+	t.Cleanup(func() { _ = pod.Close() })
+	read := func(want string) func() bool {
+		return func() bool { v, err := pod.Get(ctx, "t:price"); return err == nil && string(v) == want }
+	}
+	set := func(v string) {
+		t.Helper()
+		if err := client.Set(ctx, "t:price", v, 0).Err(); err != nil { // as redis-cli would, past gashe
+			t.Fatal(err)
+		}
+	}
+
+	set("1")
+	eventually(t, "the pod never read 1", read("1")) // the pod now keeps a local copy for an hour
+	set("2")
+	eventually(t, "the pod kept its copy after a change behind gashe", read("2"))
+
+	if err := client.FlushDB(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the pod kept its copy after FLUSHDB", func() bool {
+		_, err := pod.Get(ctx, "t:price")
+		return errors.Is(err, gashe.ErrNotFound)
+	})
+
+	// A lost connection: after it reconnects, the pod drops everything and tracks again.
+	set("3")
+	eventually(t, "the pod never read 3", read("3"))
+	if err := client.Do(ctx, "CLIENT", "KILL", "TYPE", "pubsub").Err(); err != nil {
+		t.Skipf("the server cannot drop pub/sub clients (%v), so the reconnect is not checked", err)
+	}
+	set("4")
+	eventually(t, "the pod kept its copy after the bus reconnected", read("4"))
+	set("5")
+	eventually(t, "the pod stopped tracking after the reconnect", read("5"))
 }
