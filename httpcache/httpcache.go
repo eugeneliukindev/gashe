@@ -30,6 +30,7 @@ const defaultMaxBody = 1 << 20
 const (
 	headerAge           = "Age"
 	headerAuthorization = "Authorization"
+	headerCookie        = "Cookie"
 	headerCacheControl  = "Cache-Control"
 	headerETag          = "ETag"
 	headerIfNoneMatch   = "If-None-Match"
@@ -51,7 +52,7 @@ const (
 	statusMiss cacheStatus = "gashe; fwd=uri-miss"
 	// statusMethod is a request whose method is not cached.
 	statusMethod cacheStatus = "gashe; fwd=method"
-	// statusRequest is a request whose headers keep it out of the cache: Range, Authorization.
+	// statusRequest is a request whose headers keep it out of the cache: Range, Authorization, Cookie.
 	statusRequest cacheStatus = "gashe; fwd=request"
 )
 
@@ -76,10 +77,11 @@ type Options struct {
 	// Policy says how responses are cached, as for gashe.GetOrLoad. CacheIf decides which statuses
 	// are stored; nil stores 200 only. The rules of New apply on top of it.
 	Policy gashe.Policy[Response]
-	// Key returns the key of a request; Policy.Prefix is put in front of it. It must not depend on
-	// the method: HEAD reads what GET stored. nil means host, path and query, and requests with an
-	// Authorization header are not cached. With your own Key, they are: include the user in it.
-	Key func(r *http.Request) string
+	// Vary says which parts of a request a page depends on, and so what its key is made of;
+	// Policy.Prefix is put in front of the key. The zero value means the host, the path and the
+	// query, with requests carrying Authorization or Cookie headers past the cache. HEAD reads what
+	// GET stored.
+	Vary Vary
 	// MaxBodyBytes is the largest body that is stored; a larger one is sent but not stored.
 	// 0 means 1 MB.
 	MaxBodyBytes int
@@ -87,11 +89,12 @@ type Options struct {
 
 // New returns a middleware that caches the responses of a handler in c.
 //
-// A request goes straight to the handler if it is not GET or HEAD, has a Range header, or, with
-// the default Key, has an Authorization header. A response is stored only if CacheIf allows its
-// status and it has no Set-Cookie, no Vary, no Cache-Control no-store, private or no-cache, and a
-// body within MaxBodyBytes; otherwise it is sent as is to the request that made it. A 5xx response
-// counts as a loader error, so StaleIfError answers it with the last stored response.
+// A request goes straight to the handler if it is not GET or HEAD, has a Range header, or has an
+// Authorization or Cookie header Vary does not cover. A response is stored only if CacheIf
+// allows its status and it has no Set-Cookie, no Vary header beyond Options.Vary, no Cache-Control
+// no-store, private or no-cache, and a body within MaxBodyBytes; otherwise it is sent as is to the
+// request that made it. A 5xx response counts as a loader error, so StaleIfError answers it with
+// the last stored response.
 //
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
@@ -106,7 +109,7 @@ func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 		c:       c,
 		policy:  o.Policy,
 		cacheIf: o.Policy.CacheIf,
-		key:     o.Key,
+		vary:    newVary(&o.Vary),
 		maxBody: cmp.Or(o.MaxBodyBytes, defaultMaxBody),
 	}
 	m.policy.CacheIf = nil // the loader applies it, with the rules above
@@ -128,7 +131,7 @@ type middleware struct {
 	c       *gashe.Cache
 	policy  gashe.Policy[Response]
 	cacheIf func(Response) bool
-	key     func(r *http.Request) string
+	vary    vary
 	maxBody int
 }
 
@@ -141,7 +144,7 @@ func (m *middleware) serve(w http.ResponseWriter, r *http.Request, next http.Han
 	// own is the response this request rendered. A background reload may render later, so it
 	// is read and written atomically.
 	var own atomic.Pointer[Response]
-	resp, err := gashe.GetOrLoad(r.Context(), m.c, m.requestKey(r), m.policy,
+	resp, err := gashe.GetOrLoad(r.Context(), m.c, m.vary.of(r), m.policy,
 		func(ctx context.Context) (Response, error) {
 			rendered, storable := m.render(ctx, r, next)
 			own.Store(&rendered)
@@ -184,17 +187,10 @@ func (m *middleware) bypass(r *http.Request) (cacheStatus, bool) {
 		return statusMethod, true
 	case r.Header.Get(headerRange) != "":
 		return statusRequest, true
-	case m.key == nil && r.Header.Get(headerAuthorization) != "":
+	case !m.vary.shared(r):
 		return statusRequest, true
 	}
 	return "", false
-}
-
-func (m *middleware) requestKey(r *http.Request) string {
-	if m.key != nil {
-		return m.key(r)
-	}
-	return r.Host + r.URL.RequestURI()
 }
 
 // render runs the handler as GET, also for HEAD, so the body can be stored; it reports whether
@@ -222,7 +218,7 @@ func (m *middleware) render(ctx context.Context, r *http.Request, next http.Hand
 
 func (m *middleware) storable(resp *Response, h http.Header) bool {
 	switch {
-	case len(resp.Body) > m.maxBody, h.Get(headerSetCookie) != "", h.Get(headerVary) != "":
+	case len(resp.Body) > m.maxBody, h.Get(headerSetCookie) != "", !m.vary.covers(h.Values(headerVary)):
 		return false
 	case hasDirective(h.Values(headerCacheControl), "no-store", "private", "no-cache"):
 		return false
@@ -247,8 +243,7 @@ func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheS
 	}
 	w.WriteHeader(resp.Status)
 	if r.Method != http.MethodHead {
-		//nolint:gosec // the handler's own output, replayed; a failed write means the client is gone
-		_, _ = w.Write(resp.Body)
+		_, _ = w.Write(resp.Body) // a failed write means the client is gone
 	}
 }
 

@@ -209,6 +209,7 @@ func TestRequestsThatBypassTheCache(t *testing.T) {
 		{"POST", http.MethodPost, nil},
 		{"Range", http.MethodGet, []string{"Range", "bytes=0-1"}},
 		{"Authorization", http.MethodGet, []string{"Authorization", "Bearer t"}},
+		{"Cookie", http.MethodGet, []string{"Cookie", "session=ann"}}, // a page of whoever sent it
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -224,10 +225,10 @@ func TestRequestsThatBypassTheCache(t *testing.T) {
 	}
 }
 
-func TestOwnKeyCachesAuthorizedRequests(t *testing.T) {
+func TestVaryUserCachesPagesPerUser(t *testing.T) {
 	p := &page{body: "my orders"}
 	h := serve(t, newCache(t), &httpcache.Options{
-		Key: func(r *http.Request) string { return r.Header.Get("Authorization") + " " + r.URL.Path },
+		Vary: httpcache.Vary{User: func(r *http.Request) string { return r.Header.Get("Authorization") }},
 	}, p)
 
 	get(h, http.MethodGet, "/orders", "Authorization", "Bearer ann")
@@ -289,6 +290,7 @@ func TestCacheStatusSaysWhyTheHandlerRan(t *testing.T) {
 		{"method", http.MethodPost, nil, false, "gashe; fwd=method"},
 		{"Range", http.MethodGet, []string{"Range", "bytes=0-1"}, false, "gashe; fwd=request"},
 		{"Authorization", http.MethodGet, []string{"Authorization", "Bearer t"}, false, "gashe; fwd=request"},
+		{"Cookie", http.MethodGet, []string{"Cookie", "session=ann"}, false, "gashe; fwd=request"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -301,5 +303,111 @@ func TestCacheStatusSaysWhyTheHandlerRan(t *testing.T) {
 				t.Fatalf("Cache-Status = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// greeting answers in the language of the request and says so in Vary.
+type greeting struct {
+	runs atomic.Int32
+	vary string
+}
+
+func (g *greeting) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.runs.Add(1)
+	if g.vary != "" {
+		w.Header().Set("Vary", g.vary)
+	}
+	_, _ = io.WriteString(w, "hello in "+r.Header.Get("Accept-Language")) //nolint:gosec // test output, never rendered
+}
+
+func TestVaryHeadersSplitTheKey(t *testing.T) {
+	g := &greeting{vary: "Accept-Language"}
+	h := serve(t, newCache(t), &httpcache.Options{Vary: httpcache.Vary{Headers: []string{"accept-language"}}}, g)
+
+	for _, lang := range []string{"en", "de", "en", "de"} {
+		w := get(h, http.MethodGet, "/", "Accept-Language", lang)
+		if got := w.Body.String(); got != "hello in "+lang {
+			t.Fatalf("%s: got %q; a page in one language was served for another", lang, got)
+		}
+	}
+	if g.runs.Load() != 2 {
+		t.Fatalf("handler ran %d times, want once per language", g.runs.Load())
+	}
+}
+
+func TestVaryOutsideTheKeyIsNotStored(t *testing.T) {
+	for _, vary := range []string{"Accept-Language", "*", "Accept-Language, Accept-Encoding"} {
+		t.Run(vary, func(t *testing.T) {
+			g := &greeting{vary: vary}
+			headers := []string{"Accept-Encoding"}
+			if vary == "Accept-Language" {
+				headers = nil
+			}
+			h := serve(t, newCache(t), &httpcache.Options{Vary: httpcache.Vary{Headers: headers}}, g)
+			get(h, http.MethodGet, "/", "Accept-Language", "en")
+			get(h, http.MethodGet, "/", "Accept-Language", "de")
+			if g.runs.Load() != 2 {
+				t.Fatalf("handler ran %d times: a response that varies on a header outside the key was shared",
+					g.runs.Load())
+			}
+		})
+	}
+}
+
+// echo answers with its query and its cookies, so a test sees which request rendered a page.
+type echo struct {
+	runs atomic.Int32
+}
+
+func (e *echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	e.runs.Add(1)
+	_, _ = io.WriteString(w, r.URL.RawQuery+" "+r.Header.Get("Cookie")) //nolint:gosec // test output, never rendered
+}
+
+func TestVaryQueryKeepsOnlyListedParameters(t *testing.T) {
+	e := &echo{}
+	h := serve(t, newCache(t), &httpcache.Options{Vary: httpcache.Vary{Query: []string{"page", "sort"}}}, e)
+
+	get(h, http.MethodGet, "/list?page=2&sort=name")
+	get(h, http.MethodGet, "/list?sort=name&page=2&utm_source=mail") // the same page: order and utm ignored
+	get(h, http.MethodGet, "/list?page=3&sort=name")
+	if e.runs.Load() != 2 {
+		t.Fatalf("handler ran %d times, want one per page", e.runs.Load())
+	}
+}
+
+func TestVaryCookiesCachesRequestsWithOtherCookies(t *testing.T) {
+	e := &echo{}
+	h := serve(t, newCache(t), &httpcache.Options{Vary: httpcache.Vary{Cookies: []string{"currency"}}}, e)
+
+	get(h, http.MethodGet, "/", "Cookie", "currency=usd; _ga=1")
+	get(h, http.MethodGet, "/", "Cookie", "currency=usd; _ga=2") // an analytics cookie does not split the key
+	if w := get(h, http.MethodGet, "/", "Cookie", "currency=eur"); e.runs.Load() != 2 ||
+		!strings.Contains(w.Body.String(), "currency=eur") {
+		t.Fatalf("handler ran %d times, body %q; want one page per currency", e.runs.Load(), w.Body.String())
+	}
+	if w := get(
+		h,
+		http.MethodGet,
+		"/",
+		"Authorization",
+		"Bearer t",
+	); w.Header().
+		Get("Cache-Status") !=
+		"gashe; fwd=request" {
+		t.Fatalf("Authorization without Vary.User was cached: %q", w.Header().Get("Cache-Status"))
+	}
+}
+
+func TestVaryCustomIsPartOfTheKey(t *testing.T) {
+	e := &echo{}
+	h := serve(t, newCache(t), &httpcache.Options{Vary: httpcache.Vary{
+		Custom: func(r *http.Request) string { return r.Header.Get("X-Tenant") },
+	}}, e)
+	get(h, http.MethodGet, "/", "X-Tenant", "a")
+	get(h, http.MethodGet, "/", "X-Tenant", "b")
+	get(h, http.MethodGet, "/", "X-Tenant", "a")
+	if e.runs.Load() != 2 {
+		t.Fatalf("handler ran %d times, want one per tenant", e.runs.Load())
 	}
 }
