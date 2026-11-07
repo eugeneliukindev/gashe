@@ -159,7 +159,7 @@ tidy: (_each modules "env" "GOWORK=off" "go" "mod" "tidy")
 version-fetch tag:
     m=github.com/eugeneliukindev/gashe; [[ "$1" == v* ]] || m="$m/${1%/v*}"; cd "$(mktemp -d)" && GOPROXY=https://proxy.golang.org go list -m "$m@${1##*/}"
 
-[doc("Draft a GitHub release on main; publishing it creates the tag: just gh-release v0.7.0")]
+[doc("Draft a GitHub release on main; publishing it creates the tag if not pushed: just gh-release v0.7.0")]
 [group('release')]
 gh-release tag:
     #!/usr/bin/env bash
@@ -170,7 +170,7 @@ gh-release tag:
         [ -n "$notes" ] || { echo "gh-release: CHANGELOG.md has no section ${1#v}" >&2; exit 1; }
         printf '%s\n' "$notes" | gh release create "$1" --draft --target main --title "$1" --notes-file -
     else
-        last=$(git tag -l "${1%/v*}/v*" --sort=-v:refname | head -1)
+        last=$(git tag -l "${1%/v*}/v*" --sort=-v:refname | grep -vxF "$1" | head -1) # the tag may be pushed already
         gh release create "$1" --draft --target main --title "$1" --generate-notes ${last:+--notes-start-tag "$last"}
     fi
 
