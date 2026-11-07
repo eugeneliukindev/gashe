@@ -1,4 +1,3 @@
-# Servers for the integration tests.
 services:
   redis:
     image: ${REDIS_IMAGE:-redis:7.0.0} # the oldest Redis supported; REDIS_IMAGE tests another server

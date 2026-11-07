@@ -143,10 +143,8 @@ markdown_description = "gashe is a caching library for Go services that run as m
 ]
 "About" = ["about/*.md"]
 
-# A preview card for shared links.
 [project.plugins.social]
 
-# External fonts and scripts are served from the site.
 [project.plugins.privacy]
 # Scripts of theme features the site does not use.
 assets_exclude = [
@@ -177,10 +175,8 @@ pymdownx.tabbed.alternate_style = true
 pymdownx.snippets.base_path = ["."]
 pymdownx.snippets.check_paths = true
 pymdownx.snippets.dedent_subsections = true
-# Tooltips for terms on every page.
 pymdownx.snippets.auto_append = ["docs/snippets/abbreviations.md"]
 pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
 pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
 abbr = {}
-# A preview on hover for every link inside the site.
 zensical.extensions.preview.targets.include = ["*"]

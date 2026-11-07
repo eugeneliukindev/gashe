@@ -11,17 +11,15 @@ dependencies = [
   "zensical==0.1.0",
 ]
 
-# The Markdown lint of docs/en/, run by `just docs-lint`.
 [tool.rumdl]
 flavor = "mkdocs"
 # MD013: a paragraph is one line. MD033: version badges and the logo are HTML.
 # MD036: the bold labels of the index stay out of the table of contents.
 # MD057: zensical --strict checks the links, and knows llms.txt the build writes.
 disable = ["MD013", "MD033", "MD036", "MD057"]
-exclude = ["docs/en/reference"]  # written by gomarkdoc
+exclude = ["docs/en/reference"]
 
 [tool.rumdl.per-file-ignores]
-# The page is a snippet of a file at the repository root.
 "docs/en/changelog.md" = ["MD041"]
 "docs/en/glossary.md" = ["MD041"]
 
