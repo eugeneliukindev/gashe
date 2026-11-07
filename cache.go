@@ -18,6 +18,7 @@ type Options struct {
 	// yours must not start with "__". Locks of Lock, TryLock and WithLock use the key you give them.
 	Prefix string
 	// Hooks receive what the cache does: how calls were answered, and the errors it works around.
+	// The zero value calls nothing.
 	Hooks Hooks
 	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
 	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
@@ -41,9 +42,11 @@ type Options struct {
 type Hooks struct {
 	// OnResult receives how every GetOrLoad call, and every key of GetOrLoadMany, was answered:
 	// use it to count hits and misses and to time the loader.
+	// nil drops them.
 	OnResult func(ctx context.Context, o Outcome)
 	// OnError receives errors the cache works around instead of returning them, such as a
 	// failing backend during GetOrLoad; each error names the operation and key.
+	// nil drops them.
 	OnError func(ctx context.Context, err error)
 }
 

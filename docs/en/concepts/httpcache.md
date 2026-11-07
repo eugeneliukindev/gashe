@@ -6,64 +6,49 @@ headers and body without calling the handler. In this section, we will go throug
 [how the key is made](#how-the-key-is-made), [headers](#headers) and
 [running behind a reverse proxy](#behind-a-reverse-proxy).
 
-## `httpcache.New` { #httpcachenew }
+## Caching the pages of a handler { #httpcachenew }
 
-Many requests get the same page, and each one runs your handler again. With `httpcache.New`, you
-wrap the handler in a middleware that stores its responses in a `*gashe.Cache` and answers hits
+Many requests get the same page, and each one runs your handler again. With [`httpcache.New`](../reference/httpcache.md#New), you
+wrap the handler in a middleware that stores its responses in a [`*gashe.Cache`](../reference/gashe.md#Cache) and answers hits
 without calling it.
-
-??? api "API documentation"
-
-    [`httpcache.New`](../reference/httpcache.md#New)<br>
-    [`httpcache.Options`](../reference/httpcache.md#Options)<br>
-    [`httpcache.Vary`](../reference/httpcache.md#Vary)<br>
-    [`httpcache.Response`](../reference/httpcache.md#Response)<br>
 
 ```go hl_lines="23-33"
 --8<-- "examples/docs/httpcache/options/main.go"
 ```
 
-What a request gets; its key is the host, the path and what `Vary` names, see
+What a request gets; its key is the host, the path and what [`Vary`](../reference/httpcache.md#Vary) names, see
 [how the key is made](#how-the-key-is-made):
 
-- A hit: the stored response with `ETag`, `Age` and `Cache-Status: gashe; hit`. A matching
+- A hit: the stored response with [`ETag`](../reference/httpcache.md#Response), `Age` and `Cache-Status: gashe; hit`. A matching
   `If-None-Match` gets `304 Not Modified`.
 - A miss: the handler runs, as `GET` also for `HEAD`; with
   [`Stampede.SingleFlight`](stampedes.md#singleflight), once for all concurrent requests of the key.
-- Stale, within `Stale.WhileRevalidate`: the stale page, marked `Cache-Status: gashe; hit` only; one
+- Stale, within [`Stale.WhileRevalidate`](../reference/gashe.md#Stale): the stale page, marked `Cache-Status: gashe; hit` only; one
   request renders it again in the background.
-- A 5xx is a loader error. Within `Stale.IfError.For`, the request gets the last stored page with
+- A 5xx is a loader error. Within [`Stale.IfError.For`](../reference/gashe.md#Stale), the request gets the last stored page with
   `Cache-Status: gashe; fwd=stale; fwd-status=500`. Otherwise it gets the 5xx, which is sent to every
   waiting request too, unless a header keeps it to one client.
-- Your `Stale.IfError.IsFailure` still picks the failures; `httpcache` wraps it, so a response it
+- Your [`Stale.IfError.IsFailure`](../reference/gashe.md#Stale) still picks the failures; `httpcache` wraps it, so a response it
   must not share is never answered with a stale page.
 - A response the [rules of its headers](#headers) do not store is sent only to
   the request that made it; the other waiting requests run the handler themselves.
-- Held back by `Policy.Stampede.MaxLoads`, or past its `ctx` deadline while it waits for a render:
+- Held back by [`Policy.Stampede.MaxLoads`](../reference/gashe.md#Policy), or past its `ctx` deadline while it waits for a render:
   `503 Service Unavailable`.
-- Another method, `Range`, `Authorization` without `Vary.User`, or `Cookie` without `Vary.Cookies`
-  or `Vary.User`: the request goes past the cache.
-
-**Options** (`httpcache.Options`):
-
-| Field | Default | What it does |
-|---|---|---|
-| `Policy` | required: a `TTL` or a stale window | how pages are cached, as in `GetOrLoad`; a nil `CacheIf` stores `200` only; `Negative` makes `New` panic: store `404` with `CacheIf` instead |
-| `Vary` | host, path and query | which parts of a request a page depends on, and so its key |
-| `MaxBodyBytes` | 0: 1 MB | a larger body is sent but not stored |
+- Another method, `Range`, `Authorization` without [`Vary.User`](../reference/httpcache.md#Vary), or `Cookie` without [`Vary.Cookies`](../reference/httpcache.md#Vary)
+  or [`Vary.User`](../reference/httpcache.md#Vary): the request goes past the cache.
 
 - By default, `GET` and `HEAD` requests without `Authorization`, `Cookie` and `Range` are cached
-  under their host, path and query. A `200` of at most 1 MB, without `Set-Cookie`, a `Vary` header
-  and `Cache-Control` `no-store`, `private` or `no-cache`, is stored for `Policy.TTL.For`.
-- `New` panics on a negative `MaxBodyBytes` and on `Policy.Negative`.
+  under their host, path and query. A `200` of at most 1 MB, without `Set-Cookie`, a [`Vary`](../reference/httpcache.md#Vary) header
+  and `Cache-Control` `no-store`, `private` or `no-cache`, is stored for [`Policy.TTL.For`](../reference/gashe.md#Policy).
+- `New` panics on a negative [`MaxBodyBytes`](../reference/httpcache.md#Options) and on [`Policy.Negative`](../reference/gashe.md#Policy).
 
 !!! tip
-    Give `Policy` a `Stale.IfError`: while the handler fails, requests get the last stored page
+    Give [`Policy`](../reference/gashe.md#Policy) a [`Stale.IfError`](../reference/gashe.md#Stale): while the handler fails, requests get the last stored page
     instead of a 5xx, see [a failing handler](#a-failing-handler-gets-the-last-good-page).
 
 !!! danger
     A response must be the same for everyone who gets its key: every part of a request the handler
-    builds a page from, a cookie, `X-Forwarded-Host`, `Accept-Language`, must be in `Vary`, or one
+    builds a page from, a cookie, `X-Forwarded-Host`, `Accept-Language`, must be in [`Vary`](../reference/httpcache.md#Vary), or one
     request's page leaks to others (web cache deception, web cache poisoning).
 
 !!! warning
@@ -72,13 +57,12 @@ What a request gets; its key is the host, the path and what `Vary` names, see
     the cache.
 
 ??? note "Technical details"
-    - The handler writes into a buffer first: `MaxBodyBytes` decides what is stored, not how much
+    - The handler writes into a buffer first: [`MaxBodyBytes`](../reference/httpcache.md#Options) decides what is stored, not how much
       memory a render takes.
 
 ```go hl_lines="20-23"
 --8<-- "examples/httpserver/main.go"
 ```
-
 
 ---
 
@@ -90,9 +74,9 @@ holds after the request: the keys of the page, and how long they live.
 
 | Page | Policy |
 |---|---|
-| `/products` | `TTL` 1m, `Vary` `Accept-Language` and `?page` |
-| `/report` | `TTL` 1s, `Stale.IfError.For` 1h; the handler fails after one render |
-| `/export` | `TTL` 1m, `Stampede.MaxLoads` 1; 2.5 seconds per request, the render included |
+| `/products` | `TTL` 1m, [`Vary`](../reference/httpcache.md#Vary) `Accept-Language` and `?page` |
+| `/report` | `TTL` 1s, [`Stale.IfError.For`](../reference/gashe.md#Stale) 1h; the handler fails after one render |
+| `/export` | `TTL` 1m, [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) 1; 2.5 seconds per request, the render included |
 
 The server of `/products`:
 
@@ -102,7 +86,7 @@ The server of `/products`:
 
 ### The first request renders and stores { #the-first-request-renders-and-stores }
 
-The handler runs, and `Cache-Status` says the response was stored. `ETag` is a hash of the body,
+The handler runs, and `Cache-Status` says the response was stored. [`ETag`](../reference/httpcache.md#Response) is a hash of the body,
 since the handler set none.
 
 ```bash title="Request"
@@ -117,7 +101,7 @@ since the handler set none.
 --8<-- "docs/snippets/backend/miss.txt"
 ```
 
-One key per page: `Policy.Prefix`, the host, the path, and what `Vary` names.
+One key per page: [`Policy.Prefix`](../reference/gashe.md#Policy), the host, the path, and what [`Vary`](../reference/httpcache.md#Vary) names.
 
 ### The next one is a hit { #the-next-one-is-a-hit }
 
@@ -133,7 +117,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 
 ### A client with the page gets 304 { #a-client-with-the-page-gets-304 }
 
-`If-None-Match` names the `ETag` the client has, so no body is sent.
+`If-None-Match` names the [`ETag`](../reference/httpcache.md#Response) the client has, so no body is sent.
 
 ```bash title="Request"
 --8<-- "docs/snippets/http/not-modified.curl"
@@ -146,7 +130,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 ### A query parameter outside `Vary.Query` changes nothing { #a-query-parameter-outside-varyquery-changes-nothing }
 
 !!! version "Added in v0.5"
-`Vary.Query` lists `page` only, so `utm_source` is not in the key and the same entry answers.
+[`Vary.Query`](../reference/httpcache.md#Vary) lists `page` only, so `utm_source` is not in the key and the same entry answers.
 
 ```bash title="Request"
 --8<-- "docs/snippets/http/query.curl"
@@ -163,7 +147,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 ### A header in `Vary.Headers` makes another entry { #a-header-in-varyheaders-makes-another-entry }
 
 !!! version "Added in v0.5"
-`Accept-Language` is in `Vary.Headers`, so the Russian page is an entry of its own.
+`Accept-Language` is in [`Vary.Headers`](../reference/httpcache.md#Vary), so the Russian page is an entry of its own.
 
 ```bash title="Request"
 --8<-- "docs/snippets/http/vary.curl"
@@ -180,7 +164,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 ### A request with a cookie goes past the cache { #a-request-with-a-cookie-goes-past-the-cache }
 
 The page might depend on the session, so it is neither read nor stored: `fwd=request`.
-`Vary.Cookies` lists the cookies a page depends on, if any.
+[`Vary.Cookies`](../reference/httpcache.md#Vary) lists the cookies a page depends on, if any.
 
 ```bash title="Request"
 --8<-- "docs/snippets/http/cookie.curl"
@@ -210,7 +194,7 @@ The page might depend on the session, so it is neither read nor stored: `fwd=req
 
 ### A failing handler gets the last stored page { #a-failing-handler-gets-the-last-good-page }
 
-`/report` is fresh for a second, and `Stale.IfError` keeps it for an hour. Its handler works once,
+`/report` is fresh for a second, and [`Stale.IfError`](../reference/gashe.md#Stale) keeps it for an hour. Its handler works once,
 then fails:
 
 ```go hl_lines="31"
@@ -297,30 +281,16 @@ sequenceDiagram
 
 !!! version "Added in v0.5"
 Requests that differ only in a tracking parameter or in a cookie the page ignores should get the
-same page. The host and the path are always part of the key; of the rest, only what `Vary` names.
-
-??? api "API documentation"
-
-    [`httpcache.Vary`](../reference/httpcache.md#Vary)<br>
+same page. The host and the path are always part of the key; of the rest, only what [`Vary`](../reference/httpcache.md#Vary) names.
 
 ```text
 <host><path>?<query> h:<header>=<value> c:<cookie>=<value> u=<user> x=<custom>
 ```
 
-**Options** (`httpcache.Vary`):
-
-| Field | Default | What it does |
-|---|---|---|
-| `Headers` | nil: none | request headers whose values are part of the key; a `Vary` header naming only them is stored |
-| `Query` | nil: the whole query as sent | only these query parameters, sorted; an empty list means none |
-| `Cookies` | nil: requests with `Cookie` go past the cache | only these cookies; requests with other cookies are cached too |
-| `User` | nil: pages are shared | who the page is for; pages per user, and `Authorization` and `Cookie` requests are cached |
-| `Custom` | nil: none | anything else the page depends on, added at the end of the key |
-
-- With `Vary.Query`, query parameters are sorted. Without it, the query is used as sent, so
+- With [`Vary.Query`](../reference/httpcache.md#Vary), query parameters are sorted. Without it, the query is used as sent, so
   `?a=1&b=2` and `?b=2&a=1` are two entries.
 - Header, cookie, user and custom values are escaped.
-- `gashe.Options.Prefix` and `Policy.Prefix` come before the key.
+- `gashe.Options.Prefix` and [`Policy.Prefix`](../reference/gashe.md#Policy) come before the key.
 - For example, with `Vary{Headers: {"Accept-Language"}, Query: {"page"}, Cookies: {"currency"}}`,
   `/list?page=2&utm_source=mail` and `/list?page=2&utm_source=ads`, with `Accept-Language: de` and
   `Cookie: currency=eur; _ga=111`, are both `shop.com/list?page=2 h:Accept-Language=de c:currency=eur`:
@@ -338,23 +308,23 @@ Headers of the request:
 | Header | What `httpcache` does |
 |---|---|
 | method | only `GET` and `HEAD` are cached; `HEAD` reads what `GET` stored |
-| `Host` | always part of the key, with the path; the query too, or `Vary.Query` of it |
-| `Authorization` | the request goes past the cache unless `Vary.User` is set: the page may belong to who sent it |
-| `Cookie` | past the cache too, unless `Vary.Cookies` lists the cookies the page depends on or `Vary.User` is set |
+| `Host` | always part of the key, with the path; the query too, or [`Vary.Query`](../reference/httpcache.md#Vary) of it |
+| `Authorization` | the request goes past the cache unless [`Vary.User`](../reference/httpcache.md#Vary) is set: the page may belong to who sent it |
+| `Cookie` | past the cache too, unless [`Vary.Cookies`](../reference/httpcache.md#Vary) lists the cookies the page depends on or [`Vary.User`](../reference/httpcache.md#Vary) is set |
 | `Range` | the request goes past the cache |
-| `If-None-Match` | a matching `ETag` gets `304 Not Modified`, compared the weak way of [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2) |
+| `If-None-Match` | a matching [`ETag`](../reference/httpcache.md#Response) gets `304 Not Modified`, compared the weak way of [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2) |
 | `Cache-Control`, `Pragma` | ignored on purpose: a client cannot make the handler run on every request |
-| the headers in `Vary.Headers` | their values are part of the key |
+| the headers in [`Vary.Headers`](../reference/httpcache.md#Vary) | their values are part of the key |
 
 Headers of the response the handler writes ([RFC 9111](https://www.rfc-editor.org/rfc/rfc9111#section-3)):
 
 | Header | What `httpcache` does |
 |---|---|
 | `Cache-Control: no-store`, `private`, `no-cache` | the response is not stored |
-| `Cache-Control: max-age` | ignored: freshness comes from `Policy` |
+| `Cache-Control: max-age` | ignored: freshness comes from [`Policy`](../reference/gashe.md#Policy) |
 | `Set-Cookie` | the response is not stored |
-| `Vary` | stored only if every header it names is in `Options.Vary`: `Vary.Headers`, `Cookie` with `Vary.Cookies` or `Vary.User`, `Authorization` with `Vary.User`; `Vary: *` never |
-| `ETag` | kept; without one, a hash of the body |
+| [`Vary`](../reference/httpcache.md#Vary) | stored only if every header it names is in [`Options.Vary`](../reference/httpcache.md#Options): [`Vary.Headers`](../reference/httpcache.md#Vary), `Cookie` with [`Vary.Cookies`](../reference/httpcache.md#Vary) or [`Vary.User`](../reference/httpcache.md#Vary), `Authorization` with [`Vary.User`](../reference/httpcache.md#Vary); `Vary: *` never |
+| [`ETag`](../reference/httpcache.md#Response) | kept; without one, a hash of the body |
 | hop-by-hop, the headers `Connection` names, `Date`, `Content-Length` | not stored ([RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-7.6.1)); `Content-Length` is set again from the body, for `HEAD` too |
 | any other | stored and sent with every hit |
 
@@ -362,16 +332,16 @@ Headers `httpcache` adds:
 
 | Header | Value |
 |---|---|
-| `ETag` | on every response the cache handles; not on requests that go past it |
+| [`ETag`](../reference/httpcache.md#Response) | on every response the cache handles; not on requests that go past it |
 | `Age` | only on a response from the cache, fresh or stale: the seconds since it was stored |
-| `Cache-Status` ([RFC 9211](https://www.rfc-editor.org/rfc/rfc9211)) | `gashe; hit` (also a stale page of `Stale.WhileRevalidate`), `gashe; fwd=stale; fwd-status=500` (a stale page answered a 5xx), `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss` (not stored), `gashe; fwd=method` or `gashe; fwd=request` (past the cache) |
+| `Cache-Status` ([RFC 9211](https://www.rfc-editor.org/rfc/rfc9211)) | `gashe; hit` (also a stale page of [`Stale.WhileRevalidate`](../reference/gashe.md#Stale)), `gashe; fwd=stale; fwd-status=500` (a stale page answered a 5xx), `gashe; fwd=uri-miss; stored`, `gashe; fwd=uri-miss` (not stored), `gashe; fwd=method` or `gashe; fwd=request` (past the cache) |
 
 ---
 
 ## Behind a reverse proxy { #behind-a-reverse-proxy }
 
 Behind a proxy, `Host` may name the upstream, not the site the page is built for. You put the
-headers that carry the real host into `Vary.Headers`, so the key holds the host the handler builds
+headers that carry the real host into [`Vary.Headers`](../reference/httpcache.md#Vary), so the key holds the host the handler builds
 the page for.
 
 ```go hl_lines="20-22"
@@ -386,8 +356,8 @@ the page for.
     Never put the client IP, `X-Forwarded-For` or `X-Real-Ip`, in the key: every visitor would get a
     copy of their own.
 
-- A random query makes a new entry each time unless `Vary.Query` lists the parameters that matter;
-  a random `Host` too, so bound memory with `MaxBytes`.
+- A random query makes a new entry each time unless [`Vary.Query`](../reference/httpcache.md#Vary) lists the parameters that matter;
+  a random `Host` too, so bound memory with [`MaxBytes`](../reference/memory.md#Options).
 - Traefik, which keeps `Host` by default, or nginx with `proxy_set_header Host $host`: add nothing,
   the default key is right.
 - A proxy that sets `Host` to its upstream: add `X-Forwarded-Host`, and `X-Forwarded-Proto` if the

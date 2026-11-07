@@ -9,7 +9,7 @@
 [![Go version](https://img.shields.io/github/go-mod/go-version/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/go.mod)
 [![License](https://img.shields.io/github/license/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/LICENSE)
 
-Caching for Go services that run as many processes. One `*gashe.Cache` stores the results of
+Caching for Go services that run as many processes. One [`*gashe.Cache`](reference/gashe.md#Cache) stores the results of
 expensive calls, keeps answering while a dependency is slow or down, and guards dependencies with
 locks, rate limits and circuit breakers. Each process has its own memory; over Redis, entries,
 tags, locks and limits are shared by every process.
@@ -56,7 +56,7 @@ tags, locks and limits are shared by every process.
 
     ---
 
-    The core needs only the Go standard library, from Go 1.23. One call, `GetOrLoad`, does the
+    The core needs only the Go standard library, from Go 1.23. One call, [`GetOrLoad`](reference/gashe.md#GetOrLoad), does the
     caching.
 
 </div>
@@ -74,8 +74,8 @@ go get github.com/eugeneliukindev/gashe/compress/zstd # values compressed with Z
 
 Only the core is needed; each other module is added for what you use, with its own dependency.
 
-Features marked <span class="version-badge">Added in v0.5</span> need v0.5, not released yet:
-v0.4.0 is the latest release. See the [changelog](changelog.md).
+Features marked <span class="version-badge">Added in v0.5</span> need v0.5.0 or newer. See the
+[changelog](changelog.md).
 
 ## Example { #example }
 
@@ -94,6 +94,7 @@ stale result answers at once while one process reloads it.
 **Basics**
 
 - The same expensive call again and again: [Loading](concepts/loading.md#getorload)
+- Each kind of data needs its own rules, set once: [The policy](concepts/loading.md#policy)
 - N+1 queries on a list page: [Loading](concepts/loading.md#getorloadmany)
 - One change makes many entries stale: [Tags](concepts/invalidation.md#tags)
 - A hot key costs a round trip on every read: [Backends](concepts/backends.md#backendnearcache)

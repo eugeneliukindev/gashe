@@ -15,20 +15,26 @@ import (
 // stale: Stale says when it still answers, and the entry is kept for TTL plus its longest window.
 type Policy[V any] struct {
 	// TTL says how long a result is fresh, and how much that varies.
+	// TTL.For is required, unless a window of Stale is set.
 	TTL TTL
 	// Prefix is put in front of every key as is, separator included: "v2:" stores "v2:user:42".
+	// "" means none; it comes after Options.Prefix.
 	Prefix string
 	// Stale says when a result past its TTL still answers a call: at once while it reloads,
 	// instead of a failing loader, or instead of a slow one.
+	// The zero value is off: a result past its TTL is a miss.
 	Stale Stale
 	// Stampede says how concurrent calls share loads, so that a key nobody has stored, or many of
 	// them, do not send every caller to the source at once.
+	// The zero value is off: every call loads by itself, and loads are not limited.
 	Stampede Stampede
 	// Tags lists the tags of a result; Cache.InvalidateTags of any of them makes it a miss. Tags
 	// are shared by every process that uses the same backend.
+	// nil means none.
 	Tags []string
 	// Negative caches answers like "not found", so lookups of missing data do not reach the
 	// source every time.
+	// The zero value is off: a "not found" is an error like any other.
 	Negative Negative
 	// Fallback keeps the results of this kind of data in a backend of its own while the backend of
 	// the cache fails or its CircuitBreaker is open, for the TTL but at most Fallback.MaxTTL, and
@@ -61,6 +67,7 @@ type TTL struct {
 	// Any other type, a plain int such as 3600 included, returns ErrInvalidOptions. For may be
 	// left out when a window of Stale is set: then every call either refreshes in the background
 	// (Stale.WhileRevalidate) or calls the loader (Stale.IfError, Stale.IfSlow).
+	// nil, the zero value, is allowed only with a window of Stale.
 	For any
 	// Jitter spreads TTLs randomly by up to this share, from 0 to 1 (0.1 means +-10%), so that
 	// entries stored together do not expire together.
@@ -79,6 +86,7 @@ type Stampede struct {
 	// LockFor, when set, makes a missing key load under a lock: one process calls the loader, the
 	// others wait and take its result. The lock is shared by every process that uses the same
 	// backend, and LockFor is the longest it is held, so a process that dies holding it frees it.
+	// 0 means no lock: every process loads.
 	LockFor time.Duration
 	// MaxLoads is how many loads of this kind of data, its type and Prefix, may run at once in
 	// this process: with 10 processes, up to 10 times as many reach the source. A call over the
@@ -96,6 +104,7 @@ type Negative struct {
 	// is cached; the stale result never hides them. nil turns negative caching off.
 	IsNotFound func(error) bool
 	// TTL is how long the negative answer is kept.
+	// Required with IsNotFound; Jitter applies.
 	TTL time.Duration
 }
 
@@ -105,10 +114,13 @@ type Stale struct {
 	// WhileRevalidate is how long after TTL the stale result answers at once, while one caller
 	// reloads it in the background (stale-while-revalidate of RFC 5861). The refresh lock is
 	// shared by every process that uses the same backend.
+	// 0 turns it off.
 	WhileRevalidate time.Duration
 	// IfError answers a failing loader with the stale result.
+	// The zero value is off.
 	IfError StaleIfError
 	// IfSlow answers a slow loader with the stale result.
+	// The zero value is off.
 	IfSlow StaleIfSlow
 }
 
@@ -129,6 +141,7 @@ type StaleIfSlow struct {
 	// For is how long after TTL the stale result answers a slow loader. 0 turns it off.
 	For time.Duration
 	// After is how long a call waits for the loader before the stale result answers it.
+	// 0 turns it off; For and After are set together.
 	After time.Duration
 }
 

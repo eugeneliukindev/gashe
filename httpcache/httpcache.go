@@ -76,10 +76,15 @@ func (e *serverError) Is(target error) bool { return target == errServer }
 
 // Response is a stored response. Policy.CacheIf receives it.
 type Response struct {
+	// Status is the status code of the response.
 	Status int
+	// Header holds the headers that are stored with the page.
 	Header http.Header
-	Body   []byte
-	ETag   string
+	// Body is the body of the response.
+	Body []byte
+	// ETag is the ETag header of the page, set by the handler or made from a hash of Body.
+	ETag string
+	// Stored is when the response was stored, for the Age header.
 	Stored time.Time
 }
 

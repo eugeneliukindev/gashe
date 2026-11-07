@@ -17,10 +17,13 @@ const (
 // Window and OpenFor are required. Use the same options for the same key.
 type CircuitBreaker struct {
 	// FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
+	// Required; 0 in Options.CircuitBreaker means no breaker.
 	FailurePercent int
 	// Window is the span of recent time calls and failures are counted over.
+	// Required.
 	Window time.Duration
 	// OpenFor is how long the open breaker refuses calls.
+	// Required.
 	OpenFor time.Duration
 	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
 	MinCalls int

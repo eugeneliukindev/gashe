@@ -6,7 +6,7 @@ these pages with [gomarkdoc](https://github.com/princjef/gomarkdoc). The same is
 
 | Package | What it is |
 |---|---|
-| [`gashe`](reference/gashe.md) | the cache, `GetOrLoad`, `Policy`, locks, limits, breakers |
+| [`gashe`](reference/gashe.md) | the cache, [`GetOrLoad`](reference/gashe.md#GetOrLoad), [`Policy`](reference/gashe.md#Policy), locks, limits, breakers |
 | [`gashe/backend/memory`](reference/memory.md) | the in-process backend |
 | [`gashe/backend/redis`](reference/redis.md) | the Redis backend and its buses |
 | [`gashe/backend/nearcache`](reference/nearcache.md) | a memory cache in front of a shared backend |

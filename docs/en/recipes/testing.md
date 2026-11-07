@@ -11,7 +11,7 @@ The code under test, `users.go`, takes the cache and the query, so a test passes
 --8<-- "examples/docs/testing/users.go"
 ```
 
-The tests, `users_test.go` in the same package: they use `User` and `New` from `users.go`.
+The tests, `users_test.go` in the same package: they use [`User`](../reference/httpcache.md#Vary) and `New` from `users.go`.
 `testing/synctest` needs Go 1.25 or newer. One query for many calls:
 
 ```go
@@ -48,14 +48,14 @@ Your own backend, `backend_test.go`:
 |---|---|
 | one query for many calls | `backend/memory` with `PurgeInterval: -1`: an empty cache per test, no goroutine to stop |
 | expiry after `TTL` | `synctest.Test` runs in fake time: `time.Sleep(time.Hour + time.Second)` returns at once, and the memory backend sees the TTL pass |
-| the cache backend is down | `downBackend`, the failing backend of [testing your code](../concepts/backends.md#testing-your-code): embed a real backend and override what must fail, here `Get`, `GetMany` and `Set`, so no read or write reaches it; `GetOrLoad` still answers from the loader |
-| your own backend | `backendtest.Run` checks the contract the bundled backends pass; give it an empty backend per subtest; [your own backend](../concepts/backends.md#backendtestrun) |
+| the cache backend is down | `downBackend`, the failing backend of [testing your code](../concepts/backends.md#testing-your-code): embed a real backend and override what must fail, here `Get`, [`GetMany`](../reference/gashe.md#Cache.GetMany) and `Set`, so no read or write reaches it; [`GetOrLoad`](../reference/gashe.md#GetOrLoad) still answers from the loader |
+| your own backend | [`backendtest.Run`](../reference/backendtest.md#Run) checks the contract the bundled backends pass; give it an empty backend per subtest; [your own backend](../concepts/backends.md#backendtestrun) |
 | what the cache worked around | `OnError: t.Log` shows it in the output of a failed test |
 
 ## Variations { #variations }
 
 | If you need | Do |
 |---|---|
-| to check what a `Stale.WhileRevalidate` reload stored | call `synctest.Wait()` inside the bubble first: it waits for the background reload |
-| to check exact TTLs | leave `TTL.Jitter` out of the policy |
-| only reads to fail | override `Get` and `GetMany` alone; writes then reach the real backend |
+| to check what a [`Stale.WhileRevalidate`](../reference/gashe.md#Stale) reload stored | call `synctest.Wait()` inside the bubble first: it waits for the background reload |
+| to check exact TTLs | leave [`TTL.Jitter`](../reference/gashe.md#TTL) out of the policy |
+| only reads to fail | override `Get` and [`GetMany`](../reference/gashe.md#Cache.GetMany) alone; writes then reach the real backend |

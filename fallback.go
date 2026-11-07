@@ -16,6 +16,7 @@ type Fallback struct {
 	// Backend keeps the results, usually a memory.Backend of its own; without it there is no
 	// fallback. Policies of one
 	// Cache may share it; a near cache or another Cache may not.
+	// nil, the zero value, means none: while the backend fails, every call loads.
 	Backend Backend
 	// MaxTTL is the longest a result stays in Backend: the TTL of its policy, but never longer, since
 	// no invalidation reaches Backend while the backend is down. 0 means 30 seconds.

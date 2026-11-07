@@ -18,4 +18,4 @@ An issue is fixed fastest when it holds:
 - the versions: gashe and its modules (`go list -m all | grep gashe`), Go, Redis or Valkey;
 - the backend and the policy you use, as Go code;
 - a short program that shows the problem, ideally on the memory backend;
-- what you expected, and what happened, with the error or the `Result` from `Options.Hooks.OnResult`.
+- what you expected, and what happened, with the error or the [`Result`](reference/gashe.md#Result) from [`Options.Hooks.OnResult`](reference/gashe.md#Options).

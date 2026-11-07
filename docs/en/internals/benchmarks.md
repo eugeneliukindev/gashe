@@ -1,6 +1,6 @@
 # Benchmarks { #benchmarks }
 
-How fast and how small every codec and compressor is, to choose `Codec` and `Compressor`.
+How fast and how small every codec and compressor is, to choose [`Codec`](../reference/gashe.md#Codec) and [`Compressor`](../reference/gashe.md#Compressor).
 
 | What | How |
 |---|---|
@@ -48,4 +48,4 @@ How fast and how small every codec and compressor is, to choose `Codec` and `Com
 | Codec | `msgpack` | it decodes 2 to 7 times faster than JSON at every size, and every hit decodes; keep JSON where people or other services read the entries |
 | Compressor | none for small values, `zstd` for large ones | a value of a few dozen bytes, such as the user, gets bigger and slower; from about 1 KB zstd stores 3 to 5 times less here, for under a millisecond even on the list |
 | gzip | only where a third-party dependency is not allowed | it stores about the same as zstd but encodes 3 to 15 times slower |
-| Small and large values | two caches, such as one with `Compressor: zstd.New()` for pages and lists | one `Cache` compresses all its values |
+| Small and large values | two caches, such as one with `Compressor: zstd.New()` for pages and lists | one [`Cache`](../reference/gashe.md#Cache) compresses all its values |

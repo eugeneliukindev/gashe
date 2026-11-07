@@ -3,16 +3,11 @@
 This page shows how you cache a "not found", so lookups of missing ids stop reaching the source.
 In this section, we will go through [`Negative`](#negative-cache-not-found).
 
-## `Policy.Negative` { #negative-cache-not-found }
+## Caching "not found" { #negative-cache-not-found }
 
 Clients ask again and again for an id that does not exist, and every lookup reaches the database.
-With `Negative`, you cache the "not found" for a short `Negative.TTL`, and every call gets
-`gashe.ErrNotFound` meanwhile, without a query.
-
-??? api "API documentation"
-
-    [`gashe.Policy`](../reference/gashe.md#Policy)<br>
-    [`gashe.Negative`](../reference/gashe.md#Negative)<br>
+With [`Negative`](../reference/gashe.md#Negative), you cache the "not found" for a short [`Negative.TTL`](../reference/gashe.md#Negative), and every call gets
+[`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound) meanwhile, without a query.
 
 ```go hl_lines="17-20"
 --8<-- "examples/docs/negative/policy/main.go"
@@ -36,32 +31,25 @@ sequenceDiagram
     Note over A,DB: after 30s the "not found" expires and the loader runs again
 ```
 
-**Options** (`gashe.Negative`):
-
-| Field | Default | What it does |
-|---|---|---|
-| `IsNotFound` | nil: off | which loader errors mean "not found" |
-| `TTL` | required with `IsNotFound` | how long the "not found" is cached; `TTL.Jitter` applies |
-
-- The call gets `gashe.ErrNotFound`: wrapping the loader error when it loaded, so
+- The call gets [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound): wrapping the loader error when it loaded, so
   `errors.Is(err, sql.ErrNoRows)` holds too, and alone while the "not found" is cached. Check it
   with `errors.Is(err, gashe.ErrNotFound)`.
-- `GetOrLoadMany` does not support it and returns `ErrInvalidOptions`; `httpcache.New` panics.
-- With `Stale.IfError`, a "not found" is an answer, never a failure, whatever `IsFailure` says: it is returned and stored, never
+- [`GetOrLoadMany`](../reference/gashe.md#GetOrLoadMany) does not support it and returns [`ErrInvalidOptions`](../reference/gashe.md#variables); [`httpcache.New`](../reference/httpcache.md#New) panics.
+- With [`Stale.IfError`](../reference/gashe.md#Stale), a "not found" is an answer, never a failure, whatever `IsFailure` says: it is returned and stored, never
   hidden by the stale result.
-- With `Stampede.LockFor`, processes that waited for the lock take the "not found" the holder stored.
-- `Reload` that gets a "not found" leaves the stored result alone, as any error does.
+- With [`Stampede.LockFor`](../reference/gashe.md#Stampede), processes that waited for the lock take the "not found" the holder stored.
+- [`Reload`](../reference/gashe.md#Reload) that gets a "not found" leaves the stored result alone, as any error does.
 
 !!! tip
     Make `If` match only the error that means "does not exist": every other error stays a failure,
-    which `Stale.IfError` may answer with the stale result.
+    which [`Stale.IfError`](../reference/gashe.md#Stale) may answer with the stale result.
 
 !!! warning
-    Data created meanwhile stays "not found" until `Negative.TTL` ends: keep it short, or delete the
+    Data created meanwhile stays "not found" until [`Negative.TTL`](../reference/gashe.md#Negative) ends: keep it short, or delete the
     key when you create the data.
 
 ??? note "Technical details"
-    - The "not found" is an entry of its own with `neg` set, stored for `Negative.TTL`, see
+    - The "not found" is an entry of its own with `neg` set, stored for [`Negative.TTL`](../reference/gashe.md#Negative), see
       [the GetOrLoad entry](../internals/storage.md#the-getorload-entry).
 
 Three lookups of a user that does not exist. The two versions differ in the highlighted lines.
@@ -74,7 +62,6 @@ Three lookups of a user that does not exist. The two versions differ in the high
 
     The first lookup caches the "not found", the other two get it from the cache: 1 query.
 
-
     ```text title="In the backend"
     --8<-- "docs/snippets/backend/negative-with.txt"
     ```
@@ -86,7 +73,6 @@ Three lookups of a user that does not exist. The two versions differ in the high
     ```
 
     Every lookup reaches the database, 3 queries.
-
 
     ```text title="In the backend"
     --8<-- "docs/snippets/backend/negative-without.txt"

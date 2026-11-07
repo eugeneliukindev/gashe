@@ -37,7 +37,7 @@ its own copy and its own misses.
   concurrent loads, asynchronous refresh of a stale entry, statistics, saving to a file; no
   third-party dependencies outside tests.
 - **Lacks next to gashe:** one process only; a failed refresh keeps the old value, but nothing
-  answers stale data past its expiry; a loader that returns `ErrNotFound` removes the entry instead of
+  answers stale data past its expiry; a loader that returns [`ErrNotFound`](../reference/gashe.md#ErrNotFound) removes the entry instead of
   caching the miss; no tags, locks, limits or breakers. Needs Go 1.24, and supports the two newest Go
   releases.
 - **Choose it when:** one process and you want the best in-memory cache with loading and refresh.

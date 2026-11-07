@@ -38,11 +38,11 @@ The setup, `main.go`:
 
 | Part | What it does |
 |---|---|
-| `msgpack.Codec{}` | over Redis: smaller values, faster to decode than JSON; no compressor, which makes a small `User` bigger and slower; [codec](../concepts/setup.md#codec), [benchmarks](../internals/benchmarks.md#benchmarks) |
-| `GetOrLoad` | the query runs on a miss only; concurrent calls for one id in a process share it, [`Stampede.LockFor`](../concepts/stampedes.md) makes it one query for all processes |
+| `msgpack.Codec{}` | over Redis: smaller values, faster to decode than JSON; no compressor, which makes a small [`User`](../reference/httpcache.md#Vary) bigger and slower; [codec](../concepts/setup.md#codec), [benchmarks](../internals/benchmarks.md#benchmarks) |
+| [`GetOrLoad`](../reference/gashe.md#GetOrLoad) | the query runs on a miss only; concurrent calls for one id in a process share it, [`Stampede.LockFor`](../concepts/stampedes.md) makes it one query for all processes |
 | `Rename` | the `UPDATE` first, then [`Cached.Set`](../concepts/invalidation.md#cachedset): every process reads the new name next from Redis; a failed `UPDATE` leaves the cache alone |
-| `Stale.IfError` | Postgres is down: the stale user answers for up to an hour; [stale data](../concepts/stale.md#staleiferror-staleifslow) |
-| `Negative` | `sql.ErrNoRows` is cached for 30s; [not found](../concepts/negative.md#negative-cache-not-found) |
+| [`Stale.IfError`](../reference/gashe.md#Stale) | Postgres is down: the stale user answers for up to an hour; [stale data](../concepts/stale.md#staleiferror-staleifslow) |
+| [`Negative`](../reference/gashe.md#Negative) | `sql.ErrNoRows` is cached for 30s; [not found](../concepts/negative.md#negative-cache-not-found) |
 | `defer c.Shutdown` | runs before `client.Close`: defers run in reverse order |
 
 ## Invalidate with tags { #invalidate-with-tags }
@@ -61,8 +61,8 @@ The calls, `main.go`:
 
 | Part | What it does |
 |---|---|
-| `Policy` per call | the tag differs per user, so the policy is built per call and passed to `gashe.GetOrLoad` |
-| `InvalidateTags` | one `INCRBY` per tag, no scan: every entry with the tag is a miss in every process; [tags](../concepts/invalidation.md#tags) |
+| [`Policy`](../reference/gashe.md#Policy) per call | the tag differs per user, so the policy is built per call and passed to [`gashe.GetOrLoad`](../reference/gashe.md#GetOrLoad) |
+| [`InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags) | one `INCRBY` per tag, no scan: every entry with the tag is a miss in every process; [tags](../concepts/invalidation.md#tags) |
 
 ## Variations { #variations }
 

@@ -251,7 +251,7 @@ Ann Bob <nil>
 </details>
 
 <a name="Guard"></a>
-## func [Guard](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L220>)
+## func [Guard](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L223>)
 
 ```go
 func Guard[T any](c *Cache, key string, o CircuitBreaker, call func() (T, error)) (T, error)
@@ -302,7 +302,7 @@ func main() {
 </details>
 
 <a name="NotNil"></a>
-## func [NotNil](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L220>)
+## func [NotNil](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L233>)
 
 ```go
 func NotNil[V any](v V) bool
@@ -420,7 +420,7 @@ type Backend interface {
 ```
 
 <a name="Cache"></a>
-## type [Cache](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L52-L63>)
+## type [Cache](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L55-L66>)
 
 Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits and circuit breakers on top of it. It is safe for concurrent use.
 
@@ -431,7 +431,7 @@ type Cache struct {
 ```
 
 <a name="New"></a>
-### func [New](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L69>)
+### func [New](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L72>)
 
 ```go
 func New(b Backend, o Options) *Cache
@@ -449,7 +449,7 @@ func (c *Cache) All(ctx context.Context, pattern string) iter.Seq2[Value, error]
 All yields every live entry whose key matches pattern, reading values in batches while the scan goes on. A failure is yielded once as the error.
 
 <a name="Cache.Backend"></a>
-### func \(\*Cache\) [Backend](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L105>)
+### func \(\*Cache\) [Backend](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L108>)
 
 ```go
 func (c *Cache) Backend() Backend
@@ -458,7 +458,7 @@ func (c *Cache) Backend() Backend
 Backend returns the backend the cache stores bytes in, for raw access; it applies Options.Prefix and Options.CircuitBreaker.
 
 <a name="Cache.CircuitBreaker"></a>
-### func \(\*Cache\) [CircuitBreaker](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L45>)
+### func \(\*Cache\) [CircuitBreaker](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L48>)
 
 ```go
 func (c *Cache) CircuitBreaker(key string, o CircuitBreaker) (DoneFunc, error)
@@ -752,7 +752,7 @@ func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease
 Lock takes the lock key for ttl, waiting while someone else holds it and checking it every Options.LockPollInterval. The lock is shared by every process that uses the same backend; ttl frees it in case its holder dies. It returns ctx.Err\(\) if ctx ends first.
 
 <a name="Cache.Ping"></a>
-### func \(\*Cache\) [Ping](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L108>)
+### func \(\*Cache\) [Ping](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L111>)
 
 ```go
 func (c *Cache) Ping(ctx context.Context) error
@@ -761,7 +761,7 @@ func (c *Cache) Ping(ctx context.Context) error
 Ping checks that the backend is reachable.
 
 <a name="Cache.RateLimit"></a>
-### func \(\*Cache\) [RateLimit](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L65>)
+### func \(\*Cache\) [RateLimit](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L71>)
 
 ```go
 func (c *Cache) RateLimit(ctx context.Context, key string, limit Limit) error
@@ -1188,17 +1188,20 @@ Bob <nil>
 </details>
 
 <a name="CircuitBreaker"></a>
-## type [CircuitBreaker](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L18-L35>)
+## type [CircuitBreaker](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L18-L38>)
 
 CircuitBreaker configures Cache.CircuitBreaker, Guard and Options.CircuitBreaker. FailurePercent, Window and OpenFor are required. Use the same options for the same key.
 
 ```go
 type CircuitBreaker struct {
     // FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
+    // Required; 0 in Options.CircuitBreaker means no breaker.
     FailurePercent int
     // Window is the span of recent time calls and failures are counted over.
+    // Required.
     Window time.Duration
     // OpenFor is how long the open breaker refuses calls.
+    // Required.
     OpenFor time.Duration
     // MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
     MinCalls int
@@ -1238,7 +1241,7 @@ type Compressor interface {
 ```
 
 <a name="DoneFunc"></a>
-## type [DoneFunc](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L39>)
+## type [DoneFunc](<https://github.com/eugeneliukindev/gashe/blob/main/circuitbreaker.go#L42>)
 
 DoneFunc reports the outcome of a call that CircuitBreaker let through: nil for success, or the error the call returned. Call it once.
 
@@ -1247,7 +1250,7 @@ type DoneFunc func(err error)
 ```
 
 <a name="Fallback"></a>
-## type [Fallback](<https://github.com/eugeneliukindev/gashe/blob/main/fallback.go#L15-L23>)
+## type [Fallback](<https://github.com/eugeneliukindev/gashe/blob/main/fallback.go#L15-L24>)
 
 Fallback configures Policy.Fallback: where loads keep their results while the backend of the cache fails, so the source gets one load per key and process, not one per call.
 
@@ -1256,6 +1259,7 @@ type Fallback struct {
     // Backend keeps the results, usually a memory.Backend of its own; without it there is no
     // fallback. Policies of one
     // Cache may share it; a near cache or another Cache may not.
+    // nil, the zero value, means none: while the backend fails, every call loads.
     Backend Backend
     // MaxTTL is the longest a result stays in Backend: the TTL of its policy, but never longer, since
     // no invalidation reaches Backend while the backend is down. 0 means 30 seconds.
@@ -1264,20 +1268,24 @@ type Fallback struct {
 ```
 
 <a name="FixedWindow"></a>
-## type [FixedWindow](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L42-L46>)
+## type [FixedWindow](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L44-L52>)
 
 FixedWindow allows Calls calls per window of Per that starts with the first call. The first call over the limit blocks the key for BanFor, counted from that call; 0 means Per.
 
 ```go
 type FixedWindow struct {
-    Calls  int
-    Per    time.Duration
+    // Calls is how many calls a window allows; it must be positive.
+    Calls int
+    // Per is the span of a window, from its first call; it must be positive.
+    Per time.Duration
+    // BanFor is how long the first call over the limit blocks the key, counted from that call. 0 means
+    // Per.
     BanFor time.Duration
 }
 ```
 
 <a name="Hooks"></a>
-## type [Hooks](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L41-L48>)
+## type [Hooks](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L42-L51>)
 
 Hooks are called by the cache, for metrics and logs. A nil hook is not called.
 
@@ -1285,9 +1293,11 @@ Hooks are called by the cache, for metrics and logs. A nil hook is not called.
 type Hooks struct {
     // OnResult receives how every GetOrLoad call, and every key of GetOrLoadMany, was answered:
     // use it to count hits and misses and to time the loader.
+    // nil drops them.
     OnResult func(ctx context.Context, o Outcome)
     // OnError receives errors the cache works around instead of returning them, such as a
     // failing backend during GetOrLoad; each error names the operation and key.
+    // nil drops them.
     OnError func(ctx context.Context, err error)
 }
 ```
@@ -1360,7 +1370,7 @@ type Limit interface {
 ```
 
 <a name="Negative"></a>
-## type [Negative](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L93-L100>)
+## type [Negative](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L101-L109>)
 
 Negative caches loader errors that mean "there is no such data".
 
@@ -1371,12 +1381,13 @@ type Negative struct {
     // is cached; the stale result never hides them. nil turns negative caching off.
     IsNotFound func(error) bool
     // TTL is how long the negative answer is kept.
+    // Required with IsNotFound; Jitter applies.
     TTL time.Duration
 }
 ```
 
 <a name="Options"></a>
-## type [Options](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L12-L38>)
+## type [Options](<https://github.com/eugeneliukindev/gashe/blob/main/cache.go#L12-L39>)
 
 Options configures a Cache. The zero value is ready to use.
 
@@ -1390,6 +1401,7 @@ type Options struct {
     // yours must not start with "__". Locks of Lock, TryLock and WithLock use the key you give them.
     Prefix string
     // Hooks receive what the cache does: how calls were answered, and the errors it works around.
+    // The zero value calls nothing.
     Hooks Hooks
     // CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
     // Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
@@ -1506,7 +1518,7 @@ type Outcome struct {
 ```
 
 <a name="Policy"></a>
-## type [Policy](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L16-L41>)
+## type [Policy](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L16-L47>)
 
 Policy says how GetOrLoad caches results of type V. Define it once and pass it to every call; the zero value of each field means "off".
 
@@ -1515,20 +1527,26 @@ A stored result is fresh for TTL: it is answered without calling the loader. Aft
 ```go
 type Policy[V any] struct {
     // TTL says how long a result is fresh, and how much that varies.
+    // TTL.For is required, unless a window of Stale is set.
     TTL TTL
     // Prefix is put in front of every key as is, separator included: "v2:" stores "v2:user:42".
+    // "" means none; it comes after Options.Prefix.
     Prefix string
     // Stale says when a result past its TTL still answers a call: at once while it reloads,
     // instead of a failing loader, or instead of a slow one.
+    // The zero value is off: a result past its TTL is a miss.
     Stale Stale
     // Stampede says how concurrent calls share loads, so that a key nobody has stored, or many of
     // them, do not send every caller to the source at once.
+    // The zero value is off: every call loads by itself, and loads are not limited.
     Stampede Stampede
     // Tags lists the tags of a result; Cache.InvalidateTags of any of them makes it a miss. Tags
     // are shared by every process that uses the same backend.
+    // nil means none.
     Tags []string
     // Negative caches answers like "not found", so lookups of missing data do not reach the
     // source every time.
+    // The zero value is off: a "not found" is an error like any other.
     Negative Negative
     // Fallback keeps the results of this kind of data in a backend of its own while the backend of
     // the cache fails or its CircuitBreaker is open, for the TTL but at most Fallback.MaxTTL, and
@@ -1615,7 +1633,10 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 
 	// One process in the cluster builds the report; the others wait up to 30s for its result.
-	reports := gashe.For(c, gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{LockFor: 30 * time.Second}})
+	reports := gashe.For(
+		c,
+		gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{LockFor: 30 * time.Second}},
+	)
 	report, err := reports.GetOrLoad(ctx, "report:2026-11", func(context.Context) (string, error) {
 		return "monthly report", nil
 	})
@@ -1772,7 +1793,10 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 	rates := gashe.For(
 		c,
-		gashe.Policy[float64]{TTL: gashe.TTL{For: time.Millisecond}, Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}},
+		gashe.Policy[float64]{
+			TTL:   gashe.TTL{For: time.Millisecond},
+			Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
+		},
 	)
 
 	v, err := rates.GetOrLoad(ctx, "usd", func(context.Context) (float64, error) { return 1.08, nil })
@@ -1818,7 +1842,10 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
-	prices := gashe.For(c, gashe.Policy[int]{TTL: gashe.TTL{For: time.Millisecond}, Stale: gashe.Stale{WhileRevalidate: time.Hour}})
+	prices := gashe.For(
+		c,
+		gashe.Policy[int]{TTL: gashe.TTL{For: time.Millisecond}, Stale: gashe.Stale{WhileRevalidate: time.Hour}},
+	)
 
 	var version atomic.Int64
 	load := func(context.Context) (int, error) { return int(version.Add(1)), nil }
@@ -1952,7 +1979,7 @@ int: 0s true
 </details>
 
 <a name="RateLimitError"></a>
-## type [RateLimitError](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L49-L53>)
+## type [RateLimitError](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L55-L59>)
 
 RateLimitError is what RateLimit returns over the limit; errors.Is\(err, ErrRateLimited\) holds.
 
@@ -1965,7 +1992,7 @@ type RateLimitError struct {
 ```
 
 <a name="RateLimitError.Error"></a>
-### func \(\*RateLimitError\) [Error](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L55>)
+### func \(\*RateLimitError\) [Error](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L61>)
 
 ```go
 func (e *RateLimitError) Error() string
@@ -1974,7 +2001,7 @@ func (e *RateLimitError) Error() string
 
 
 <a name="RateLimitError.Is"></a>
-### func \(\*RateLimitError\) [Is](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L60>)
+### func \(\*RateLimitError\) [Is](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L66>)
 
 ```go
 func (e *RateLimitError) Is(target error) bool
@@ -2024,19 +2051,21 @@ func (r Result) String() string
 String returns the name of r.
 
 <a name="SlidingWindow"></a>
-## type [SlidingWindow](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L26-L29>)
+## type [SlidingWindow](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L26-L31>)
 
 SlidingWindow allows about Calls calls in any span of Per. It keeps two counters per key, for the current and the last fixed window of Per, and weighs the last one by how much of it still falls inside the sliding window, as if its calls were spread evenly. Refused calls are not counted.
 
 ```go
 type SlidingWindow struct {
+    // Calls is how many calls the window allows; it must be positive.
     Calls int
-    Per   time.Duration
+    // Per is the span of the window; it must be positive.
+    Per time.Duration
 }
 ```
 
 <a name="PerHour"></a>
-### func [PerHour](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L38>)
+### func [PerHour](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L40>)
 
 ```go
 func PerHour(n int) SlidingWindow
@@ -2045,7 +2074,7 @@ func PerHour(n int) SlidingWindow
 PerHour allows n calls in any hour.
 
 <a name="PerMinute"></a>
-### func [PerMinute](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L35>)
+### func [PerMinute](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L37>)
 
 ```go
 func PerMinute(n int) SlidingWindow
@@ -2054,7 +2083,7 @@ func PerMinute(n int) SlidingWindow
 PerMinute allows n calls in any minute.
 
 <a name="PerSecond"></a>
-### func [PerSecond](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L32>)
+### func [PerSecond](<https://github.com/eugeneliukindev/gashe/blob/main/ratelimit.go#L34>)
 
 ```go
 func PerSecond(n int) SlidingWindow
@@ -2063,7 +2092,7 @@ func PerSecond(n int) SlidingWindow
 PerSecond allows n calls in any second.
 
 <a name="Stale"></a>
-## type [Stale](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L104-L113>)
+## type [Stale](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L113-L125>)
 
 Stale says when a stored result past its TTL, the stale result, still answers a call. Each way has its own window after TTL; the zero value of each is off.
 
@@ -2072,16 +2101,19 @@ type Stale struct {
     // WhileRevalidate is how long after TTL the stale result answers at once, while one caller
     // reloads it in the background (stale-while-revalidate of RFC 5861). The refresh lock is
     // shared by every process that uses the same backend.
+    // 0 turns it off.
     WhileRevalidate time.Duration
     // IfError answers a failing loader with the stale result.
+    // The zero value is off.
     IfError StaleIfError
     // IfSlow answers a slow loader with the stale result.
+    // The zero value is off.
     IfSlow StaleIfSlow
 }
 ```
 
 <a name="StaleIfError"></a>
-## type [StaleIfError](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L117-L123>)
+## type [StaleIfError](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L129-L135>)
 
 StaleIfError answers a loader error with the stale result \(stale\-if\-error of RFC 5861\), so callers keep getting data while the source is down.
 
@@ -2096,7 +2128,7 @@ type StaleIfError struct {
 ```
 
 <a name="StaleIfSlow"></a>
-## type [StaleIfSlow](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L128-L133>)
+## type [StaleIfSlow](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L140-L146>)
 
 StaleIfSlow answers a slow loader with the stale result: the call waits at most After, then gets the stale result while the load goes on in the background and stores what it gets; meanwhile other calls of the key get the stale result at once.
 
@@ -2105,12 +2137,13 @@ type StaleIfSlow struct {
     // For is how long after TTL the stale result answers a slow loader. 0 turns it off.
     For time.Duration
     // After is how long a call waits for the loader before the stale result answers it.
+    // 0 turns it off; For and After are set together.
     After time.Duration
 }
 ```
 
 <a name="Stampede"></a>
-## type [Stampede](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L74-L90>)
+## type [Stampede](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L81-L98>)
 
 Stampede says how concurrent calls share loads: within this process with SingleFlight, across processes with LockFor, and how many loads of one kind run at once with MaxLoads. They work together: with SingleFlight the calls of a process share one load first, and only that load takes the lock of LockFor.
 
@@ -2123,6 +2156,7 @@ type Stampede struct {
     // LockFor, when set, makes a missing key load under a lock: one process calls the loader, the
     // others wait and take its result. The lock is shared by every process that uses the same
     // backend, and LockFor is the longest it is held, so a process that dies holding it frees it.
+    // 0 means no lock: every process loads.
     LockFor time.Duration
     // MaxLoads is how many loads of this kind of data, its type and Prefix, may run at once in
     // this process: with 10 processes, up to 10 times as many reach the source. A call over the
@@ -2135,7 +2169,7 @@ type Stampede struct {
 ```
 
 <a name="TTL"></a>
-## type [TTL](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L44-L68>)
+## type [TTL](<https://github.com/eugeneliukindev/gashe/blob/main/policy.go#L50-L75>)
 
 TTL says how long a result is fresh.
 
@@ -2160,6 +2194,7 @@ type TTL struct {
     // Any other type, a plain int such as 3600 included, returns ErrInvalidOptions. For may be
     // left out when a window of Stale is set: then every call either refreshes in the background
     // (Stale.WhileRevalidate) or calls the loader (Stale.IfError, Stale.IfSlow).
+    // nil, the zero value, is allowed only with a window of Stale.
     For any
     // Jitter spreads TTLs randomly by up to this share, from 0 to 1 (0.1 means +-10%), so that
     // entries stored together do not expire together.

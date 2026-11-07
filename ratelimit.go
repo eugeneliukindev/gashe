@@ -24,8 +24,10 @@ type Limit interface {
 // falls inside the sliding window, as if its calls were spread evenly. Refused calls are not
 // counted.
 type SlidingWindow struct {
+	// Calls is how many calls the window allows; it must be positive.
 	Calls int
-	Per   time.Duration
+	// Per is the span of the window; it must be positive.
+	Per time.Duration
 }
 
 // PerSecond allows n calls in any second.
@@ -40,8 +42,12 @@ func PerHour(n int) SlidingWindow { return SlidingWindow{Calls: n, Per: time.Hou
 // FixedWindow allows Calls calls per window of Per that starts with the first call. The first call
 // over the limit blocks the key for BanFor, counted from that call; 0 means Per.
 type FixedWindow struct {
-	Calls  int
-	Per    time.Duration
+	// Calls is how many calls a window allows; it must be positive.
+	Calls int
+	// Per is the span of a window, from its first call; it must be positive.
+	Per time.Duration
+	// BanFor is how long the first call over the limit blocks the key, counted from that call. 0 means
+	// Per.
 	BanFor time.Duration
 }
 

@@ -16,10 +16,10 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 
 	users := gashe.For(c, gashe.Policy[User]{
-		TTL:      gashe.TTL{For: time.Hour},
-		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute},
-		Stampede: gashe.Stampede{LockFor: 5 * time.Second},
-		Prefix:   "user:",
+		TTL:      gashe.TTL{For: time.Hour},                      // (1)!
+		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute}, // (2)!
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // (3)!
+		Prefix:   "user:",                                        // (4)!
 	})
 	_ = users
 }

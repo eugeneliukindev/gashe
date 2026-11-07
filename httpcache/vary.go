@@ -16,6 +16,7 @@ type Vary struct {
 	// Headers are request headers whose values are part of the key: Accept-Language for pages in
 	// the language of the request, X-Forwarded-Host behind a proxy that rewrites Host. A response
 	// whose Vary names only these headers is stored; any other Vary keeps it out.
+	// nil means none.
 	Headers []string
 	// Query lists the query parameters that are part of the key; the others, such as utm_source or
 	// a random one, do not make new entries. nil means the whole query as sent; an empty list means
@@ -30,6 +31,7 @@ type Vary struct {
 	// shared, and requests with an Authorization header go past the cache.
 	User func(r *http.Request) string
 	// Custom returns anything else the page depends on; it is added at the end of the key.
+	// nil means none.
 	Custom func(r *http.Request) string
 }
 

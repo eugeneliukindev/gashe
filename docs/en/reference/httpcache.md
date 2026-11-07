@@ -19,7 +19,7 @@ Only GET and HEAD requests are cached, and only responses that are safe to share
 
 
 <a name="New"></a>
-## func [New](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L118>)
+## func [New](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L123>)
 
 ```go
 func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler
@@ -61,7 +61,12 @@ func main() {
 		fmt.Println("rendering")
 		_, _ = fmt.Fprint(w, "<h1>Prices</h1>")
 	})
-	h := httpcache.New(c, httpcache.Options{Policy: gashe.Policy[httpcache.Response]{TTL: gashe.TTL{For: time.Minute}}})(page)
+	h := httpcache.New(
+		c,
+		httpcache.Options{Policy: gashe.Policy[httpcache.Response]{TTL: gashe.TTL{For: time.Minute}}},
+	)(
+		page,
+	)
 
 	for range 2 {
 		w := httptest.NewRecorder()
@@ -83,7 +88,7 @@ rendering
 </details>
 
 <a name="Options"></a>
-## type [Options](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L87-L99>)
+## type [Options](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L92-L104>)
 
 Options configures New.
 
@@ -104,22 +109,27 @@ type Options struct {
 ```
 
 <a name="Response"></a>
-## type [Response](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L78-L84>)
+## type [Response](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/httpcache.go#L78-L89>)
 
 Response is a stored response. Policy.CacheIf receives it.
 
 ```go
 type Response struct {
+    // Status is the status code of the response.
     Status int
+    // Header holds the headers that are stored with the page.
     Header http.Header
-    Body   []byte
-    ETag   string
+    // Body is the body of the response.
+    Body []byte
+    // ETag is the ETag header of the page, set by the handler or made from a hash of Body.
+    ETag string
+    // Stored is when the response was stored, for the Age header.
     Stored time.Time
 }
 ```
 
 <a name="Vary"></a>
-## type [Vary](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/vary.go#L15-L34>)
+## type [Vary](<https://github.com/eugeneliukindev/gashe/blob/main/httpcache/vary.go#L15-L36>)
 
 Vary says which parts of a request a page depends on, as the Vary header of RFC 9110 does for headers, and so what the key of a request is made of. The host and the path are always part of the key; of the rest, only what Vary names is, so two requests that differ only in other headers, cookies or query parameters get the same page. Every part of a request the handler builds the page from must be in it, or one request's page is served to another.
 
@@ -128,6 +138,7 @@ type Vary struct {
     // Headers are request headers whose values are part of the key: Accept-Language for pages in
     // the language of the request, X-Forwarded-Host behind a proxy that rewrites Host. A response
     // whose Vary names only these headers is stored; any other Vary keeps it out.
+    // nil means none.
     Headers []string
     // Query lists the query parameters that are part of the key; the others, such as utm_source or
     // a random one, do not make new entries. nil means the whole query as sent; an empty list means
@@ -142,6 +153,7 @@ type Vary struct {
     // shared, and requests with an Authorization header go past the cache.
     User func(r *http.Request) string
     // Custom returns anything else the page depends on; it is added at the end of the key.
+    // nil means none.
     Custom func(r *http.Request) string
 }
 ```

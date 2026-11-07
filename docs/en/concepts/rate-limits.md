@@ -3,40 +3,28 @@
 This page shows how you refuse calls over a limit, counted across all processes. In this section,
 we will go through [`Cache.RateLimit`](#cratelimit) and [its requests and responses](#try-it-with-curl).
 
-## `Cache.RateLimit` { #cratelimit }
+## Limit calls per key { #cratelimit }
 
-A client calls far too often. With `Cache.RateLimit`, you count its calls across all processes and
+A client calls far too often. With [`Cache.RateLimit`](../reference/gashe.md#Cache.RateLimit), you count its calls across all processes and
 refuse the ones over the limit.
-
-??? api "API documentation"
-
-    [`Cache.RateLimit`](../reference/gashe.md#Cache.RateLimit)<br>
-    [`gashe.FixedWindow`](../reference/gashe.md#FixedWindow)<br>
-    [`gashe.SlidingWindow`](../reference/gashe.md#SlidingWindow)<br>
-    [`gashe.RateLimitError`](../reference/gashe.md#RateLimitError)<br>
 
 ```go hl_lines="23-31 33-37"
 --8<-- "examples/docs/rate-limits/login/main.go"
 ```
 
-**Options** (`gashe.SlidingWindow` and `gashe.FixedWindow`; `PerSecond(n)`, `PerMinute(n)` and
-`PerHour(n)` make a `SlidingWindow`):
-
-| Field | Default | What it does |
-|---|---|---|
-| `Calls` | required | `SlidingWindow`: about this many calls in any span of `Per`. `FixedWindow`: this many calls per window |
-| `Per` | required | the span; for `FixedWindow`, the window, which starts with the first call |
-| `BanFor` | 0: `Per` | `FixedWindow` only: how long the first call over the limit blocks the key |
+The limit is a [`gashe.SlidingWindow`](../reference/gashe.md#SlidingWindow) or a
+[`gashe.FixedWindow`](../reference/gashe.md#FixedWindow); `PerSecond(n)`, `PerMinute(n)` and `PerHour(n)` make a
+[`SlidingWindow`](../reference/gashe.md#SlidingWindow).
 
 - Every call names its limit; there is no default.
-- Bursts: `SlidingWindow` is an estimate and can let slightly more through; `FixedWindow` can let
+- Bursts: [`SlidingWindow`](../reference/gashe.md#SlidingWindow) is an estimate and can let slightly more through; [`FixedWindow`](../reference/gashe.md#FixedWindow) can let
   twice `Calls` through at the border of two windows.
-- `FixedWindow` counts with one counter per key that starts with the first call and lives `Per`;
-  the first call over `Calls` blocks the key for `BanFor`, counted from that call.
-- Over the limit, it returns a `*RateLimitError`: it is `ErrRateLimited` and has `RetryAfter`,
-  which assumes no other calls come. A limit that cannot work gives `ErrInvalidOptions`.
+- [`FixedWindow`](../reference/gashe.md#FixedWindow) counts with one counter per key that starts with the first call and lives `Per`;
+  the first call over `Calls` blocks the key for [`BanFor`](../reference/gashe.md#FixedWindow), counted from that call.
+- Over the limit, it returns a [`*RateLimitError`](../reference/gashe.md#RateLimitError): it is [`ErrRateLimited`](../reference/gashe.md#variables) and has [`RetryAfter`](../reference/gashe.md#RateLimitError),
+  which assumes no other calls come. A limit that cannot work gives [`ErrInvalidOptions`](../reference/gashe.md#variables).
 
-With the `FixedWindow` above, the sixth call within a minute bans the key for 15 minutes, past the
+With the [`FixedWindow`](../reference/gashe.md#FixedWindow) above, the sixth call within a minute bans the key for 15 minutes, past the
 end of the window:
 
 ```mermaid
@@ -54,25 +42,24 @@ sequenceDiagram
 
 !!! tip
     Call it before the work it guards, with a key of who calls: `"login:"+ip` for logins,
-    `"api-key:"+key` for an API. Use `FixedWindow` with `BanFor` against password guessing, and
-    `SlidingWindow` for a steady quota.
+    `"api-key:"+key` for an API. Use [`FixedWindow`](../reference/gashe.md#FixedWindow) with [`BanFor`](../reference/gashe.md#FixedWindow) against password guessing, and
+    [`SlidingWindow`](../reference/gashe.md#SlidingWindow) for a steady quota.
 
 !!! warning
-    When the backend fails, the call is let through, and the error goes to `OnError`: a limit does
+    When the backend fails, the call is let through, and the error goes to [`OnError`](../reference/gashe.md#Hooks): a limit does
     not hold while the backend is down.
 
 ??? note "Technical details"
-    - `SlidingWindow` keeps a counter per span of `Per`. A call passes while the current counter
+    - [`SlidingWindow`](../reference/gashe.md#SlidingWindow) keeps a counter per span of `Per`. A call passes while the current counter
       plus the last one, weighted by how much of the last span still falls inside the last `Per`,
       stays within `Calls`. A refused call is not counted.
-    - In Redis: `FixedWindow` runs `INCRBY __rate:fixed:<key>` with the TTL `Per`, then `PEXPIRE`
-      to `BanFor` or `PTTL`. `SlidingWindow` runs `INCRBY` of the current span, `GET` of the last
+    - In Redis: [`FixedWindow`](../reference/gashe.md#FixedWindow) runs `INCRBY __rate:fixed:<key>` with the TTL `Per`, then `PEXPIRE`
+      to [`BanFor`](../reference/gashe.md#FixedWindow) or `PTTL`. [`SlidingWindow`](../reference/gashe.md#SlidingWindow) runs `INCRBY` of the current span, `GET` of the last
       one, and `INCRBY -1` when the call is refused.
 
 ```go hl_lines="26 31 34"
 --8<-- "examples/ratelimit/main.go"
 ```
-
 
 ```text title="In the backend"
 --8<-- "docs/snippets/backend/ratelimit.txt"

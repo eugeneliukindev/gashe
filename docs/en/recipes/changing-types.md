@@ -1,10 +1,10 @@
 # Change a cached type { #change-a-cached-type }
 
-Deploy a new version of a cached type: what gashe does by itself, and when to change `Policy.Prefix`.
+Deploy a new version of a cached type: what gashe does by itself, and when to change [`Policy.Prefix`](../reference/gashe.md#Policy).
 
 ## The code { #the-code }
 
-`UserV1` stands for the type before the deploy, `UserV2` for it after; in your code both are `User`.
+`UserV1` stands for the type before the deploy, `UserV2` for it after; in your code both are [`User`](../reference/httpcache.md#Vary).
 
 ```go
 --8<-- "examples/docs/changing-types/main.go"
@@ -27,7 +27,7 @@ types, nested types included. An entry of another form is a miss, never a value 
 | rename the struct type, add a method, change an unexported field | the same shape: old entries are read | no |
 | the meaning, not the form: cents to dollars, new enum values | the same shape: old values read as new ones | yes |
 | a `msgpack` tag, or a custom `MarshalJSON` or `MarshalMsgpack` | not in the shape | yes |
-| `Options.Codec` or `Options.Compressor` | old entries of every type fail to decode: misses | no |
+| [`Options.Codec`](../reference/gashe.md#Options) or [`Options.Compressor`](../reference/gashe.md#Options) | old entries of every type fail to decode: misses | no |
 
 ## During a rolling deploy { #during-a-rolling-deploy }
 
@@ -37,8 +37,8 @@ Old and new processes run side by side for the length of the rollout, over the s
 |---|---|---|
 | Misses | each version overwrites the entries of the other: misses all through the rollout | one per key, for the new version |
 | Backend memory | one entry per key | two, until the old ones expire: `TTL` plus the stale window |
-| `Cached.Set`, `Cached.Delete` of new processes | reach what old processes read | do not: old processes may answer stale results until the rollout ends |
-| `InvalidateTags` | reaches both | reaches both: tags are not under `Prefix` |
+| [`Cached.Set`](../reference/gashe.md#Cached[V].Set), [`Cached.Delete`](../reference/gashe.md#Cached[V].Delete) of new processes | reach what old processes read | do not: old processes may answer stale results until the rollout ends |
+| [`InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags) | reaches both | reaches both: tags are not under `Prefix` |
 | A rollback | misses again | the old entries are still there: hits |
 
 ## Variations { #variations }
