@@ -1,8 +1,8 @@
+scheme = ["https", "http"]  # links inside the site are checked by docs-build --strict
 exclude_loopback = true
 exclude = [
   '^https://eugeneliukindev\.github\.io/gashe',
   '^https://pkg\.go\.dev/github\.com/eugeneliukindev/gashe',  # pkg.go.dev lists a module after its first fetch
-  'llms(-full)?\.txt$',
 ]
 max_retries = 3
 accept = ["200..=299", "429"]  # 429: a site that rate limits the check is up
