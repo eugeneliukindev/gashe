@@ -1,5 +1,4 @@
-# External links of the documentation, checked by lychee: `just docs-links` and .github/workflows/links.yml.
-# Links inside the site are checked by `just docs` (zensical --strict).
+# External links only: zensical --strict checks the links inside the site.
 exclude_loopback = true
 exclude = [
   '^https://eugeneliukindev\.github\.io/gashe',                  # the site itself, before it is published

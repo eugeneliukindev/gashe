@@ -1,0 +1,24 @@
+# The documentation site. Recipes run in the repository root.
+
+set working-directory := '..'
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+zensical := "uv run --project docs --locked zensical"
+gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0"
+
+# Build the site into site/; a broken link fails the build.
+build:
+    {{ zensical }} build --strict
+
+# Preview the site at http://localhost:8000/gashe/.
+serve:
+    {{ zensical }} serve
+
+# Write the API reference, docs/en/reference/, from the doc comments; run it after an API change.
+reference:
+    for p in . backend/memory backend/nearcache httpcache backendtest codec/raw compress/gzip; do n=$(basename "$p"); [ "$n" = . ] && n=gashe; {{ gomarkdoc }} --output "docs/en/reference/$n.md" "./$p"; done
+    for m in backend/redis codec/msgpack compress/zstd; do (cd "$m" && {{ gomarkdoc }} --output "$OLDPWD/docs/en/reference/$(basename "$m").md" .); done
+
+# Check the external links with lychee, in Docker.
+links:
+    docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2 --config docs/lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'

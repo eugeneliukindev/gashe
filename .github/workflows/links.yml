@@ -1,5 +1,4 @@
-# Checks the external links of the documentation once a week and on every push to main. It runs
-# apart from the docs workflow, so a site that is down does not stop the site from being published.
+# Apart from the docs workflow, so a site that is down does not block publishing.
 name: links
 
 on:
@@ -20,7 +19,7 @@ jobs:
       - uses: lycheeverse/lychee-action@v2.9.0
         with:
           args: >-
-            --config lychee.toml --no-progress
+            --config docs/lychee.toml --no-progress
             README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
           fail: true
         env:
