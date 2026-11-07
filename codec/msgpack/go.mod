@@ -1,6 +1,6 @@
 module github.com/eugeneliukindev/gashe/codec/msgpack
 
-go 1.23
+go 1.25.0
 
 require (
 	github.com/eugeneliukindev/gashe v0.5.0

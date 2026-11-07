@@ -15,14 +15,12 @@ func refresh(ctx context.Context, products gashe.Cached[Product], ids []string,
 	var wg sync.WaitGroup
 	var n atomic.Int64
 	for _, id := range ids {
-		wg.Add(1)
-		go func() { // Stampede.MaxLoads holds the rest back
-			defer wg.Done()
+		wg.Go(func() { // Stampede.MaxLoads holds the rest back
 			_, err := products.Reload(ctx, id, func(ctx context.Context) (Product, error) { return queryOne(ctx, id) })
 			if err != nil {
 				n.Add(1) // the stored entry stays
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	return n.Load()

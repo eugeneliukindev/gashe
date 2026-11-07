@@ -131,7 +131,7 @@ func BenchmarkCodec(b *testing.B) {
 				name := val.name + "/" + c.name + "+" + z.name
 				b.Run(name+"/encode", func(b *testing.B) {
 					b.ReportAllocs()
-					for range b.N {
+					for b.Loop() {
 						if _, err := encode(c.codec, z.compressor, val.v); err != nil {
 							b.Fatal(err)
 						}
@@ -140,7 +140,7 @@ func BenchmarkCodec(b *testing.B) {
 				})
 				b.Run(name+"/decode", func(b *testing.B) {
 					b.ReportAllocs()
-					for range b.N {
+					for b.Loop() {
 						if err := decode(c.codec, z.compressor, data, val.new()); err != nil {
 							b.Fatal(err)
 						}

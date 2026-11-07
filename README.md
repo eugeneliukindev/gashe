@@ -27,7 +27,7 @@ go get github.com/eugeneliukindev/gashe/codec/msgpack # values in MessagePack, o
 go get github.com/eugeneliukindev/gashe/compress/zstd # values compressed with Zstandard, on klauspost/compress
 ```
 
-Go 1.23 or newer. The core module has no third-party dependencies and no global state.
+Go 1.25 or newer. The core module has no third-party dependencies and no global state.
 
 ## Example
 
