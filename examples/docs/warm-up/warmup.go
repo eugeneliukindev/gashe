@@ -24,13 +24,11 @@ func warmUp(ctx context.Context, products gashe.Cached[Product], ids []string,
 	var wg sync.WaitGroup
 	errs := make(chan error, len(ids)/100+1)
 	for batch := range slices.Chunk(ids, 100) {
-		wg.Add(1)
-		go func() { // (1)!
-			defer wg.Done()
+		wg.Go(func() { // (1)!
 			if _, err := products.GetOrLoadMany(ctx, batch, query); err != nil {
 				errs <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

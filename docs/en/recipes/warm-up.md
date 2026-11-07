@@ -9,7 +9,7 @@ the database.
 
 Files of one `package main`. The policy and the warm-up:
 
-```go hl_lines="16 30"
+```go hl_lines="16 28"
 --8<-- "examples/docs/warm-up/warmup.go"
 ```
 
@@ -17,7 +17,7 @@ Files of one `package main`. The policy and the warm-up:
 
 A refresh, for a job that renews hot entries before they expire:
 
-```go hl_lines="21"
+```go hl_lines="19"
 --8<-- "examples/docs/warm-up/refresh.go"
 ```
 

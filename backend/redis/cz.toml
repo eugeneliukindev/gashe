@@ -1,0 +1,5 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "scm"
+tag_format = "backend/redis/v$version"
+major_version_zero = true

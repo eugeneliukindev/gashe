@@ -17,13 +17,13 @@ import (
 )
 
 // redisAddr returns the address of the Redis these tests run against, from GASHE_REDIS_ADDR.
-// `just integration` starts one in Docker and sets it; without it the tests are skipped, so
+// `just redis-test` starts one in Docker and sets it; without it the tests are skipped, so
 // go test needs no Docker.
 func redisAddr(t *testing.T) string {
 	t.Helper()
 	addr := os.Getenv("GASHE_REDIS_ADDR")
 	if addr == "" {
-		t.Skip("no Redis: GASHE_REDIS_ADDR is not set; run `just integration`")
+		t.Skip("no Redis: GASHE_REDIS_ADDR is not set; run `just redis-test`")
 	}
 	return addr
 }
@@ -177,7 +177,24 @@ func newCache(t *testing.T) *gashe.Cache {
 	return gashe.New(gasheredis.New(client), gashe.Options{})
 }
 
+// lastArgs records the arguments of the last command a client sends.
+type lastArgs struct{ args []any }
+
+func (*lastArgs) DialHook(next goredis.DialHook) goredis.DialHook { return next }
+
+func (h *lastArgs) ProcessHook(next goredis.ProcessHook) goredis.ProcessHook {
+	return func(ctx context.Context, cmd goredis.Cmder) error {
+		h.args = cmd.Args()
+		return next(ctx, cmd)
+	}
+}
+
+func (*lastArgs) ProcessPipelineHook(next goredis.ProcessPipelineHook) goredis.ProcessPipelineHook {
+	return next
+}
+
 // A lock extended by less than a millisecond is kept, not deleted by PEXPIRE 0: the TTL rounds up.
+// The test reads the TTL sent, not the one left: a 1ms lock may expire before PTTL runs.
 func TestExtendLockBelowAMillisecond(t *testing.T) {
 	ctx := context.Background()
 	client := newClient(t)
@@ -188,10 +205,12 @@ func TestExtendLockBelowAMillisecond(t *testing.T) {
 	if ok, err := b.SetIfAbsent(ctx, "lock", []byte("me"), time.Minute); err != nil || !ok {
 		t.Fatalf("SetIfAbsent = %v, %v", ok, err)
 	}
+	sent := &lastArgs{}
+	client.AddHook(sent)
 	if ok, err := b.ExtendLock(ctx, "lock", []byte("me"), 500*time.Microsecond); err != nil || !ok {
 		t.Fatalf("ExtendLock = %v, %v", ok, err)
 	}
-	if ttl, err := client.PTTL(ctx, "lock").Result(); err != nil || ttl <= 0 {
-		t.Fatalf("PTTL after ExtendLock(500us) = %v, %v; want the lock kept for about 1ms", ttl, err)
+	if ttl := sent.args[len(sent.args)-1]; ttl != int64(1) {
+		t.Fatalf("ExtendLock(500us) sent a TTL of %v ms; want 1", ttl)
 	}
 }

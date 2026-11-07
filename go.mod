@@ -1,6 +1,6 @@
 module github.com/eugeneliukindev/gashe
 
-go 1.23
+go 1.25.0
 
 // The API changed before v0.3.0 in ways that break code written for these versions.
 retract (

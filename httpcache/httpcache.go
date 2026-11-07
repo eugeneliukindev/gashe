@@ -322,7 +322,7 @@ func write(w http.ResponseWriter, r *http.Request, resp *Response, status cacheS
 func stored(h http.Header) http.Header {
 	out := h.Clone()
 	for _, v := range h.Values(headerConnection) { // fields it names are hop-by-hop too (RFC 9110 7.6.1)
-		for _, name := range strings.Split(v, ",") {
+		for name := range strings.SplitSeq(v, ",") {
 			out.Del(strings.TrimSpace(name))
 		}
 	}
@@ -338,7 +338,7 @@ func stored(h http.Header) http.Header {
 // hasDirective reports whether a Cache-Control header holds one of names, with or without a value.
 func hasDirective(values []string, names ...string) bool {
 	for _, v := range values {
-		for _, d := range strings.Split(v, ",") {
+		for d := range strings.SplitSeq(v, ",") {
 			name, _, _ := strings.Cut(strings.TrimSpace(d), "=")
 			for _, n := range names {
 				if strings.EqualFold(name, n) {
@@ -356,7 +356,7 @@ func etagMatches(header, etag string) bool {
 		return false
 	}
 	etag = strings.TrimPrefix(etag, "W/")
-	for _, t := range strings.Split(header, ",") {
+	for t := range strings.SplitSeq(header, ",") {
 		t = strings.TrimSpace(t)
 		if t == "*" || strings.TrimPrefix(t, "W/") == etag {
 			return true

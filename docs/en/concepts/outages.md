@@ -64,6 +64,7 @@ sequenceDiagram
 ## Answer from the memory of the process { #fallback }
 
 !!! version "Added in v0.5"
+
 With the backend down, the database gets the traffic the cache took, often more than it can carry.
 With [`Fallback`](../reference/gashe.md#Fallback), while the backend fails or [`Options.CircuitBreaker`](../reference/gashe.md#Options) is open, every load of the
 policy keeps its result in [`Fallback.Backend`](../reference/gashe.md#Fallback) and answers from it: one load per key and process, not

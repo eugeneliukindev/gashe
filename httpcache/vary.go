@@ -113,7 +113,7 @@ func (k *vary) query(r *http.Request) string {
 // covers reports whether every header a Vary header of a response names is part of the key.
 func (k *vary) covers(names []string) bool {
 	for _, v := range names {
-		for _, name := range strings.Split(v, ",") {
+		for name := range strings.SplitSeq(v, ",") {
 			name = http.CanonicalHeaderKey(strings.TrimSpace(name))
 			if name != "" && !slices.Contains(k.varies, name) {
 				return false // "*" too: it is never part of the key

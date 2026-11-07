@@ -1,0 +1,157 @@
+name: go
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golangci-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just golangci-lint
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just typos
+
+  tombi-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just tombi-lint
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just actionlint
+
+  test-unit:
+    strategy:
+      matrix:
+        go: ["1.25.x", oldstable, stable]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just test
+        env:
+          GOTOOLCHAIN: local # test on this Go, not a newer one go.mod could ask for
+
+  test-redis:
+    strategy:
+      matrix:
+        server: [redis, valkey]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just redis-test ${{ matrix.server }}
+
+  test-redis-cluster:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just redis-cluster
+
+  test-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just examples
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just govulncheck
+
+  gorelease:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just gorelease

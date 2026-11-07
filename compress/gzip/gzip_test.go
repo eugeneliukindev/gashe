@@ -51,9 +51,7 @@ func TestConcurrentUse(t *testing.T) {
 	c := gzip.New()
 	var wg sync.WaitGroup
 	for i := range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			want := []byte(strings.Repeat("n", i+1))
 			for range 50 {
 				data, err := c.Compress(want)
@@ -66,7 +64,7 @@ func TestConcurrentUse(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

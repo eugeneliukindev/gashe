@@ -1,170 +1,183 @@
-# Development tasks for gashe. Run `just` to list them, `just check` before a commit and
-# `just release-check` before a tag.
-
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set script-interpreter := ["bash", "-euo", "pipefail"]
+set positional-arguments
 
-# Every Go module of the repository.
 modules := ". backend/redis codec/msgpack compress/zstd examples benchmarks"
-
-# The modules users import, released with their own tags.
 released := ". backend/redis codec/msgpack compress/zstd"
 
-# The oldest Go the modules support, run through goenv.
-oldest_go := "1.23.12"
+# golang.org/x/exp has no tags, so gorelease is pinned to a commit.
+govulncheck := "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
+gorelease := "golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
+# CI checks out a pull request on no branch, so gomarkdoc cannot detect the repository.
+gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0 --repository.url https://github.com/eugeneliukindev/gashe --repository.default-branch main"
 
-# Tools run with go run at pinned versions, so every run checks the same way. golang.org/x/exp
-# has no tags, so gorelease is pinned to a commit.
-govulncheck := "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0"
-gorelease := "go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
-gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0"
+golangci := 'docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e GOPATH=/tmp/go -e GOMODCACHE=/go/pkg/mod -v "$PWD":/src -w /src -v "$(go env GOMODCACHE)":/go/pkg/mod -v "$(go env GOCACHE)":/cache/go -e GOCACHE=/cache/go -v "$HOME/.cache/golangci-lint":/cache/lint -e GOLANGCI_LINT_CACHE=/cache/lint golangci/golangci-lint:v2.15.0'
+actionlint := 'docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12'
+lychee := 'docker run --rm -e GITHUB_TOKEN -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2'
 
-# The documentation site is built by Zensical, installed by uv from docs/pyproject.toml and
-# docs/uv.lock.
 zensical := "uv run --project docs --locked zensical"
+rumdl := "uv run --project docs --locked rumdl"
+tombi := "uv run --project docs --locked tombi"
+typos := "uv run --project docs --locked typos"
+prek := "uv run --project docs --locked prek"
+commitizen := "uv run --project " + justfile_directory() + "/docs --locked cz"
 
-[default]
-[private]
-list:
-    @just --list
+needs_service := 'redis/go-redis|jackc/pgx|ListenAndServe|signal\.Notify'
 
-# Create go.work, so every module builds against the local code of the others; it is not committed.
-[private]
-work:
-    [ -f go.work ] || { go work init {{ modules }} && go work edit -go=1.23 -toolchain=none; }
-
-# Format the code with the formatters of .golangci.yml.
+# Lint Go code
 [group('lint')]
-fmt:
-    for m in {{ modules }}; do (cd "$m" && golangci-lint fmt ./...); done
+golangci-lint: (_golangci "run")
+    {{ golangci }} golangci-lint config verify
 
-# Check that .golangci.yml is valid.
+# Format Go code
 [group('lint')]
-lint-config:
-    golangci-lint config verify
+golangci-fmt: (_golangci "fmt")
 
-# Run golangci-lint in every module.
+# Check typos
 [group('lint')]
-lint: work lint-config
-    for m in {{ modules }}; do echo "== lint $m"; (cd "$m" && golangci-lint run ./...); done
+typos:
+    {{ typos }}
 
-# Run the tests of every released module with the race detector; tests that need Redis are skipped.
+# Check TOML format and schemas
+[group('lint')]
+tombi-lint:
+    {{ tombi }} format --check
+    {{ tombi }} lint
+
+# Format TOML
+[group('lint')]
+tombi-fmt:
+    {{ tombi }} format
+
+# Check GitHub workflows
+[group('lint')]
+actionlint:
+    {{ actionlint }}
+
+# Check a commit message: the commit-msg hook
+[group('lint')]
+commitizen-check file:
+    {{ commitizen }} check --commit-msg-file "$1"
+
+# Run tests with -race, without Redis
 [group('test')]
-test: work
-    for m in {{ released }}; do echo "== test $m"; (cd "$m" && go test -race ./...); done
+test: _work
+    go test -race ./... ./backend/redis/... ./codec/msgpack/... ./compress/zstd/...
 
-# Run the tests on the oldest supported Go; needs goenv.
-[env('GOENV_VERSION', oldest_go)]
-[env('GOTOOLCHAIN', 'local')]
-[group('test')]
-test-oldest: work
-    for m in {{ released }}; do echo "== test $m on Go {{ oldest_go }}"; (cd "$m" && go test -race ./...); done
-
-# Run the backend/redis tests against a server in Docker, on the local gashe code; flags go to go test.
-[group('test')]
-[positional-arguments]
-[script]
-[working-directory('backend/redis')]
-integration image="redis:7.0.0" *flags: work
-    id=$(docker run -d --rm -p 127.0.0.1::6379 {{ image }})
-    trap 'docker rm -f "$id" > /dev/null' EXIT
-    port=$(docker port "$id" 6379/tcp | head -1 | sed 's/.*://')
-    for _ in $(seq 100); do # wait until the server answers PING
-        if exec 3<> "/dev/tcp/127.0.0.1/$port" 2> /dev/null && printf 'PING\r\n' >&3 && read -r -t 1 reply <&3 && [[ $reply == +PONG* ]]; then
-            break
-        fi
-        sleep 0.1
-    done
-    echo "== {{ image }} on 127.0.0.1:$port"
-    GASHE_REDIS_ADDR="127.0.0.1:$port" go test -race -count=1 "${@:2}" ./...
-
-# Run the backend/redis tests against a Redis Cluster of three masters in Docker; flags go to go test.
-# The nodes listen on 127.0.0.1:17000-17002 of the host network, so the addresses the cluster
-# announces are the ones the tests reach.
-[group('test')]
-[positional-arguments]
-[script]
-[working-directory('backend/redis')]
-integration-cluster image="redis:7.0.0" *flags: work
-    id=$(docker run -d --rm --network host {{ image }} sh -c '
-        for p in 17000 17001 17002; do
-            redis-server --port $p --bind 127.0.0.1 --cluster-enabled yes --cluster-config-file /tmp/nodes-$p.conf --save "" --daemonize yes
-        done
-        sleep 1
-        redis-cli --cluster create 127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 --cluster-replicas 0 --cluster-yes > /dev/null
-        exec sleep infinity')
-    trap 'docker rm -f "$id" > /dev/null' EXIT
-    for p in 17000 17001 17002; do # wait until every node serves every slot
-        for _ in $(seq 100); do
-            docker exec "$id" redis-cli -p "$p" cluster info 2> /dev/null | grep -q 'cluster_state:ok' && break
-            sleep 0.2
-        done
-    done
-    echo "== {{ image }} cluster on 127.0.0.1:17000-17002"
-    GASHE_REDIS_CLUSTER="127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002" go test -race -count=1 -run Cluster "${@:2}" ./...
-
-# Run the integration tests on the oldest supported Redis and on Valkey, at once.
-[group('test')]
-[parallel]
-integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
-
-# Run every example that needs no Redis, so they keep working with the current API.
+# Run examples that need no server
 [group('test')]
 [working-directory('examples')]
-examples: work
-    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi/*|lockfor/*|docs/backends/redis-*|docs/rate-limits/login|docs/quickstart/redis|docs/index/example|docs/setup/shutdown|docs/metrics/prometheus|docs/postgres/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
+examples: _work
+    for e in $(find . -name main.go -exec dirname {} \; | sort); do sed 's#//.*##' "$e"/*.go | grep -qE '{{ needs_service }}' && continue; echo "== example $e"; go run "$e" > /dev/null; done
 
-# Run the benchmarks; flags go to go test, such as `just bench -count=5`. docs/en/internals/benchmarks.md has the results.
+# Run benchmarks: just bench -count=5
 [group('test')]
-[positional-arguments]
 [working-directory('benchmarks')]
-bench *flags: work
+bench *flags: _work
     go test -run '^$' -bench . -benchtime 300ms "$@" .
 
-# Build the documentation site into site/; a broken link fails the build.
-[group('docs')]
-docs:
-    {{ zensical }} build --strict
+# Run Redis tests: just redis-test valkey -run Lock
+[group('redis')]
+[working-directory('backend/redis')]
+redis-test server="redis" *flags: _work
+    docker compose up -d --wait {{ server }}
+    GASHE_REDIS_ADDR=$(docker compose port {{ server }} 6379) go test -race -count=1 "${@:2}" ./...
 
-# Preview the documentation at http://localhost:8000/gashe/.
-[group('docs')]
-docs-serve:
-    {{ zensical }} serve
+# Run Redis Cluster tests
+[group('redis')]
+[working-directory('backend/redis')]
+redis-cluster *flags: _work
+    docker compose up -d --wait cluster
+    GASHE_REDIS_CLUSTER=127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002 go test -race -count=1 -run Cluster "$@" ./...
 
-# Write the API reference, docs/en/reference/, from the doc comments with gomarkdoc; run it after an
-# API change, as `just docs` does not.
-[group('docs')]
-docs-reference: work
-    for p in . backend/memory backend/nearcache httpcache backendtest codec/raw compress/gzip; do n=$(basename "$p"); [ "$n" = . ] && n=gashe; {{ gomarkdoc }} --output "docs/en/reference/$n.md" "./$p"; done
-    for m in backend/redis codec/msgpack compress/zstd; do (cd "$m" && {{ gomarkdoc }} --output "{{ justfile_directory() }}/docs/en/reference/$(basename "$m").md" .); done
+# Run Redis tests on Redis and Valkey
+[group('redis')]
+[parallel]
+redis-all: (redis-test "redis") (redis-test "valkey")
 
-# Check the external links of the documentation with lychee, in Docker.
-[group('docs')]
-docs-links:
-    docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2 --config lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
+# Stop Redis servers
+[group('redis')]
+[working-directory('backend/redis')]
+redis-down:
+    docker compose down
 
-# Report known vulnerabilities in the code and dependencies the released modules call.
-[env('GOWORK', 'off')]
+# Check known vulnerabilities
 [group('security')]
-vuln:
-    for m in {{ released }}; do echo "== govulncheck $m"; (cd "$m" && {{ govulncheck }} ./...); done
+govulncheck: (_each released "env" "GOWORK=off" "go" "run" govulncheck "./...")
 
-# Tidy go.mod and go.sum of every module.
-[env('GOWORK', 'off')]
+# Lint docs Markdown
+[group('docs')]
+rumdl-lint:
+    {{ rumdl }} check --config docs/pyproject.toml docs/en
+
+# Fix docs Markdown
+[group('docs')]
+rumdl-fmt:
+    {{ rumdl }} fmt --config docs/pyproject.toml docs/en
+
+# Generate API reference from doc comments
+[group('docs')]
+gomarkdoc: _work
+    mkdir -p docs/en/reference
+    for p in . backend/memory backend/nearcache httpcache backendtest codec/raw compress/gzip; do n=$(basename "$p"); [ "$n" = . ] && n=gashe; {{ gomarkdoc }} --repository.path / --output "docs/en/reference/$n.md" "./$p"; done
+    for m in backend/redis codec/msgpack compress/zstd; do (cd "$m" && {{ gomarkdoc }} --repository.path "/$m/" --output "$OLDPWD/docs/en/reference/$(basename "$m").md" .); done
+
+# Build docs site
+[group('docs')]
+zensical-build: gomarkdoc
+    {{ zensical }} build --strict -f docs/zensical.toml
+
+# Serve docs at http://localhost:8000/gashe/
+[group('docs')]
+zensical-serve: gomarkdoc
+    {{ zensical }} serve -f docs/zensical.toml
+
+# Check external links
+[group('docs')]
+lychee:
+    {{ lychee }} --config docs/lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
+
+# Tidy go.mod of every module
 [group('deps')]
-tidy:
-    for m in {{ modules }}; do (cd "$m" && go mod tidy); done
+tidy: (_each modules "env" "GOWORK=off" "go" "mod" "tidy")
 
-# Compare the API of released modules with their last tags; needs a clean working tree.
-[env('GOWORK', 'off')]
+# Compare the API with the last tags, on a clean tree
 [group('release')]
-api:
-    for m in {{ released }}; do echo "== gorelease $m"; (cd "$m" && {{ gorelease }}); done
+gorelease: (_each released "env" "GOWORK=off" "go" "run" gorelease)
 
-# Everything to run before a commit.
-[group('all')]
-check: lint test vuln
+# Tag the next version of a module: just commitizen-bump backend/redis
+[group('release')]
+commitizen-bump module="." increment="USE_GIT_COMMITS":
+    cd "$1" && t=$({{ commitizen }} version --project --tag --next "$2") && git tag -a "$t" -m "$t" && echo "$t"
 
-# Everything to run before a release tag.
+# Lint and test without Docker servers, before a commit
 [group('all')]
-release-check: check examples test-oldest integration-all integration-cluster api
+check-commit: golangci-lint typos tombi-lint actionlint rumdl-lint test govulncheck
+
+# Run everything CI runs, before a release tag
+[group('all')]
+check-release: check-commit examples redis-all redis-cluster zensical-build gorelease
+
+# Install the git hooks of prek.toml
+[group('hooks')]
+prek-install:
+    {{ prek }} install
+
+# Run the git hooks on all files
+[group('hooks')]
+prek-run:
+    {{ prek }} run --all-files
+
+[default]
+_list:
+    @just --list --unsorted
+
+# Create go.work, so every module builds against the local code of the others.
+_work:
+    [ -f go.work ] || { go work init {{ modules }} && go work edit -go=1.25.0 -toolchain=none; }
+
+_each dirs +cmd:
+    for d in {{ dirs }}; do echo "== $d"; (cd "$d" && "${@:2}"); done
+
+_golangci cmd: _work
+    mkdir -p "$(go env GOMODCACHE)" "$(go env GOCACHE)" "$HOME/.cache/golangci-lint"
+    {{ golangci }} sh -c 'for d in {{ modules }}; do echo "== $d"; (cd "$d" && golangci-lint {{ cmd }} ./...); done'

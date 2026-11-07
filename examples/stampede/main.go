@@ -28,11 +28,9 @@ func main() {
 
 	var wg sync.WaitGroup
 	for range 1000 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			gashe.GetOrLoad(ctx, c, "report:today", policy, loadReport)
-		}()
+		})
 	}
 	wg.Wait() // loads is 1: a thousand calls share one load
 }

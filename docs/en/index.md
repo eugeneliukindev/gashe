@@ -56,7 +56,7 @@ tags, locks and limits are shared by every process.
 
     ---
 
-    The core needs only the Go standard library, from Go 1.23. One call, [`GetOrLoad`](reference/gashe.md#GetOrLoad), does the
+    The core needs only the Go standard library, from Go 1.25. One call, [`GetOrLoad`](reference/gashe.md#GetOrLoad), does the
     caching.
 
 </div>
