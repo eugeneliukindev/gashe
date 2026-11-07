@@ -26,9 +26,9 @@ cd examples && go run ./stale/while-revalidate
 | [fallback](fallback) | `Policy.Fallback`: one database query instead of a hundred while Redis is down, [without](fallback/without/main.go) and [with](fallback/with/main.go) |
 | [monitoring](monitoring/main.go) | `OnResult`: hit ratio and loader time |
 | [quickstart](quickstart/main.go) | the program of the [quickstart](../docs/en/quickstart.md): `GetOrLoad`, the loader once, then hits |
-| [lockfor](lockfor) | three processes over one Redis, [without](lockonmiss/without/main.go) and [with](lockonmiss/with/main.go) `Stampede.LockFor`, which loads a cold key once for all; needs Redis |
+| [lockfor](lockfor) | three processes over one Redis, [without](lockfor/without/main.go) and [with](lockfor/with/main.go) `Stampede.LockFor`, which loads a cold key once for all; needs Redis |
 
-Every example uses the memory backend except `nearcache` and `lockonmiss`, which need a Redis on
+Every example uses the memory backend except `nearcache` and `lockfor`, which need a Redis on
 `localhost:6379`, such as `docker run --rm -p 6379:6379 redis:7`.
 
 The examples are a separate module, so their dependencies never reach the gashe modules; its
