@@ -46,13 +46,7 @@ committed, and `govulncheck` and `go mod tidy` run without it, on the released v
 The examples and benchmarks modules are never published, so their `go.mod` replaces the gashe
 modules with the local copies and always builds against the code of the repository.
 
-To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
-date and merge it. Then, on `main`, run `just check-all` and draft a GitHub release of each module
-that changed: `just gh-release v0.7.0` takes its notes from `CHANGELOG.md`, `just gh-release
-backend/redis/v0.5.1` lists the pull requests since the last tag of the module. Read the drafts on
-GitHub and publish them, the root first when another module needs its new version: publishing
-creates the tag. A published release of the root deploys the site; a docs fix between releases
-deploys it with the release workflow run by hand.
+Maintainers release as [RELEASING.md](RELEASING.md) describes.
 
 Commit messages and pull request titles follow [Conventional Commits](https://www.conventionalcommits.org)
 (`fix:`, `feat:`, `docs:`, `build!:`): a pull request is squash-merged, so its title is the commit
