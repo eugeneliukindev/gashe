@@ -87,7 +87,6 @@ features = [
   "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
-  "navigation.instant.preview",
   "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
@@ -179,4 +178,3 @@ pymdownx.snippets.auto_append = ["docs/snippets/abbreviations.md"]
 pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
 pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
 abbr = {}
-zensical.extensions.preview.targets.include = ["*"]
