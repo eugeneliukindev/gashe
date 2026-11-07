@@ -12,9 +12,9 @@ The repository holds six modules. Run every command in each of them.
 | `benchmarks/` | benchmarks, `just bench`, never released | the gashe modules |
 
 The tests of `backend/redis` against a real server read its address from `GASHE_REDIS_ADDR` and are
-skipped without it, so `go test` needs no Docker. `just redis-test` starts a server of
+skipped without it, so `go test` needs no Docker. `just test-redis` starts a server of
 `backend/redis/docker-compose.yaml` in Docker and runs them against the local code of the repository
-through `go.work`; `just redis-all` runs them on Redis 7.0 and Valkey 8, and `just redis-cluster`
+through `go.work`; `just test-redis-all` runs them on Redis 7.0 and Valkey 8, and `just test-cluster`
 on a Redis Cluster of three masters, where keys of one call land on different nodes.
 `just redis-down` stops the servers.
 
@@ -23,14 +23,14 @@ The modules support Go 1.25 and newer: the two releases Go supports, and the one
 Tasks run with [just](https://just.systems) and go through every module; `just` lists them:
 
 ```bash
-just check-commit   # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
-just check-release  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site, gorelease
+just check   # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
+just check-all  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site, gorelease
 just golangci-fmt   # format with the formatters of .golangci.yml
-just prek-install   # install the git hooks of prek.toml, which run the linters on the changed files
+just pre-commit-install   # install the git hooks of prek.toml, which run the linters on the changed files
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
-just redis-all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
-just redis-cluster  # the Cluster tests on three masters, in Docker
-REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just redis-test redis -v  # any other server
+just test-redis-all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
+just test-cluster  # the Cluster tests on three masters, in Docker
+REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just test-redis redis -v  # any other server
 ```
 
 `govulncheck` and `gorelease` run through `go run`, golangci-lint and actionlint in Docker, and
@@ -48,16 +48,22 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
-date and merge it. Then, on `main`, run `just check-release`, tag each module that changed with
-`just commitizen-bump`, which takes the next version from its `cz.toml` and the commits since its
-last tag (`just commitizen-bump`, `just commitizen-bump backend/redis`), and push the tags with
-`git push origin <tag>...`. The root goes first when another module needs its new version.
-commitizen counts the commits of the whole repository, so check what it proposes; `just
-commitizen-bump compress/zstd PATCH` takes a chosen increment. A tag gets its GitHub release from
-CI.
+date and merge it. Then, on `main`, run `just check-all`, see the next tag of each module that
+changed with `just version-next` and `just version-next backend/redis`, and publish a GitHub
+release of each; GitHub creates the tag:
+
+```bash
+just release-notes 0.7.0 | gh release create v0.7.0 --target main --notes-file -
+gh release create backend/redis/v0.5.1 --target main --generate-notes
+```
+
+The root goes first when another module needs its new version. commitizen counts the commits of
+the whole repository, so check what it proposes; `just version-next compress/zstd PATCH` takes a
+chosen increment. A published release of the root deploys the site; a docs fix between releases
+deploys it with the release workflow run by hand.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
-`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just prek-install` installs checks them.
+`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just pre-commit-install` installs checks them.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
 see adds an entry under `Unreleased` in `CHANGELOG.md`.
@@ -72,11 +78,11 @@ and the recipes run them through `uv run --project docs`:
 
 ```bash
 uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
-just rumdl-lint        # lint the Markdown of the pages with rumdl; `just rumdl-fmt` fixes it
-just zensical-build    # build the site into docs/site/; a broken link or anchor fails it
-just zensical-serve    # preview it at http://localhost:8000/gashe/
-just gomarkdoc         # write docs/en/reference/ from the doc comments; the builds run it, it is not committed
-just lychee            # external links, with lychee in Docker; CI checks them weekly
+just rumdl-check        # lint the Markdown of the pages with rumdl; `just rumdl-fmt` fixes it
+just docs-build    # build the site into docs/site/; a broken link or anchor fails it
+just docs-serve    # preview it at http://localhost:8000/gashe/
+just docs-api         # write docs/en/reference/ from the doc comments; the builds run it, it is not committed
+just docs-links            # external links, with lychee in Docker; CI checks them weekly
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between
