@@ -18,9 +18,10 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
         with:
-          uv: true
+          just-version: 1.59.0
       - run: just rumdl-check
 
   docs-build:
@@ -29,10 +30,13 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-go@v7.0.0
         with:
-          go: stable
-          uv: true
+          go-version: stable
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
       - run: just docs-build
 
   # Not required: a site that is down is no reason to hold a merge.
@@ -49,7 +53,9 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: git diff --quiet "$BASE" HEAD -- '*.md' docs/lychee.toml || echo "docs=true" >> "$GITHUB_OUTPUT"
       - if: github.event_name != 'pull_request' || steps.changed.outputs.docs == 'true'
-        uses: ./.github/actions/setup
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
       - if: github.event_name != 'pull_request' || steps.changed.outputs.docs == 'true'
         run: just docs-links
         env:
