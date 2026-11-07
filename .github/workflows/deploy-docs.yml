@@ -3,6 +3,13 @@ name: deploy-docs
 on:
   push:
     branches: [main]
+    paths: # what the site is built from
+      - docs/**
+      - examples/**
+      - "**.go" # the API pages come from the doc comments
+      - CHANGELOG.md
+      - justfile
+      - .github/workflows/deploy-docs.yml
   workflow_dispatch:
 
 permissions:

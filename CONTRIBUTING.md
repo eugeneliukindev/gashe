@@ -60,7 +60,8 @@ Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API refere
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
 
 The documentation site is built with [Zensical](https://zensical.org) from `docs/en/` and
-published to GitHub Pages on every push to `main`. Its tools are Python packages listed in
+published to GitHub Pages on every push to `main` that changes what it is built from: `docs/`,
+`examples/`, the Go code and `CHANGELOG.md`. Its tools are Python packages listed in
 `docs/pyproject.toml` and pinned in `docs/uv.lock`; [uv](https://docs.astral.sh/uv/) installs them,
 and the recipes run them through `uv run --project docs`:
 
