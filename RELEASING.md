@@ -59,7 +59,7 @@ just gh-release backend/redis/v0.5.1  # notes: the pull requests since backend/r
 
 On GitHub, under Releases, read each draft and publish it, the root first. Publishing creates the
 tag on `main`. The release workflow then asks the Go proxy for the version, so pkg.go.dev lists
-it, and for the root it builds and deploys the site.
+it. The site needs nothing: every push to `main` deploys it, the release pull request included.
 
 ## 6. Check the result
 
@@ -69,13 +69,15 @@ gh run list --workflow release.yml --limit 4
 go list -m github.com/eugeneliukindev/gashe@v0.7.0
 ```
 
-The site shows the new version in the release notes.
+The site showed the new version in its release notes since the release pull request.
 
 ## When something goes wrong
 
-- **The site did not update.** Run the release workflow by hand: `gh workflow run release.yml
-  --ref main`. On a release, GitHub runs the workflow of the tagged commit, so a tag on a commit
-  with an older workflow runs that one.
+- **The site did not update.** Run the deploy-docs workflow again: `gh workflow run
+  deploy-docs.yml --ref main`.
+- **The release workflow did not run.** On a release, GitHub runs the workflow of the tagged
+  commit, so a tag on a commit with an older workflow runs that one; `just version-fetch <tag>`
+  does its work.
 - **The notes of a release are wrong.** Edit the release on GitHub; the tag stays.
 - **A released version is broken.** Release a new patch version. Never delete or move a tag: the
   Go proxy keeps every version it has seen, and the ruleset of release tags forbids it.

@@ -3,18 +3,12 @@ name: release
 on:
   release:
     types: [published]
-  workflow_dispatch: # publishes the site from the chosen ref, for a docs fix between releases
 
 permissions:
   contents: read
 
-concurrency:
-  group: pages
-  cancel-in-progress: false # a deployment that started finishes
-
 jobs:
   version-fetch:
-    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -29,35 +23,3 @@ jobs:
       - run: just version-fetch "$TAG"
         env:
           TAG: ${{ github.event.release.tag_name }}
-
-  zensical-build:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v7.0.0
-        with:
-          go-version: stable
-      - uses: astral-sh/setup-uv@v10.3.3
-      - uses: extractions/setup-just@v4.0.0
-        with:
-          just-version: 1.59.0
-      - run: just zensical-build
-      - uses: actions/upload-pages-artifact@v5.0.0
-        with:
-          path: docs/site
-
-  docs-deploy:
-    needs: zensical-build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/deploy-pages@v5.0.1
-        id: deployment
