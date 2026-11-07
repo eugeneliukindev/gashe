@@ -23,10 +23,10 @@ The modules support Go 1.25 and newer: the two releases Go supports, and the one
 Tasks run with [just](https://just.systems) and go through every module; `just` lists them:
 
 ```bash
-just check          # before a commit: golangci-lint, typos, actionlint, tombi, rumdl, tests with -race, govulncheck
-just release-check  # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, gorelease
+just check-commit   # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
+just check-release  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site, gorelease
 just golangci-fmt   # format with the formatters of .golangci.yml
-just hooks          # install the git hooks of prek.toml, which run the linters on the changed files
+just prek-install   # install the git hooks of prek.toml, which run the linters on the changed files
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
 just redis-all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
 just redis-cluster  # the Cluster tests on three masters, in Docker
@@ -48,7 +48,7 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
-date and merge it. Then, on `main`, run `just release-check`, tag each module that changed with
+date and merge it. Then, on `main`, run `just check-release`, tag each module that changed with
 `just commitizen-bump`, which takes the next version from its `cz.toml` and the commits since its
 last tag (`just commitizen-bump`, `just commitizen-bump backend/redis`), and push the tags with
 `git push origin <tag>...`. The root goes first when another module needs its new version.
@@ -57,7 +57,7 @@ commitizen-bump compress/zstd PATCH` takes a chosen increment. A tag gets its Gi
 CI.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
-`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just hooks` installs checks them.
+`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just prek-install` installs checks them.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
 see adds an entry under `Unreleased` in `CHANGELOG.md`.
