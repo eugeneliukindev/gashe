@@ -1,4 +1,3 @@
-# The documentation site: lint and build on every push to main and pull request, publish from main.
 name: docs
 
 on:
@@ -15,7 +14,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a deployment that started finishes
 
 jobs:
-  lint-docs:
+  rumdl-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -25,9 +24,9 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just docs-lint
+      - run: just rumdl-lint
 
-  build-docs:
+  zensical-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -40,19 +39,18 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just docs-reference-check
-      - run: just docs-build
+      - run: just zensical-build
       - uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: docs/site
 
   deploy-docs:
     if: github.ref == 'refs/heads/main'
-    needs: [lint-docs, build-docs]
+    needs: [rumdl-lint, zensical-build]
     runs-on: ubuntu-latest
     permissions:
-      pages: write # deploy-pages
-      id-token: write # deploy-pages
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

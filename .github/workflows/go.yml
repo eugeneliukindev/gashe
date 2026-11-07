@@ -1,4 +1,3 @@
-# The Go checks: the just recipes a contributor runs, on every push to main and pull request.
 name: go
 
 on:
@@ -15,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  golangci-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -24,19 +23,50 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just golangci-lint
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.3
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just lint
       - run: just typos
-      - run: just toml-lint
+
+  tombi-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just tombi-lint
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
       - run: just actionlint
 
   test-unit:
     strategy:
       matrix:
-        go: ["1.25.x", oldstable, stable] # the oldest Go the modules support, and the two Go supports
+        go: ["1.25.x", oldstable, stable]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -97,7 +127,7 @@ jobs:
           just-version: 1.59.0
       - run: just examples
 
-  check-vulns:
+  govulncheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -109,19 +139,19 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just vuln
+      - run: just govulncheck
 
-  check-api:
+  gorelease:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # the last tag of each module
+          fetch-depth: 0
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: stable
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just api
+      - run: just gorelease

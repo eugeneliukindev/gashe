@@ -1,5 +1,4 @@
-# Apart from the docs workflow, so a site that is down does not block publishing.
-name: links
+name: docs-links
 
 on:
   push:
@@ -12,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  check-links:
+  lychee:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1

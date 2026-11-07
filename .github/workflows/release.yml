@@ -1,4 +1,3 @@
-# Makes the GitHub release of every tag.
 name: release
 
 on:
@@ -6,7 +5,7 @@ on:
     tags: ["v[0-9]*", "backend/redis/v*", "codec/msgpack/v*", "compress/zstd/v*"]
 
 permissions:
-  contents: write # creates the release
+  contents: write
 
 jobs:
   release:
@@ -15,15 +14,15 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # the earlier tags, for the notes of a module
-      # A root tag: its section of CHANGELOG.md.
-      - if: startsWith(github.ref_name, 'v')
+          fetch-depth: 0
+      - name: Root module, notes from CHANGELOG.md
+        if: startsWith(github.ref_name, 'v')
         uses: taiki-e/create-gh-release-action@v1.12.0
         with:
           changelog: CHANGELOG.md
           token: ${{ secrets.GITHUB_TOKEN }}
-      # A module tag, such as backend/redis/v0.4.0: the pull requests since its last tag.
-      - if: ${{ !startsWith(github.ref_name, 'v') }}
+      - name: Submodule, notes from pull requests since its last tag
+        if: ${{ !startsWith(github.ref_name, 'v') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
