@@ -4,9 +4,7 @@ set positional-arguments
 modules := ". backend/redis codec/msgpack compress/zstd examples benchmarks"
 released := ". backend/redis codec/msgpack compress/zstd"
 
-# golang.org/x/exp has no tags, so gorelease is pinned to a commit.
 govulncheck := "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
-gorelease := "golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
 # gomarkdoc cannot detect the repository on a detached HEAD.
 gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0 --repository.url https://github.com/eugeneliukindev/gashe --repository.default-branch main"
 
@@ -148,10 +146,6 @@ docs-links:
 [group('deps')]
 tidy: (_each modules "env" "GOWORK=off" "go" "mod" "tidy")
 
-# Compare the API with the last tags, on a clean tree
-[group('release')]
-gorelease: (_each released "env" "GOWORK=off" "go" "run" gorelease)
-
 # Print the next tag of a module: just version-next backend/redis
 [group('release')]
 version-next module="." increment="USE_GIT_COMMITS":
@@ -173,7 +167,7 @@ check: lint test govulncheck
 
 # Run every check, before a release
 [group('all')]
-check-all: check test-examples test-redis-all test-cluster docs-build gorelease
+check-all: check test-examples test-redis-all test-cluster docs-build
 
 # Install the git hooks of prek.toml
 [group('hooks')]

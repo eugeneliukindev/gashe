@@ -24,7 +24,7 @@ Tasks run with [just](https://just.systems) and go through every module; `just` 
 
 ```bash
 just check   # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
-just check-all  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site, gorelease
+just check-all  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site
 just golangci-fmt   # format with the formatters of .golangci.yml
 just pre-commit-install   # install the git hooks of prek.toml, which run the linters on the changed files
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
@@ -33,16 +33,15 @@ just test-cluster  # the Cluster tests on three masters, in Docker
 REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just test-redis redis -v  # any other server
 ```
 
-`govulncheck` and `gorelease` run through `go run`, golangci-lint and actionlint in Docker, and
+`govulncheck` runs through `go run`, golangci-lint and actionlint in Docker, and
 typos, tombi and prek through uv, all at the versions pinned in the `justfile` and `docs/uv.lock`, so
 nothing has to be installed but Go, Docker, uv and just. `govulncheck` also reports the standard
-library of the Go that runs it: keep the local Go on its latest patch release. `just gorelease` compares
-the API with the last tag and needs a clean working tree.
+library of the Go that runs it: keep the local Go on its latest patch release.
 
 `backend/redis`, `codec/msgpack` and `compress/zstd` require a released version of the root module.
 To change the root and another module together, they need a workspace; `just` creates `go.work` on
 its first run, so every module builds against the local code of the others. `go.work` is not
-committed, and `govulncheck`, `gorelease` and `go mod tidy` run without it, on the released versions.
+committed, and `govulncheck` and `go mod tidy` run without it, on the released versions.
 
 The examples and benchmarks modules are never published, so their `go.mod` replaces the gashe
 modules with the local copies and always builds against the code of the repository.

@@ -116,15 +116,3 @@ jobs:
         with:
           go: stable
       - run: just govulncheck
-
-  gorelease:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: ./.github/actions/setup
-        with:
-          go: stable
-      - run: just gorelease
