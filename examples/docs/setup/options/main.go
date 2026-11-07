@@ -26,15 +26,15 @@ func main() {
 
 	c := gashe.New(backend, gashe.Options{
 		// every field may be left out
-		Prefix: "orders:", // (1)!
-		Hooks: gashe.Hooks{
-			OnResult: onResult, // (2)!
-			OnError:  onError,  // (3)!
-		},
-		CircuitBreaker:   cacheBreaker,          // stop calling a failing backend; zero means none
+		Prefix:           "orders:",             // (1)!
 		Codec:            gashe.JSON{},          // the format of values; nil means JSON
 		Compressor:       zstd.New(),            // shrinks what Codec produced; nil means none
-		LockPollInterval: 20 * time.Millisecond, // (4)!
+		CircuitBreaker:   cacheBreaker,          // stop calling a failing backend; zero means none
+		LockPollInterval: 20 * time.Millisecond, // (2)!
+		Hooks: gashe.Hooks{
+			OnResult: onResult, // (3)!
+			OnError:  onError,  // (4)!
+		},
 	})
 	defer c.Shutdown(context.Background())
 }

@@ -35,6 +35,6 @@ fields most services set first; every field is in [The policy](concepts/loading.
 ```
 
 1. A result is fresh for an hour.
-2. For 10 minutes after that, the stale result answers at once while one process reloads it.
-3. A cold key loads once for all processes, not once per process.
-4. Users live under `user:`, apart from other kinds of data.
+2. Users live under `user:`, apart from other kinds of data.
+3. For 10 minutes after that, the stale result answers at once while one process reloads it.
+4. A cold key loads once for all processes, not once per process.

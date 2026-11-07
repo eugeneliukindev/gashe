@@ -75,9 +75,9 @@ func TestGetOrLoadOverRedis(t *testing.T) {
 	c := newCache(t)
 	users := gashe.Policy[string]{
 		TTL:      gashe.TTL{For: time.Hour},
+		Stale:    gashe.Stale{WhileRevalidate: time.Hour, IfError: gashe.StaleIfError{For: time.Hour}},
 		Stampede: gashe.Stampede{LockFor: time.Second},
 		Tags:     []string{"users"},
-		Stale:    gashe.Stale{WhileRevalidate: time.Hour, IfError: gashe.StaleIfError{For: time.Hour}},
 	}
 	calls := 0
 	load := func(context.Context) (string, error) {

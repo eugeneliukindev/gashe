@@ -164,12 +164,12 @@ func TestStaleIfErrorDoesNotHideNotFound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		p := gashe.Policy[int]{
-			TTL: gashe.TTL{For: time.Minute},
-			Negative: gashe.Negative{
-				IsNotFound: func(err error) bool { return errors.Is(err, errNotFound) },
-				TTL:        time.Minute,
-			},
+			TTL:   gashe.TTL{For: time.Minute},
 			Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
+			Negative: gashe.Negative{
+				TTL:        time.Minute,
+				IsNotFound: func(err error) bool { return errors.Is(err, errNotFound) },
+			},
 		}
 		c := newCache(t)
 		_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (int, error) { return 1, nil })

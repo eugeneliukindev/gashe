@@ -15,8 +15,8 @@ func main() {
 	_ = gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
 			TTL:        30 * time.Second,
+			IsNotFound: func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
 		},
 	}
 }

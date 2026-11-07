@@ -26,8 +26,8 @@ func main() {
 			Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
 		},
 		Vary: httpcache.Vary{
-			Headers: []string{"Accept-Language"},
 			Query:   []string{"page", "sort"},
+			Headers: []string{"Accept-Language"},
 			Cookies: []string{"currency"},
 		},
 	})

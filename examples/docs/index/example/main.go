@@ -23,9 +23,9 @@ func main() {
 
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:      gashe.TTL{For: time.Hour},
+		Prefix:   "user:",
 		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute}, // (1)!
 		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // (2)!
-		Prefix:   "user:",
 	})
 
 	u, err := users.GetOrLoad(ctx, "42", func(ctx context.Context) (User, error) {

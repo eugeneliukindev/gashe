@@ -25,8 +25,8 @@ func main() {
 
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:      gashe.TTL{For: time.Hour},
-		Stampede: gashe.Stampede{LockFor: 5 * time.Second}, // one load for all processes
 		Prefix:   "user:",
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second}, // one load for all processes
 	})
 
 	queries := 0

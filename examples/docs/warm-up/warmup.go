@@ -13,8 +13,8 @@ type Product struct{ Price int64 }
 
 var productPolicy = gashe.Policy[Product]{
 	TTL:      gashe.TTL{For: time.Hour, Jitter: 0.2}, // warmed together, they must not expire together
-	Stampede: gashe.Stampede{MaxLoads: 4},            // at most 4 queries at once in this process
 	Prefix:   "product:",
+	Stampede: gashe.Stampede{MaxLoads: 4}, // at most 4 queries at once in this process
 }
 
 // warmUp loads the hot ids the cache does not have yet, 100 per query.

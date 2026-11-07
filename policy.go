@@ -99,13 +99,13 @@ type Stampede struct {
 
 // Negative caches loader errors that mean "there is no such data".
 type Negative struct {
+	// TTL is how long the negative answer is kept.
+	// Required with IsNotFound; Jitter applies.
+	TTL time.Duration
 	// IsNotFound picks the loader errors that mean "not found": answers, not failures. GetOrLoad returns
 	// ErrNotFound for them, wrapping the loader error when it loaded, and alone while the answer
 	// is cached; the stale result never hides them. nil turns negative caching off.
 	IsNotFound func(error) bool
-	// TTL is how long the negative answer is kept.
-	// Required with IsNotFound; Jitter applies.
-	TTL time.Duration
 }
 
 // Stale says when a stored result past its TTL, the stale result, still answers a call. Each way

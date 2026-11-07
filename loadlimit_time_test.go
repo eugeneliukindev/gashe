@@ -90,8 +90,8 @@ func TestMaxConcurrentLoadsAnswersAnOldResultAtOnce(t *testing.T) {
 		ctx := context.Background()
 		users := gashe.For(newCache(t), gashe.Policy[user]{
 			TTL:      gashe.TTL{For: time.Minute},
-			Stampede: gashe.Stampede{MaxLoads: 1},
 			Stale:    gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
+			Stampede: gashe.Stampede{MaxLoads: 1},
 		})
 		_, _ = users.GetOrLoad(ctx, "old", func(context.Context) (user, error) { return user{Name: "old"}, nil })
 		time.Sleep(2 * time.Minute) // "old" is past its TTL, within StaleIfError
@@ -123,8 +123,8 @@ func TestMaxConcurrentLoadsAnswersTheStaleResultOfAnyWindow(t *testing.T) {
 					newCache(t),
 					gashe.Policy[user]{
 						TTL:      gashe.TTL{For: time.Minute},
-						Stampede: gashe.Stampede{MaxLoads: 1},
 						Stale:    stale,
+						Stampede: gashe.Stampede{MaxLoads: 1},
 					},
 				)
 				_, _ = users.GetOrLoad(

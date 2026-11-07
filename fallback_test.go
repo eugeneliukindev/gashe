@@ -147,8 +147,8 @@ func TestFallbackKeepsNotFound(t *testing.T) {
 	users := gashe.For(c, gashe.Policy[user]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, errAPI) },
 			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errAPI) },
 		},
 		Fallback: fb,
 	})
