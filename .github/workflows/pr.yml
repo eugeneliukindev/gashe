@@ -1,0 +1,24 @@
+name: pr
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened] # edited: the title changed
+
+permissions:
+  contents: read
+
+jobs:
+  commitizen-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      # The title becomes the commit on main when the pull request is squash-merged.
+      - run: printf '%s\n' "$TITLE" > "$RUNNER_TEMP/title" && just commitizen-check "$RUNNER_TEMP/title"
+        env:
+          TITLE: ${{ github.event.pull_request.title }}

@@ -13,7 +13,7 @@ import (
 	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
 )
 
-// Tests against a real Redis are in integration_test.go and bus_test.go; `just redis-test` runs them.
+// Tests against a real Redis are in integration_test.go and bus_test.go.
 
 func TestUnreachableServer(t *testing.T) {
 	ctx := context.Background()

@@ -1,8 +1,6 @@
 name: go
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -40,7 +38,7 @@ jobs:
           just-version: 1.59.0
       - run: just typos
 
-  tombi-lint:
+  tombi-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -50,7 +48,7 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just tombi-lint
+      - run: just tombi-check
 
   actionlint:
     runs-on: ubuntu-latest
@@ -97,9 +95,9 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just redis-test ${{ matrix.server }}
+      - run: just test-redis ${{ matrix.server }}
 
-  test-redis-cluster:
+  test-cluster:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -111,7 +109,7 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just redis-cluster
+      - run: just test-cluster
 
   test-examples:
     runs-on: ubuntu-latest
@@ -125,7 +123,7 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just examples
+      - run: just test-examples
 
   govulncheck:
     runs-on: ubuntu-latest
@@ -140,18 +138,3 @@ jobs:
         with:
           just-version: 1.59.0
       - run: just govulncheck
-
-  gorelease:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-go@v7.0.0
-        with:
-          go-version: stable
-      - uses: extractions/setup-just@v4.0.0
-        with:
-          just-version: 1.59.0
-      - run: just gorelease

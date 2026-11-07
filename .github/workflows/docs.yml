@@ -1,8 +1,6 @@
 name: docs
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -11,10 +9,10 @@ permissions:
 
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a deployment that started finishes
+  cancel-in-progress: true
 
 jobs:
-  rumdl-lint:
+  rumdl-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -24,7 +22,7 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just rumdl-lint
+      - run: just rumdl-check
 
   zensical-build:
     runs-on: ubuntu-latest
@@ -40,20 +38,25 @@ jobs:
         with:
           just-version: 1.59.0
       - run: just zensical-build
-      - uses: actions/upload-pages-artifact@v5.0.0
-        with:
-          path: docs/site
 
-  deploy-docs:
-    if: github.ref == 'refs/heads/main'
-    needs: [rumdl-lint, zensical-build]
+  # Not required: a site that is down is no reason to hold a merge.
+  lychee:
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v5.0.1
-        id: deployment
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: changed
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: git diff --quiet "$BASE" HEAD -- '*.md' docs/lychee.toml || echo "docs=true" >> "$GITHUB_OUTPUT"
+      - if: github.event_name != 'pull_request' || steps.changed.outputs.docs == 'true'
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - if: github.event_name != 'pull_request' || steps.changed.outputs.docs == 'true'
+        run: just lychee
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub rate limits links checked without one

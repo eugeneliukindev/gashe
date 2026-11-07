@@ -16,11 +16,49 @@ hooks = [
 
 [[repos]]
 repo = "local"
-hooks = [
-  { id = "typos", name = "typos", language = "system", entry = "just typos", pass_filenames = false },
-  { id = "golangci-lint", name = "golangci-lint", language = "system", entry = "just golangci-lint", files = "(\\.go|go\\.mod|\\.golangci\\.yml)$", pass_filenames = false },
-  { id = "tombi-lint", name = "tombi", language = "system", entry = "just tombi-lint", files = "\\.toml$", pass_filenames = false },
-  { id = "rumdl-lint", name = "rumdl", language = "system", entry = "just rumdl-lint", files = "^docs/(en/.*\\.md|pyproject\\.toml)$", pass_filenames = false },
-  { id = "commitizen-check", name = "commitizen", language = "system", entry = "just commitizen-check", stages = ["commit-msg"] },
-  { id = "actionlint", name = "actionlint", language = "system", entry = "just actionlint", files = "^\\.github/workflows/", pass_filenames = false },
-]
+
+[[repos.hooks]]
+id = "typos"
+name = "typos"
+language = "system"
+entry = "just typos"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "golangci-lint"
+name = "golangci-lint"
+language = "system"
+entry = "just golangci-lint"
+files = '(\.go|go\.mod|\.golangci\.yml)$'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "tombi-check"
+name = "tombi"
+language = "system"
+entry = "just tombi-check"
+files = '\.toml$'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "rumdl-check"
+name = "rumdl"
+language = "system"
+entry = "just rumdl-check"
+files = '^docs/(en/.*\.md|pyproject\.toml)$'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "actionlint"
+name = "actionlint"
+language = "system"
+entry = "just actionlint"
+files = '^\.github/workflows/'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "commitizen-check"
+name = "commitizen"
+language = "system"
+entry = "just commitizen-check"
+stages = ["commit-msg"]
