@@ -1,116 +1,146 @@
-# Invalidation { #invalidation }
+# Tags { #invalidation }
 
-Make stored results go after the data changed.
+This page shows how to make stored results go after the data changed. In this section, we will go
+through [`Tags`](#tags), [`Cached.Set`](#cachedset),
+[`Reload`](#reload) and [`Cached.Delete`](#cacheddelete).
 
-## `Tags`: invalidate many entries with one write { #tags-invalidate-many-entries-with-one-write }
+## `Policy.Tags` { #tags }
 
-`c.InvalidateTags` makes every entry with the tag a miss; nothing is deleted, nothing is scanned.
+A user changes their name, and you must drop every entry that shows it. With `Tags`, one call of
+`Cache.InvalidateTags` makes every entry with the tag a miss; nothing is deleted, nothing is scanned.
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy), [`gashe.Cache.InvalidateTags`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.InvalidateTags)
+??? api "API documentation"
 
-```go
-profileCache := gashe.For(c, gashe.Policy[Profile]{TTL: time.Hour, Tags: []string{"user:42"}})
-orderCache := gashe.For(c, gashe.Policy[[]Order]{TTL: time.Hour, Tags: []string{"user:42", "orders"}})
+    [`gashe.Policy`](../reference/gashe.md#Policy)<br>
+    [`Cache.InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags)<br>
 
-_, err = db.ExecContext(ctx, "UPDATE users SET name = $1 WHERE id = 42", name)
-err = c.InvalidateTags(ctx, "user:42") // after the write, not before
+```go hl_lines="23 27 32"
+--8<-- "examples/docs/invalidation/tags/main.go"
 ```
+
+1. Invalidate after the write, not before.
+
+Each entry remembers the counter of its tag when it was stored: after the counter moves,
+the next read sees an older number and is a miss.
 
 ```mermaid
 sequenceDiagram
     participant P as Process
-    participant R as Redis
+    participant K as Backend
     participant DB as Database
-    P->>R: SET profile:42, with __tag:user:42 = 7
-    P->>R: InvalidateTags: INCRBY __tag:user:42 1
-    R-->>P: 8
-    P->>R: GET profile:42 and __tag:user:42
-    R-->>P: stored with 7, now 8: a miss
-    P->>DB: the loader runs
+    P->>K: store profile:42 with the tag user:42 at 7
+    P->>DB: UPDATE users
+    P->>K: InvalidateTags user:42: the tag goes to 8
+    P->>K: read profile:42
+    K-->>P: stored at 7, the tag is 8: a miss
+    P->>DB: the loader runs, the result is stored at 8
 ```
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `Tags` | `[]string` | nil: none | `InvalidateTags` of any of them makes the result a miss |
+| Field | Default | What it does |
+|---|---|---|
+| `Tags` | nil: none | `InvalidateTags` of any of them makes the result a miss |
 
-| What | How |
-|---|---|
-| Errors | `InvalidateTags` returns backend errors |
-| Redis | per tag, `SET __tag:<tag> <random> NX`, then `INCRBY __tag:<tag> 1` |
-| A missing counter | never created or evicted: reads and `InvalidateTags` create it at a random generation, so entries stored before an eviction stay invalid |
-| No race | a load reads the counters before it calls the loader, so a slow load cannot store its result over an invalidation |
-| Cost | one more key read per tag on a lookup |
-| Counters | never expire: tag per user, not per request |
+- Each tag costs one more key read on a lookup.
+- A slow load cannot store its result over an invalidation: it reads the counters before it calls
+  the loader.
+- `InvalidateTags` returns backend errors.
 
-- **Example:** [examples/tags](https://github.com/eugeneliukindev/gashe/blob/main/examples/tags/main.go)
+!!! tip
+    Counters never expire: tag per user, not per request.
 
-???+ example "examples/tags/main.go"
+!!! danger
+    Call `InvalidateTags` after the write to the database, not before: a load between the two reads
+    the old data and stores it under the new counter, and it is served until its TTL ends.
 
-    ```go hl_lines="23 38"
-    --8<-- "examples/tags/main.go"
-    ```
+??? note "Technical details"
 
-    Output:
+    - A counter never created, or evicted, is created at a random generation by reads and
+      `InvalidateTags`, so entries stored before an eviction stay invalid.
+    - In Redis: per tag, `SET __tag:<tag> <random> NX`, then `INCRBY __tag:<tag> 1`.
 
-    ```text
-    --8<-- "docs/snippets/examples/tags.txt"
-    ```
+```go hl_lines="22 30"
+--8<-- "examples/tags/main.go"
+```
+
+
+```text title="In the backend"
+--8<-- "docs/snippets/backend/tags.txt"
+```
 
 ---
 
-## `Cached.Set`: store a result you already have { #cachedset }
+## `Cached.Set` { #cachedset }
 
-Stores a result as a load would: with the TTL, `Jitter`, tags and shape of the policy.
+You just wrote the new value to the database, and a load would only read it back. With
+`Cached.Set`, you store the result you already have as a load would: with the TTL, `TTL.Jitter`, tags
+and shape of the policy.
 
-API: [`gashe.Cached.Set`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cached.Set)
+??? api "API documentation"
 
-```go
-_, err = db.ExecContext(ctx, "UPDATE users SET name = $1 WHERE id = 42", u.Name)
-err = userCache.Set(ctx, "42", u) // the next GetOrLoad is a hit with the new result
+    [`Cached.Set`](../reference/gashe.md#Cached[V].Set)<br>
+
+```go hl_lines="38"
+--8<-- "examples/docs/invalidation/set/main.go"
 ```
 
-| What | How |
-|---|---|
-| Errors | backend and codec errors |
-| Redis | `GET` of the tag counters, then `SET users:v2:42 ... EX or PX` |
-| A result the policy does not store | by `CacheIf` or a negative TTL: the entry is deleted (`UNLINK`) |
-| Race | a slower load that started before the `Set` can store its older result after it; only a tag avoids that |
+1. The next `GetOrLoad` is a hit with the new result.
+
+- A result the policy does not store, by `CacheIf`, deletes the entry.
+- It returns backend and codec errors.
+
+!!! warning
+    A slower load that started before the `Set` can store its older result after it; only a tag
+    avoids that.
+
+??? note "Technical details"
+
+    In Redis: `GET` of the tag counters, then `SET users:v2:42 ... EX or PX`; `UNLINK` for a result
+    the policy does not store.
 
 ---
 
-## `Reload`: load again after the data changed { #reload }
+## `gashe.Reload` { #reload }
 
-Calls the loader and stores the result, whatever is stored: use it after the data changed when you
-do not have the new result.
+The data changed, but you do not have the new result. `Reload` calls the loader and stores its
+result, whatever is stored.
 
-API: [`gashe.Cached.Reload`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cached.Reload), [`gashe.Reload`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Reload)
+??? api "API documentation"
 
-```go
-u, err := userCache.Reload(ctx, "42", loadUser)
-u, err = gashe.Reload(ctx, c, "42", userPolicy, loadUser)
+    [`Cached.Reload`](../reference/gashe.md#Cached[V].Reload)<br>
+    [`gashe.Reload`](../reference/gashe.md#Reload)<br>
+
+```go hl_lines="23 25"
+--8<-- "examples/docs/invalidation/reload/main.go"
 ```
 
-| What | How |
-|---|---|
-| Returns | the loaded result |
-| Errors | the loader error, a "not found" too; the stored entry stays. `ErrOverloaded`, `ErrInvalidOptions` as in `GetOrLoad` |
-| Redis | `GET` of the tag counters, then `SET ... EX or PX` |
+- On a loader error, a "not found" too, the error is returned and the stored entry stays.
+- It returns the loaded result; `ErrOverloaded` and `ErrInvalidOptions` come as in `GetOrLoad`.
+
+??? note "Technical details"
+
+    In Redis: `GET` of the tag counters, then `SET ... EX or PX`.
 
 ---
 
-## `Cached.Delete`: drop one entry { #cacheddelete }
+## `Cached.Delete` { #cacheddelete }
 
-Deletes the entry, with `Policy.Prefix`.
+One entry is wrong and must go. `Cached.Delete` deletes it, with `Policy.Prefix`, and the next
+`GetOrLoad` loads again.
 
-API: [`gashe.Cached.Delete`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cached.Delete)
+??? api "API documentation"
 
-```go
-existed, err := userCache.Delete(ctx, "42") // deletes users:v2:42
+    [`Cached.Delete`](../reference/gashe.md#Cached[V].Delete)<br>
+
+```go hl_lines="21"
+--8<-- "examples/docs/invalidation/delete/main.go"
 ```
 
-| What | How |
-|---|---|
-| Returns | whether the entry existed |
-| Errors | backend errors |
-| Redis | `UNLINK` |
-| Race | a load that started before the delete can store its older result after it; use a tag where that matters |
+- It returns whether the entry existed, and backend errors.
+
+!!! warning
+    A load that started before the delete can store its older result after it; use a tag where that
+    matters.
+
+??? note "Technical details"
+
+    In Redis: `UNLINK`.

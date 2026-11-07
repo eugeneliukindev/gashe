@@ -1,4 +1,0 @@
-$ ./lockonmiss & ./lockonmiss & ./lockonmiss
-got Ann, database queries: 0
-got Ann, database queries: 0
-got Ann, database queries: 1

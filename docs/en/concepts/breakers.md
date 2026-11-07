@@ -1,93 +1,105 @@
 # Circuit breakers { #breakers }
 
-Stop calling a failing dependency for a while.
+This page shows how you stop calling a failing dependency for a while. In this section, we will go
+through [`gashe.Guard`](#gasheguard) and [`Cache.CircuitBreaker`](#ccircuitbreaker).
 
-## `gashe.Guard`: stop calling a failing dependency { #gasheguard }
+!!! note
+    These breakers guard your calls. The breaker that guards the cache from its own backend is
+    `Options.CircuitBreaker`, on [Outages](outages.md#circuitbreaker).
 
-Runs one call through the circuit breaker of a key: a failing dependency is not called for a while.
+## `gashe.Guard` { #gasheguard }
 
-API: [`gashe.Guard`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Guard), [`gashe.CircuitBreakerOptions`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#CircuitBreakerOptions)
+A payment provider is down, and every call waits for its timeout and fails. With `gashe.Guard`, you
+run each call through the circuit breaker of a key: once too many calls fail, the dependency is not
+called for a while.
 
-```go
-payments := gashe.CircuitBreakerOptions{
-	FailurePercent: 50,
-	MinCalls:       10,
-	Window:         30 * time.Second,
-	OpenFor:        15 * time.Second,
-}
-receipt, err := gashe.Guard(c, "payments-api", payments, func() (Receipt, error) {
-	return provider.Charge(ctx, p)
-})
+??? api "API documentation"
+
+    [`gashe.Guard`](../reference/gashe.md#Guard)<br>
+    [`gashe.CircuitBreaker`](../reference/gashe.md#CircuitBreaker)<br>
+
+```go hl_lines="27-35"
+--8<-- "examples/docs/breakers/guard/main.go"
 ```
+
+With the options above, the provider fails, the breaker opens for 15 seconds, and then lets calls
+through again:
 
 ```mermaid
-stateDiagram-v2
-    state "half-open" as half
-    [*] --> closed
-    closed --> open: FailurePercent of at least MinCalls failed within Window
-    open --> half: after OpenFor, with HalfOpenCalls
-    open --> closed: after OpenFor, without HalfOpenCalls
-    half --> closed: a half-open call succeeds, or one Window passes
-    half --> open: a half-open call fails
+sequenceDiagram
+    participant A as App
+    participant G as Guard
+    participant P as Provider
+    A->>G: 10 calls within 30s
+    G->>P: they run, 5 fail
+    Note over G: 50% failed: open for 15s
+    A->>G: a call
+    G-->>A: ErrCircuitOpen, the provider is not called
+    Note over G: after 15s, half-open: one test call runs
+    A->>G: a test call
+    G->>P: it runs
+    Note over G: it succeeds: closed, it fails: open for 15s again
 ```
 
-| State | Calls |
-|---|---|
-| closed | run and are counted |
-| open | get `ErrCircuitOpen` and do not run |
-| half-open | `HalfOpenCalls` half-open calls run; the rest get `ErrCircuitOpen` |
+**Options** (`gashe.CircuitBreaker`):
 
-**Options** (`gashe.CircuitBreakerOptions`):
+| Field | Default | What it does |
+|---|---|---|
+| `FailurePercent` | required | opens once this share of calls failed |
+| `Window` | required | the recent span calls are counted over, in 10 parts |
+| `OpenFor` | required | how long the open breaker refuses calls |
+| `MinCalls` | 0: 1 | calls the window needs before it may open |
+| `HalfOpenCalls` | 0: it just closes | half-open calls after `OpenFor`: the first that succeeds closes the breaker, one that fails opens it again |
+| `IsFailure` | nil: any error | which errors count as failures |
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `FailurePercent` | `int`, 1 to 99 | required | opens once this share of calls failed |
-| `MinCalls` | `int` | 0: 1 | calls the window needs before it may open |
-| `Window` | `time.Duration` | required | the recent span calls are counted over, in 10 parts |
-| `OpenFor` | `time.Duration` | required | how long the open breaker refuses calls |
-| `HalfOpenCalls` | `int` | 0: it just closes | half-open calls after `OpenFor`: the first that succeeds closes the breaker, one that fails opens it again |
-| `IsFailure` | `func(error) bool` | nil: any error | which errors count as failures |
+- The breaker lives in process memory, and each process judges by its own calls.
+- While the breaker is closed, calls run and are counted. While it is open, calls get
+  `ErrCircuitOpen` and do not run. Half-open, `HalfOpenCalls` calls run, and the rest get
+  `ErrCircuitOpen`; when no test call reports within one `Window`, it closes.
+- It returns what the call returned, `ErrCircuitOpen` when the breaker is open and the call did not
+  run, or `ErrInvalidOptions` when the options cannot work.
 
-| What | How |
-|---|---|
-| Returns | what the call returned |
-| Errors | `ErrCircuitOpen` - the breaker is open, and the call did not run. `ErrInvalidOptions` - the options cannot work |
-| Redis | none: the breaker lives in process memory, and each process judges by its own calls |
-| Keys | the state of every key lives as long as the `Cache`: use a few fixed keys, not user ids |
+!!! tip
+    Use one key per dependency, with the same options everywhere, and count with `IsFailure` only
+    the errors that mean the dependency is down: a "not found" or a bad request of the caller is
+    not a failure.
 
-- **Example:** [examples/breaker](https://github.com/eugeneliukindev/gashe/blob/main/examples/breaker/main.go)
+!!! warning
+    The state of every key lives as long as the `Cache`: use a few fixed keys, not user ids.
 
-???+ example "examples/breaker/main.go"
+??? note "Technical details"
+    - `Window` is counted in 10 parts and slides by one part at a time; opening clears the counts.
+    - In Redis: nothing; checking the breaker costs no round trip.
 
-    ```go hl_lines="19 35 42 46"
-    --8<-- "examples/breaker/main.go"
-    ```
+```go hl_lines="28-29 33"
+--8<-- "examples/breaker/main.go"
+```
 
-    Output:
-
-    ```text
-    --8<-- "docs/snippets/examples/breaker.txt"
-    ```
 
 ---
 
-## `c.CircuitBreaker`: a breaker for a call you report yourself { #ccircuitbreaker }
+## `Cache.CircuitBreaker` { #ccircuitbreaker }
 
-Checks the breaker before a call you report yourself; use it when the call does not fit one
-function, otherwise use `Guard`.
+Sometimes the call does not fit one function. With `Cache.CircuitBreaker`, you check the breaker before
+the call and report its result yourself; otherwise use `Guard`.
 
-API: [`gashe.Cache.CircuitBreaker`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.CircuitBreaker), [`gashe.DoneFunc`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#DoneFunc)
+??? api "API documentation"
 
-```go
-done, err := c.CircuitBreaker("payments-api", payments)
-if err != nil {
-	return err
-}
-done(provider.Refund(ctx, p)) // once: nil or the error of the call
+    [`Cache.CircuitBreaker`](../reference/gashe.md#Cache.CircuitBreaker)<br>
+    [`gashe.DoneFunc`](../reference/gashe.md#DoneFunc)<br>
+
+```go hl_lines="27-31"
+--8<-- "examples/docs/breakers/check-and-report/main.go"
 ```
 
-| What | How |
-|---|---|
-| Returns | a `DoneFunc` to call once with the result |
-| Errors | as `gashe.Guard` |
-| Redis | none |
+1. Call `done` once, with nil or the error of the call.
+
+- It returns a `DoneFunc`: call it once with the result of the call.
+- Its errors are those of `gashe.Guard`.
+
+!!! warning
+    Call `done` on every path after the check, early returns included: a half-open test call that
+    never reports keeps the breaker half-open until one `Window` passes.
+
+??? note "Technical details"
+    - In Redis: nothing.

@@ -19,7 +19,7 @@ cd examples && go run ./stale/while-revalidate
 | [tags](tags/main.go) | `InvalidateTags` after a write |
 | [nearcache](nearcache/main.go) | two caches standing in for two processes, each with a near cache and a `Bus`; needs Redis |
 | [httpserver](httpserver/main.go) | `httpcache`: `Cache-Status`, `ETag`, `304` |
-| [httpapi](httpapi/main.go) | `httpcache` behind a real server, for curl: `Vary`, cookies, `Stale.IfError`, `503`; needs Redis |
+| [httpapi](httpapi) | `httpcache` behind real servers, for curl: `Vary` and cookies in [products](httpapi/products/main.go), `Stale.IfError` in [report](httpapi/report/main.go), `503` in [export](httpapi/export/main.go), `RateLimit` in [login](httpapi/login/main.go) |
 | [lock](lock/main.go) | `c.TryLock`: one worker runs a job |
 | [ratelimit](ratelimit/main.go) | fixed window with a ban, sliding window |
 | [breaker](breaker/main.go) | `CircuitBreaker` opening and closing |

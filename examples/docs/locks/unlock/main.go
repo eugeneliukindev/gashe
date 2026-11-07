@@ -1,0 +1,21 @@
+// Command unlock releases a lock that is still ours.
+package main
+
+import (
+	"context"
+	"time"
+
+	"github.com/eugeneliukindev/gashe"
+	"github.com/eugeneliukindev/gashe/backend/memory"
+)
+
+func main() {
+	ctx := context.Background()
+	mem := memory.New(memory.Options{})
+	defer mem.Close()
+	c := gashe.New(mem, gashe.Options{})
+
+	lease, _ := c.Lock(ctx, "job:reindex", time.Minute)
+
+	lease.Unlock(ctx) // nil: released
+}

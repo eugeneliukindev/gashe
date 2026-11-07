@@ -1,5 +1,4 @@
-# The documentation site of gashe. This file builds the English site; docs/build.py builds every
-# language from it, so `just docs` builds the whole site and `just docs-serve` previews one language.
+# The documentation site of gashe: `just docs` builds it, `just docs-serve` previews it.
 [project]
 site_name = "gashe"
 site_description = "Caching for Go services that run as many processes"
@@ -11,24 +10,30 @@ docs_dir = "docs/en"
 site_dir = "site"
 copyright = "MIT license"
 extra_css = ["assets/stylesheets/extra.css"]
+extra_javascript = ["assets/javascripts/mermaid-zoom.js", "assets/javascripts/go-roles.js"]
 nav = [
   { "Home" = "index.md" },
-  { "Quickstart" = "quickstart.md" },
-  { "Concepts" = [
-    "concepts/setup.md",
-    "concepts/backends.md",
-    "concepts/loading.md",
-    "concepts/stale.md",
-    "concepts/stampedes.md",
-    "concepts/outages.md",
-    "concepts/invalidation.md",
-    "concepts/negative.md",
-    "concepts/lists.md",
-    "concepts/httpcache.md",
-    "concepts/locks.md",
-    "concepts/rate-limits.md",
-    "concepts/breakers.md",
-    "concepts/values.md",
+  { "Learn" = [
+    "quickstart.md",
+    { "Basics" = [
+      "concepts/setup.md",
+      "concepts/backends.md",
+      "concepts/loading.md",
+      "concepts/invalidation.md",
+      "concepts/values.md",
+    ] },
+    { "Resilience" = [
+      "concepts/stale.md",
+      "concepts/stampedes.md",
+      "concepts/negative.md",
+      "concepts/outages.md",
+    ] },
+    { "Protection" = [
+      "concepts/locks.md",
+      "concepts/rate-limits.md",
+      "concepts/breakers.md",
+    ] },
+    { "HTTP" = ["concepts/httpcache.md"] },
   ] },
   { "Recipes" = [
     "recipes/index.md",
@@ -39,57 +44,89 @@ nav = [
     "recipes/changing-types.md",
     "recipes/warm-up.md",
   ] },
-  { "Errors" = "errors.md" },
-  { "Troubleshooting" = "troubleshooting.md" },
+  { "Errors" = ["errors.md", "troubleshooting.md"] },
   { "Reference" = [
     "reference.md",
+    { "Packages" = [
+      { "gashe" = "reference/gashe.md" },
+      { "memory" = "reference/memory.md" },
+      { "redis" = "reference/redis.md" },
+      { "nearcache" = "reference/nearcache.md" },
+      { "httpcache" = "reference/httpcache.md" },
+      { "backendtest" = "reference/backendtest.md" },
+      { "msgpack" = "reference/msgpack.md" },
+      { "raw" = "reference/raw.md" },
+      { "gzip" = "reference/gzip.md" },
+      { "zstd" = "reference/zstd.md" },
+    ] },
     { "Internals" = ["internals/storage.md", "internals/benchmarks.md"] },
   ] },
+  { "Resources" = ["help.md", "glossary.md"] },
   { "About" = [
-    "about/index.md",
     "about/alternatives.md",
     "about/version-policy.md",
     "about/migration.md",
-    "changelog.md",
-    "glossary.md",
   ] },
+  { "Release notes" = "changelog.md" },
 ]
 
 [project.theme]
+# A colored header in the colors of the logo: docs/en/assets/stylesheets/extra.css.
+variant = "classic"
 language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
+# The announcement bar on top of every page: docs/overrides/main.html.
+custom_dir = "docs/overrides"
 features = [
   "content.action.edit",
   "content.action.view",
   "content.code.annotate",
   "content.code.copy",
   "content.tabs.link",
+  "content.tooltips",
+  "announce.dismiss",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
+  "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
   "navigation.tabs",
+  "navigation.tabs.sticky",
   "navigation.top",
   "navigation.tracking",
   "search.highlight",
+  "search.share",
+  "search.suggest",
+  "toc.follow",
 ]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
 
 [[project.theme.palette]]
 media = "(prefers-color-scheme: light)"
 scheme = "default"
+primary = "custom"
+accent = "custom"
 toggle.icon = "lucide/sun"
 toggle.name = "Switch to dark mode"
 
 [[project.theme.palette]]
 media = "(prefers-color-scheme: dark)"
 scheme = "slate"
+primary = "custom"
+accent = "custom"
 toggle.icon = "lucide/moon"
-toggle.name = "Switch to light mode"
+toggle.name = "Switch to system preference"
 
-# Other languages: add a [[project.extra.alternate]] per language, English first, and
-# docs/<lang>/lang.toml; docs/build.py builds every language listed.
+# The version selector: mike keeps every version of the site in the gh-pages branch (dev for main,
+# 0.5 for a release); see .github/workflows/docs.yml.
+[project.extra.version]
+provider = "mike"
 
 # llms.txt and llms-full.txt: the pages as Markdown for AI assistants.
 [project.plugins.llmstxt]
@@ -98,7 +135,7 @@ markdown_description = "gashe is a caching library for Go services that run as m
 
 [project.plugins.llmstxt.sections]
 "Start" = [{ "index.md" = "what gashe is, a full example, the problems it solves" }]
-"Quickstart" = [{ "quickstart.md" = "install, a first cache, Redis, a policy to start with" }]
+"Quickstart" = [{ "quickstart.md" = "a first cache, Redis, a policy to start with" }]
 "Concepts" = ["concepts/*.md"]
 "Recipes" = ["recipes/*.md"]
 "Errors" = [
@@ -133,3 +170,10 @@ pymdownx.tabbed.alternate_style = true
 # Code and outputs come from the repository: examples/, docs/snippets/, CHANGELOG.md.
 pymdownx.snippets.base_path = ["."]
 pymdownx.snippets.check_paths = true
+pymdownx.snippets.dedent_subsections = true # a section inside a function starts at the left
+# Terms with a tooltip on every page.
+pymdownx.snippets.auto_append = ["docs/snippets/abbreviations.md"]
+abbr = {}
+# Icons in text, such as :lucide-zap:.
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"

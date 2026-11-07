@@ -1,0 +1,1 @@
+nothing: the entry ended with its TTL, 1s

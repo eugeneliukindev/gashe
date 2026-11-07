@@ -23,6 +23,17 @@ first. The full list of changes is the
 | a `Key` function that put the user into the key | `Vary.User`, which also lets requests with `Authorization` and `Cookie` headers in |
 | `backend/redis` on go-redis `v9.0.0` | go-redis `v9.18.0` or newer |
 | keys of yours that start with `_` | allowed now; keys of yours must not start with `__` |
+| `StaleWhileRevalidate: d` | `Stale: gashe.Stale{WhileRevalidate: d}` |
+| `StaleIfError: d`, `StaleIf: f` | `Stale: gashe.Stale{IfError: gashe.StaleIfError{For: d, IsFailure: f}}` |
+| `StaleIfSlow: s` (within `StaleIfError: d`) | `Stale: gashe.Stale{IfSlow: gashe.StaleIfSlow{For: d, After: s}}`: `For` is a window of its own now |
+| `TTL: d, Jitter: j` | `TTL: gashe.TTL{For: d, Jitter: j}` |
+| `LockOnMiss: d` | `Stampede: gashe.Stampede{LockFor: d}` |
+| `MaxConcurrentLoads: n` | `Stampede: gashe.Stampede{MaxLoads: n}` |
+| `Fallback: &gashe.FallbackOptions{...}` | `Fallback: gashe.Fallback{...}` |
+| `gashe.Options{OnResult: r, OnError: e}` | `gashe.Options{Hooks: gashe.Hooks{OnResult: r, OnError: e}}` |
+| `gashe.CircuitBreakerOptions{...}`, `Options{CircuitBreaker: &b}` | `gashe.CircuitBreaker{...}`, `Options{CircuitBreaker: b}` |
+| a TTL function that returns a negative TTL to leave a result out | `CacheIf` |
+| `Negative{If: f, Err: e, TTL: d}` | `Negative{IsNotFound: f, TTL: d}`; check a "not found" with `errors.Is(err, gashe.ErrNotFound)`: the loader error is wrapped in it when the loader ran, so `errors.Is(err, e)` holds then too |
 
 **Behaviour:**
 
@@ -31,6 +42,7 @@ first. The full list of changes is the
 | a request with a `Cookie` header | cached by `httpcache` | goes past the cache, unless `Vary.Cookies` lists the cookies the page depends on or `Vary.User` stores pages per user |
 | a response with a `Vary` header | never stored | stored when its `Vary` names only headers of `Options.Vary` |
 | a `Bus` fails to read a message | - | its near cache drops every copy, as after a reconnect |
+| concurrent calls for one key in a process | always share one load | share one only with `Stampede: gashe.Stampede{SingleFlight: true}`; set it to keep the old behavior |
 
 **Stored data:** the keys the cache keeps for itself start with `__` instead of `_`: `__tag:`,
 `__load:`, `__refresh:`, `__rate:sliding:`, `__rate:fixed:`.

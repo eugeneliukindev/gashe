@@ -1,2 +1,0 @@
-Redis up, 100 requests, database queries: 1
-Redis down, 100 requests, database queries: 1

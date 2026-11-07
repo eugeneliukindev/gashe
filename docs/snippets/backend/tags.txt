@@ -1,0 +1,2 @@
+profile:42     "Anna", stored with the new count of user:42   lives 1h: TTL
+__tag:user:42  the count of the tag, moved by InvalidateTags   never expires

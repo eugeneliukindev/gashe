@@ -1,5 +1,4 @@
-// Command negative asks three times for a user that does not exist. Without Negative the "not
-// found" is not cached, so every lookup reaches the database.
+// Command negative: without Negative every lookup of a missing user reaches the database.
 package main
 
 import (
@@ -15,11 +14,8 @@ type User struct{ Name string }
 
 func main() {
 	ctx := context.Background()
-	mem := memory.New(memory.Options{})
-	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{})
+	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 
-	// --8<-- [start:api]
 	policy := gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 	}
@@ -33,5 +29,4 @@ func main() {
 	gashe.GetOrLoad(ctx, c, "user:999", policy, loadUser) // sql.ErrNoRows: loaded again
 	gashe.GetOrLoad(ctx, c, "user:999", policy, loadUser) // sql.ErrNoRows: loaded again
 	// queries is 3
-	// --8<-- [end:api]
 }

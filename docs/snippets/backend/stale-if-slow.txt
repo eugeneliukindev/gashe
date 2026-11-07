@@ -1,0 +1,2 @@
+home            "v2"   kept 1m1s: TTL 1s + the longest window, 1m
+__refresh:home  held only while a slow load goes on

@@ -1,12 +1,15 @@
 # The tools of the documentation site, run with uv: `uv sync --project docs` installs them into
-# docs/.venv, and `just docs` runs docs/build.py through `uv run --project docs`. Go does not use it.
+# docs/.venv, and `just docs` runs Zensical through `uv run --project docs`. Go does not use it.
 [project]
 name = "gashe-docs"
 version = "0"
 description = "Builds the documentation site of gashe"
-requires-python = ">=3.11" # tomllib
+requires-python = ">=3.11"
 dependencies = [
-  "zensical==0.1.0", # the site generator; docs/build.py and docs/outputs.py need nothing else
+  "zensical==0.1.0", # the site generator
+  # Versions of the site (dev, 0.5, latest) in the gh-pages branch: the fork Zensical works with,
+  # not on PyPI, pinned to a commit.
+  "mike @ git+https://github.com/squidfunk/mike.git@2d4ad799442f4592db8ad53b179bfb33db8c69ac",
 ]
 
 [tool.uv]

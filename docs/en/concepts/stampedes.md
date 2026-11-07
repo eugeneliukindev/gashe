@@ -1,116 +1,176 @@
 # Stampedes { #stampedes }
 
-Keep many calls for cold or expiring keys from reaching the source at once.
+This page shows how to keep many calls for cold or expiring keys from reaching the source at once.
+In this section, we will go through the [`Stampede`](#stampede) field of `Policy` and its three
+parts: [`SingleFlight`](#singleflight), [`LockFor`](#lockonmiss) and
+[`MaxLoads`](#maxconcurrentloads), then [`TTL.Jitter`](#jitter).
 
-## `LockOnMiss`: one load for all processes { #lockonmiss-one-load-for-all-processes }
+## `Policy.Stampede` { #stampede }
 
-On a miss, one process loads and the others wait for its result.
+A cold key is asked for by a thousand calls in ten processes at once, and each would send its own
+query. With `Stampede`, you say how calls share loads: within the process, across processes, and
+how many run at once.
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy)
+??? api "API documentation"
 
-```go
-statsCache := gashe.For(c, gashe.Policy[Stats]{TTL: 10 * time.Minute, LockOnMiss: time.Minute})
+    [`gashe.Stampede`](../reference/gashe.md#Stampede)<br>
+
+```go hl_lines="22-26"
+--8<-- "examples/docs/stampedes/policy/main.go"
 ```
+
+| Field | Default | What it does |
+|---|---|---|
+| [`SingleFlight`](#singleflight) | false: off | concurrent calls for one key in this process share one lookup and one load |
+| [`LockFor`](#lockonmiss) | 0: off | one process loads a missing key under a lock held at most this long, the others wait for its result |
+| [`MaxLoads`](#maxconcurrentloads) | 0: no limit | how many loads of this kind of data run at once in this process |
+
+- They work together: with `SingleFlight`, the calls of a process share one load first, and only
+  that load takes the lock of `LockFor`; that load takes one slot of `MaxLoads`.
+- `GetOrLoadMany` takes one slot of `MaxLoads` per batch. It never shares a load, so
+  `SingleFlight` changes nothing there, and `LockFor` returns `ErrInvalidOptions`.
+
+---
+
+## `Stampede.SingleFlight` { #singleflight }
+
+A thousand requests ask for one key at once, and each would send its own query. With
+`Stampede.SingleFlight`, concurrent calls for one key and type in a process share one lookup and
+one load, and all of them get its result. Across processes, [`LockFor`](#lockonmiss) does the same.
+
+??? api "API documentation"
+
+    [`gashe.Stampede`](../reference/gashe.md#Stampede)<br>
+
+```go hl_lines="20"
+--8<-- "examples/stampede/main.go"
+```
+
+| Field | Default | What it does |
+|---|---|---|
+| `SingleFlight` | false: every call loads | concurrent calls for one key in this process share one lookup and one load |
+
+- The shared load runs with the `ctx` values of the call that started it, but not with its
+  deadline: it ends once the last waiting call has left.
+- A call that leaves by its `ctx` gets the `ctx` error; the others keep waiting.
+- `GetOrLoadMany` never shares a load.
+
+!!! warning
+    If the loader reads from `ctx` what the key does not name, such as the user of the request,
+    every caller gets the result loaded for the first one: put it in the key, or leave
+    `Stampede.SingleFlight` off.
+
+---
+
+## `Stampede.LockFor` { #lockonmiss }
+
+A key misses in ten processes at once, and each sends the same query to the database. With
+`Stampede.LockFor`, one process loads and the others wait for its result.
+
+??? api "API documentation"
+
+    [`gashe.Stampede`](../reference/gashe.md#Stampede)<br>
+
+```go hl_lines="22"
+--8<-- "examples/docs/stampedes/lock-for/main.go"
+```
+
+Three processes miss one key at once: A takes the lock and sends the one query, B and C
+wait, then read the result of A.
 
 ```mermaid
 sequenceDiagram
     participant A as Process A
-    participant R as Redis
-    participant B as Processes B, C
+    participant K as Backend
+    participant O as Processes B, C
     participant DB as Database
-    A->>R: SET __load:key NX
-    R-->>A: ok: A loads
-    B->>R: SET __load:key NX, every LockPollInterval
-    R-->>B: taken: wait
+    Note over A,DB: the key is missing, A, B and C ask at once
+    A->>K: take the load lock: free
+    O->>K: take the load lock: taken, retry every LockPollInterval
     A->>DB: one query
-    A->>R: SET key, release __load:key
-    B->>R: SET __load:key NX
-    R-->>B: ok
-    B->>R: GET key
-    R-->>B: hit: the result of A
+    A->>K: store the result, free the lock
+    O->>K: read the key: the result of A, no query
+    Note over O: if A stored nothing, B and C load themselves
 ```
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `LockOnMiss` | `time.Duration` | 0: off | the longest the load lock is held: one process loads a miss, the others wait |
+| Field | Default | What it does |
+|---|---|---|
+| `LockFor` | 0: off | the longest the load lock is held: one process loads a miss, the others wait |
 
-| What | How |
-|---|---|
-| Value | make it longer than the slowest load |
-| Waiting processes | retry `SET __load:<key> NX` every `LockPollInterval`, as long as their `ctx` allows; with the lock, they read the key once: a result or a "not found" the holder stored answers, otherwise they load |
-| The backend cannot lock | the call loads without the lock; the error goes to `OnError` |
-| Without it | every process loads; calls within one process share a load anyway |
+- Waiting processes try again every `LockPollInterval`, as long as their `ctx` allows. With the lock,
+  they read the key once: a result or a "not found" the holder stored answers, otherwise they load.
+- If the backend cannot lock, the call loads without the lock, and the error goes to `OnError`.
+- Without it, every process loads. Set `Stampede.SingleFlight` with it, so the calls of a process
+  share one load and only that load takes the lock.
 
-- **Example:** [examples/lockonmiss](https://github.com/eugeneliukindev/gashe/tree/main/examples/lockonmiss):
-  one process of a service, run three times at once; each has its own memory, only Redis is shared.
+!!! tip
+    Make `Stampede.LockFor` longer than your slowest load: once the lock runs out, the next process loads
+    as well.
 
-???+ example "examples/lockonmiss"
+??? note "Technical details"
 
-    === "With LockOnMiss"
+    In Redis, the load lock is `SET __load:<key> NX EX or PX`, tried again every
+    `LockPollInterval`.
 
-        ```go hl_lines="30"
-        --8<-- "examples/lockonmiss/with/main.go"
-        ```
+One process of a service, run three times at once; each has its own memory, only Redis is shared.
 
-        Output: one process loads, the other two read its result, 1 query in all.
+=== "With Stampede.LockFor"
 
-        ```text
-        --8<-- "docs/snippets/examples/lockonmiss-with.txt"
-        ```
+    ```go hl_lines="28"
+    --8<-- "examples/lockfor/with/main.go"
+    ```
 
-    === "Without LockOnMiss"
+    One process loads, the other two read its result, 1 query in all.
 
-        ```go
-        --8<-- "examples/lockonmiss/without/main.go"
-        ```
 
-        Output: every process loads, 3 queries in all.
+=== "Without Stampede.LockFor"
 
-        ```text
-        --8<-- "docs/snippets/examples/lockonmiss-without.txt"
-        ```
+    ```go
+    --8<-- "examples/lockfor/without/main.go"
+    ```
+
+    Every process loads, 3 queries in all.
+
 
 ---
 
-## `MaxConcurrentLoads`: protect the source from too many loads at once { #maxconcurrentloads-protect-the-source-from-too-many-loads-at-once }
+## `Stampede.MaxLoads` { #maxconcurrentloads }
 
-<span class="version-badge">Added in v0.5</span>
+!!! version "Added in v0.5"
+A thousand cold keys after a deploy, or with the cache down, send a thousand queries at once;
+sharing a load and `Fallback` only help with one key. With `Stampede.MaxLoads`, at most this many
+loads of one kind of data, its type and `Prefix`, run at once in one `*gashe.Cache`.
 
-At most this many loads of one kind of data, its type and `Prefix`, run at once in one
-`*gashe.Cache`.
+??? api "API documentation"
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy), [`gashe.ErrOverloaded`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#ErrOverloaded)
+    [`gashe.Policy`](../reference/gashe.md#Policy)<br>
+    [`gashe.ErrOverloaded`](../reference/gashe.md#variables)<br>
 
-```go hl_lines="4"
-userCache := gashe.For(c, gashe.Policy[User]{
-	TTL:                time.Hour,
-	StaleIfError:       time.Hour,
-	MaxConcurrentLoads: 20, // at most 20 loads of users at once in this process
-})
+```go hl_lines="23"
+--8<-- "examples/docs/stampedes/max-loads/main.go"
 ```
 
-```mermaid
-flowchart LR
-    A["GetOrLoad: a load is needed"] --> B{"a free slot?"}
-    B -- yes --> L[loader]
-    B -- no --> C{"a stale result within StaleIfError?"}
-    C -- yes --> O["the stale result at once"]
-    C -- no --> W["wait for a slot"]
-    W -- "a slot frees" --> L
-    W -- "ctx ends first" --> E[ErrOverloaded]
-```
+1. At most 20 loads of users at once in this process.
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `MaxConcurrentLoads` | `int` | 0: no limit | how many loads of this kind of data run at once in one `*gashe.Cache` |
+| Field | Default | What it does |
+|---|---|---|
+| `MaxLoads` | 0: no limit | how many loads of this kind of data run at once in one `*gashe.Cache` |
 
-| What | How |
-|---|---|
-| Why | a thousand cold keys after a deploy, or with the cache down, send a thousand queries at once; sharing a load and `Fallback` only help with one key |
-| A background reload over the limit | is skipped; the next call tries again |
-| Per `*gashe.Cache` | its slots live in the `Cache`: two caches in one process have separate limits, and 10 processes let up to 10 times as many loads reach the source |
-| One value per kind | the slots are made with the value of the first load of the kind; use the same value everywhere |
-| `httpcache` | answers a request held back with `503` |
+- The slots live in the `*gashe.Cache`: two caches in one process have separate limits, and 10
+  processes let up to 10 times as many loads reach the source.
+- With every slot taken, a call with a stale result within any window of `Stale` (`IfError.For` or
+  `IfSlow.For`, whatever `IsFailure` says) gets it at once; any other call waits for a slot, and gets
+  `ErrOverloaded` if its `ctx` ends first.
+- A background reload over the limit is skipped; the next call tries again.
+- `httpcache` answers a request held back with `503`.
+
+!!! tip
+    Set `Stale.IfError` or `Stale.IfSlow` with it, as above: a call over the limit then gets the stale
+    result at once instead of waiting for a slot.
+
+!!! warning
+    The slots are made with the value of the first load of the kind: a second policy for the same
+    type and `Prefix` with another value does not change the limit. Use the same value everywhere.
 
 !!! warning
     The wait has no limit but `ctx`: a call without a deadline waits until a slot frees, however long
@@ -120,21 +180,22 @@ flowchart LR
 
 ---
 
-## `Jitter`: spread expiry { #jitter-spread-expiry }
+## `TTL.Jitter` { #jitter }
 
-Spreads every TTL randomly by up to this share, so keys stored together do not expire together.
+Keys stored together expire together, and their loads hit the source at the same second. With
+`TTL.Jitter`, every TTL is spread randomly by up to this share.
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy)
+??? api "API documentation"
 
-```go
-gashe.Policy[Product]{TTL: time.Hour, Jitter: 0.2} // 48 to 72 minutes each
+    [`gashe.Policy`](../reference/gashe.md#Policy)<br>
+
+```go hl_lines="21"
+--8<-- "examples/docs/stampedes/jitter/main.go"
 ```
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `Jitter` | `float64`, 0 to less than 1 | 0: off | spreads every TTL randomly by up to this share: 0.1 is +-10% |
-
-| 1000 keys stored at once, TTL 1h | Expire | Loads |
+| Field | Default | What it does |
 |---|---|---|
-| `Jitter: 0` | all at 60m | 1000 in a second |
-| `Jitter: 0.2` | spread from 48m to 72m | about one every 1.5 seconds |
+| `TTL.Jitter` | 0: off | spreads every TTL randomly by up to this share: 0.1 is +-10% |
+
+- With 1000 keys stored at once and a TTL of 1h, `Jitter: 0` makes all of them expire at 60m: 1000
+  loads in a second. `Jitter: 0.2` spreads them from 48m to 72m: about one load every 1.5 seconds.

@@ -1,6 +1,0 @@
-Get greeting: hello
-Get missing: gashe.ErrNotFound
-GetMany greeting: found=true
-GetMany missing: found=false
-visits: 2
-greeting expires in 1m0s

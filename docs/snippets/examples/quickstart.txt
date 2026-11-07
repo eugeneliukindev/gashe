@@ -1,7 +1,0 @@
-user:42: miss
-  got Ann
-user:42: hit
-  got Ann
-user:42: hit
-  got Ann
-database queries: 1

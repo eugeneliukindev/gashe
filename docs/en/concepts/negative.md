@@ -1,77 +1,93 @@
-# Not found { #negative }
+# Negative caching { #negative }
 
-Cache "not found", so lookups of missing ids stop reaching the source.
+This page shows how you cache a "not found", so lookups of missing ids stop reaching the source.
+In this section, we will go through [`Negative`](#negative-cache-not-found).
 
-## `Negative`: cache "not found" { #negative-cache-not-found }
+## `Policy.Negative` { #negative-cache-not-found }
 
-Caches the loader error for `Negative.TTL` and returns `Negative.Err` meanwhile, so lookups of
-missing ids stop reaching the database.
+Clients ask again and again for an id that does not exist, and every lookup reaches the database.
+With `Negative`, you cache the "not found" for a short `Negative.TTL`, and every call gets
+`gashe.ErrNotFound` meanwhile, without a query.
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy), [`gashe.Negative`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Negative)
+??? api "API documentation"
 
-```go
-gashe.Policy[User]{TTL: time.Hour, Negative: gashe.Negative{
-	If:  func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
-	Err: sql.ErrNoRows,
-	TTL: 30 * time.Second,
-}}
+    [`gashe.Policy`](../reference/gashe.md#Policy)<br>
+    [`gashe.Negative`](../reference/gashe.md#Negative)<br>
+
+```go hl_lines="17-20"
+--8<-- "examples/docs/negative/policy/main.go"
 ```
 
-| Time | `GetOrLoad("999")` | `Result` |
-|---|---|---|
-| 0s | the loader: `sql.ErrNoRows`, `Negative.If` accepts it; "not found" stored for 30s | `miss` |
-| 5s | "not found" is stored: `sql.ErrNoRows`, no query | `negative-hit` |
-| 31s | expired: the loader runs again | `miss` |
+Here the first `GetOrLoad("999")` stores the "not found", lookups within 30 seconds get it without a
+query, and after that the loader runs again:
+
+```mermaid
+sequenceDiagram
+    participant A as GetOrLoad("999")
+    participant K as Backend
+    participant DB as Database
+    A->>K: read user 999: nothing stored
+    A->>DB: loader: one query
+    DB-->>A: sql.ErrNoRows
+    A->>K: store "not found" for 30s
+    Note over A: returns ErrNotFound wrapping sql.ErrNoRows
+    A->>K: t = 10s: read user 999
+    K-->>A: "not found": ErrNotFound, no query
+    Note over A,DB: after 30s the "not found" expires and the loader runs again
+```
 
 **Options** (`gashe.Negative`):
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `If` | `func(error) bool` | nil: off | which loader errors mean "not found" |
-| `Err` | `error` | required with `If` | the error returned while the "not found" is cached, such as `sql.ErrNoRows` |
-| `TTL` | `time.Duration` | required with `If` | how long the "not found" is cached; `Jitter` applies |
+| Field | Default | What it does |
+|---|---|---|
+| `IsNotFound` | nil: off | which loader errors mean "not found" |
+| `TTL` | required with `IsNotFound` | how long the "not found" is cached; `TTL.Jitter` applies |
 
-| What | How |
-|---|---|
-| With `StaleIfError` | a "not found" is an answer, not a failure: it is returned and stored, never hidden by the stale result |
-| With `LockOnMiss` | processes that waited for the lock take the "not found" the holder stored |
-| `Reload` | a "not found" leaves the stored result alone, as any error does |
-| Not supported | `GetOrLoadMany` returns `ErrInvalidOptions`; `httpcache.New` panics |
+- The call gets `gashe.ErrNotFound`: wrapping the loader error when it loaded, so
+  `errors.Is(err, sql.ErrNoRows)` holds too, and alone while the "not found" is cached. Check it
+  with `errors.Is(err, gashe.ErrNotFound)`.
+- `GetOrLoadMany` does not support it and returns `ErrInvalidOptions`; `httpcache.New` panics.
+- With `Stale.IfError`, a "not found" is an answer, never a failure, whatever `IsFailure` says: it is returned and stored, never
+  hidden by the stale result.
+- With `Stampede.LockFor`, processes that waited for the lock take the "not found" the holder stored.
+- `Reload` that gets a "not found" leaves the stored result alone, as any error does.
+
+!!! tip
+    Make `If` match only the error that means "does not exist": every other error stays a failure,
+    which `Stale.IfError` may answer with the stale result.
 
 !!! warning
     Data created meanwhile stays "not found" until `Negative.TTL` ends: keep it short, or delete the
     key when you create the data.
 
-- **Example:** [examples/negative](https://github.com/eugeneliukindev/gashe/tree/main/examples/negative)
+??? note "Technical details"
+    - The "not found" is an entry of its own with `neg` set, stored for `Negative.TTL`, see
+      [the GetOrLoad entry](../internals/storage.md#the-getorload-entry).
 
-???+ example "examples/negative: without and with Negative"
+Three lookups of a user that does not exist. The two versions differ in the highlighted lines.
 
-    Three lookups of a user that does not exist. The two versions differ in the highlighted lines.
+=== "With Negative"
 
-    === "With Negative"
+    ```go hl_lines="22-25"
+    --8<-- "examples/negative/with/main.go"
+    ```
 
-        ```go hl_lines="8 26 27 28 29 30"
+    The first lookup caches the "not found", the other two get it from the cache: 1 query.
 
-        --8<-- "examples/negative/with/main.go"
 
-        ```
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/negative-with.txt"
+    ```
 
-        Output: the first lookup caches the "not found", the other two get it from the cache: 1 query.
+=== "Without Negative"
 
-        ```text
-        --8<-- "docs/snippets/examples/negative-with.txt"
-        ```
+    ```go
+    --8<-- "examples/negative/without/main.go"
+    ```
 
-    === "Without Negative"
+    Every lookup reaches the database, 3 queries.
 
-        ```go
 
-        --8<-- "examples/negative/without/main.go"
-
-        ```
-
-        Output: every lookup reaches the database, 3 queries.
-
-        ```text
-        --8<-- "docs/snippets/examples/negative-without.txt"
-        ```
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/negative-without.txt"
+    ```

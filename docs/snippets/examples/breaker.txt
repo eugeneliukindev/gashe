@@ -1,8 +1,0 @@
-call 1: payment API timeout
-call 2: payment API timeout
-call 3: payment API timeout
-call 4: gashe: circuit open, answered at once
-call 5: gashe: circuit open, answered at once
-the API recovers; wait for OpenFor
-call 6: ok
-call 7: ok

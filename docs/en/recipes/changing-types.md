@@ -7,73 +7,19 @@ Deploy a new version of a cached type: what gashe does by itself, and when to ch
 `UserV1` stands for the type before the deploy, `UserV2` for it after; in your code both are `User`.
 
 ```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"time"
-
-	"github.com/eugeneliukindev/gashe"
-	"github.com/eugeneliukindev/gashe/backend/memory"
-)
-
-// UserV1 is the type before the deploy, UserV2 after it: one type in your code, two versions here.
-type UserV1 struct{ Name string }
-type UserV2 struct{ FullName string }
-
-func main() {
-	ctx := context.Background()
-	mem := memory.New(memory.Options{})
-	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{
-		OnResult: func(_ context.Context, o gashe.Outcome) { fmt.Println(" ", o.Key, o.Result) },
-	})
-
-	fmt.Println("old processes:")
-	v1 := gashe.For(c, gashe.Policy[UserV1]{TTL: time.Hour, Prefix: "users:"})
-	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
-	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
-
-	fmt.Println("new processes, same prefix:") // another shape: a miss, not an empty FullName
-	v2 := gashe.For(c, gashe.Policy[UserV2]{TTL: time.Hour, Prefix: "users:"})
-	u, _ := v2.GetOrLoad(ctx, "42", func(context.Context) (UserV2, error) { return UserV2{FullName: "Ann Lee"}, nil })
-	fmt.Printf("  %+v\n", u)
-
-	fmt.Println("an old process during the rollout:") // and back: each version overwrites the other
-	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
-
-	fmt.Println("new processes with users:v2: the versions keep apart:")
-	v2p := gashe.For(c, gashe.Policy[UserV2]{TTL: time.Hour, Prefix: "users:v2:"})
-	for range 2 {
-		_, _ = v2p.GetOrLoad(ctx, "42", func(context.Context) (UserV2, error) { return UserV2{FullName: "Ann Lee"}, nil })
-	}
-	_, _ = v1.GetOrLoad(ctx, "42", func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil })
-}
+--8<-- "examples/docs/changing-types/main.go"
 ```
 
-Output:
-
-```text
-old processes:
-  users:42 miss
-  users:42 hit
-new processes, same prefix:
-  users:42 miss
-  {FullName:Ann Lee}
-an old process during the rollout:
-  users:42 miss
-new processes with users:v2: the versions keep apart:
-  users:v2:42 miss
-  users:v2:42 hit
-  users:42 hit
-```
+1. `{FullName:Ann Lee}`, a miss: the stored `UserV1` has another shape, and is never read as an
+   empty `FullName`.
+2. An old process during the rollout: a miss again, now the stored entry is a `UserV2`: each
+   version overwrites the other.
 
 ## How it works { #how-it-works }
 
 Every entry keeps a hash of the form of its type: the exported field names, their `json` tags and
 types, nested types included. An entry of another form is a miss, never a value with empty fields;
-[type shapes](../concepts/loading.md#type-shapes-type-changes-after-a-deploy).
+[type shapes](../concepts/loading.md#type-shapes).
 
 | The change | What happens | Change `Prefix`? |
 |---|---|---|
@@ -99,5 +45,5 @@ Old and new processes run side by side for the length of the rollout, over the s
 
 | If you need | Do |
 |---|---|
-| to know the cost | one load per key read after the deploy, at most the hot keys of that type; without [`LockOnMiss`](../concepts/stampedes.md), once per process |
-| to protect the database | [`MaxConcurrentLoads`](../concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once) <span class="version-badge">Added in v0.5</span>, or fill the new prefix before the traffic: [warm up](warm-up.md#warm-up-the-cache) |
+| to know the cost | one load per key read after the deploy, at most the hot keys of that type; without [`Stampede.LockFor`](../concepts/stampedes.md), once per process |
+| to protect the database | [`Stampede.MaxLoads`](../concepts/stampedes.md#maxconcurrentloads) <span class="version-badge">Added in v0.5</span>, or fill the new prefix before the traffic: [warm up](warm-up.md#warm-up-the-cache) |

@@ -179,7 +179,7 @@ As of 2026-11-06. `yes`: built in; `partial`: see the note; `no`: not offered; `
 |---|---|
 | Every value goes through a codec, even in [`backend/memory`](../concepts/backends.md#backendmemory), so a hit costs a decode | Otter, Ristretto: Go values, no encoding |
 | `backend/memory` is a plain LRU bounded by entries and bytes | Otter, Ristretto: higher hit ratio |
-| Redis is the only shared backend it ships; others need [your own backend](../concepts/backends.md#your-own-backend) | gocache: many stores |
+| Redis is the only shared backend it ships; others need [your own backend](../concepts/backends.md#backendtestrun) | gocache: many stores |
 | Version `0.x`: a minor release may change the API, see the [version policy](version-policy.md) | the libraries above with a `v1` or later |
 | Its [known limits](../internals/storage.md#known-limits): the race of `Delete`, advisory locks, clocks in sync | - |
 
@@ -188,8 +188,8 @@ As of 2026-11-06. `yes`: built in; `partial`: see the note; `no`: not offered; `
 Choose gashe when most of these are true:
 
 - the service runs as several processes over Redis or Valkey;
-- a cold or expired key must load once for all processes: [`LockOnMiss`](../concepts/stampedes.md);
-- a stale result is better than an error while the source is slow or down: [stale data](../concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails);
-- one change drops many entries: [tags](../concepts/invalidation.md#tags-invalidate-many-entries-with-one-write);
+- a cold or expired key must load once for all processes: [`Stampede.LockFor`](../concepts/stampedes.md);
+- a stale result is better than an error while the source is slow or down: [stale data](../concepts/stale.md#staleiferror-staleifslow);
+- one change drops many entries: [tags](../concepts/invalidation.md#tags);
 - the same cache should also give [locks](../concepts/locks.md#locks), [rate limits](../concepts/rate-limits.md#cratelimit)
   and [circuit breakers](../concepts/breakers.md#gasheguard).

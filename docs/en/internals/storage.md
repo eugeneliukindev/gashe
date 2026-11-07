@@ -1,7 +1,9 @@
 # How gashe stores data { #how-gashe-stores-data }
 
-What lands in the backend, for reading Redis with `redis-cli` and for reasoning about edge cases; the
-format of entries is internal: read it, `DEL` it, never write it by hand.
+What lands in the backend, for reading Redis with `redis-cli` and for reasoning about edge cases.
+
+!!! warning
+    The format of entries is internal: read it, `DEL` it, never write it by hand.
 
 - [Keys](#keys), [TTL of an entry](#ttl-of-an-entry), [the GetOrLoad entry](#the-getorload-entry)
 - [What each strategy stores](#what-each-strategy-stores), [tags](#tags), [type shapes](#type-shapes)
@@ -9,12 +11,14 @@ format of entries is internal: read it, `DEL` it, never write it by hand.
 
 ## Keys { #keys }
 
-Parts are joined as they are, so put the separators into the prefixes yourself. Keys that start
-with `_` belong to the cache; keys of yours must not:
+Parts are joined as they are, so put the separators into the prefixes yourself.
+
+!!! warning
+    Keys that start with `__` belong to the cache: keys of yours must not.
 
 ```text
 <Options.Prefix><Policy.Prefix><key>             your keys; the basic API and locks have no Policy.Prefix
-<Options.Prefix>__load:<Policy.Prefix><key>       the LockOnMiss lock of an entry
+<Options.Prefix>__load:<Policy.Prefix><key>       the Stampede.LockFor lock of an entry
 <Options.Prefix>__refresh:<Policy.Prefix><key>    the reload lock of an entry
 <Options.Prefix>__tag:<tag>                       the counter of a tag, without Policy.Prefix
 <Options.Prefix>__rate:fixed:<key>                a FixedWindow counter
@@ -27,8 +31,8 @@ with `_` belong to the cache; keys of yours must not:
 
 | API | TTL |
 |---|---|
-| `GetOrLoad` | how long a result is fresh; the entry is kept for `TTL` plus the longer of `StaleWhileRevalidate` and `StaleIfError`, then the backend drops it |
-| `Negative` | a "not found" lives `Negative.TTL`, with `Jitter` |
+| `GetOrLoad` | how long a result is fresh; the entry is kept for `TTL` plus the longest of `Stale.WhileRevalidate`, `Stale.IfError.For` and `Stale.IfSlow.For`, then the backend drops it |
+| `Negative` | a "not found" lives `Negative.TTL`, with `TTL.Jitter` |
 | the basic API | 0 means "never expires", a negative one returns `ErrInvalidTTL` |
 
 ---
@@ -49,7 +53,7 @@ One string per key: an entry that the codec encodes, JSON by default.
 | tag counters | `g`, only with `Tags` | `G`, always | the counters of its tags when it was stored |
 | the shape | `t` | `T`, always | the shape of the type of `v`, see [type shapes](#type-shapes) |
 
-The basic API stores the value itself, without this wrapper, so `c.Get` cannot read a `GetOrLoad`
+The basic API stores the value itself, without this wrapper, so `Cache.Get` cannot read a `GetOrLoad`
 entry.
 
 ---
@@ -60,9 +64,9 @@ entry.
 |---|---|---|---|
 | `GetOrLoad` | `user:42` | the entry above | `TTL` + the longer window |
 | `Negative` | `user:999` | the entry above, with `neg` | `Negative.TTL` |
-| `StaleWhileRevalidate` reload | `__refresh:feed:u1` | the random id of the reloading process | `min(StaleWhileRevalidate, 1 minute)`, deleted once stored |
-| `StaleIfSlow` load | `__refresh:feed:u1` | the random id of the loading process | 1 minute, deleted once stored |
-| `LockOnMiss` | `__load:stats:2026-11-02` | the random id of the loading process | `LockOnMiss`, deleted once stored |
+| `Stale.WhileRevalidate` reload | `__refresh:feed:u1` | the random id of the reloading process | `min(Stale.WhileRevalidate, 1 minute)`, deleted once stored |
+| `Stale.IfSlow` load | `__refresh:feed:u1` | the random id of the loading process | 1 minute, deleted once stored |
+| `Stampede.LockFor` | `__load:stats:2026-11-02` | the random id of the loading process | `Stampede.LockFor`, deleted once stored |
 | `Lock`, `TryLock`, `WithLock` | `job:reindex` | the random id of the holder | the lock TTL |
 | `Tags` | `__tag:users` | a number | none |
 | `SlidingWindow` | `__rate:sliding:api-key:k1:29893701` | the calls of one span of `Per` | twice `Per` |

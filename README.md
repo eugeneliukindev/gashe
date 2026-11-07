@@ -21,8 +21,10 @@ own memory; over Redis, entries, tags, locks and limits are shared by every proc
 **[Documentation](https://eugeneliukindev.github.io/gashe/)**
 
 ```bash
-go get github.com/eugeneliukindev/gashe
-go get github.com/eugeneliukindev/gashe/backend/redis # Redis backend, on go-redis v9
+go get github.com/eugeneliukindev/gashe               # the core: memory backend, near cache, HTTP middleware
+go get github.com/eugeneliukindev/gashe/backend/redis # Redis and Valkey, on go-redis v9
+go get github.com/eugeneliukindev/gashe/codec/msgpack # values in MessagePack, on vmihailenco/msgpack
+go get github.com/eugeneliukindev/gashe/compress/zstd # values compressed with Zstandard, on klauspost/compress
 ```
 
 Go 1.23 or newer. The core module has no third-party dependencies and no global state.
@@ -56,10 +58,10 @@ func main() {
 	defer c.Shutdown(ctx)
 
 	users := gashe.For(c, gashe.Policy[User]{
-		TTL:                  time.Hour,
-		StaleWhileRevalidate: 10 * time.Minute, // answer at once, reload in the background
-		LockOnMiss:           5 * time.Second,  // a cold key loads once for all processes
-		Prefix:               "user:",
+		TTL:      gashe.TTL{For: time.Hour},
+		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute}, // answer at once, reload in the background
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // a cold key loads once for all processes
+		Prefix:   "user:",
 	})
 
 	u, err := users.GetOrLoad(ctx, "42", func(ctx context.Context) (User, error) {

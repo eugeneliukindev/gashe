@@ -1,0 +1,2 @@
+__rate:fixed:login:1.2.3.4             the calls of the window   lives 15m: the ban
+__rate:sliding:api-key:k1:<window>     the calls of the second   lives 2s

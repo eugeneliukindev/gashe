@@ -1,0 +1,10 @@
+<div class="lifecycle" role="img" aria-label="The life of an entry: fresh until TTL, then stale within the longest window of Stale, then gone">
+  <div class="lifecycle-bar">
+    <span class="lifecycle-fresh">fresh: hit, the loader does not run</span>
+    <span class="lifecycle-stale">stale: Stale.WhileRevalidate answers at once, Stale.IfError a failure, Stale.IfSlow a slow loader</span>
+    <span class="lifecycle-gone">gone: a miss, the loader runs</span>
+  </div>
+  <div class="lifecycle-axis">
+    <span>stored</span><span>TTL</span><span>TTL + the longest window of Stale</span>
+  </div>
+</div>

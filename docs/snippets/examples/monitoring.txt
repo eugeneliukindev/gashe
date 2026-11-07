@@ -1,2 +1,0 @@
-hits 3, misses 3, hit ratio 50%
-three loads, 150ms or more in the loader: true

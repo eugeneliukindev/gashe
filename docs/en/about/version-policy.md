@@ -56,7 +56,7 @@ The changes that broke an upgrade so far:
 | Kind | Example from the changelog |
 |---|---|
 | A name removed or renamed | 0.3.0: `Incr` becomes `IncrBy`; 0.4.0: `Gzip` is removed |
-| A signature or field type changed | 0.2.0: `Options.OnResult` receives an `Outcome`; 0.3.0: `Policy.TTL` takes several types |
+| A signature or field type changed | 0.2.0: `Options.Hooks.OnResult` receives an `Outcome`; 0.3.0: `Policy.TTL.For` takes several types |
 | A method of an interface you implement renamed | 0.3.0: a backend of yours renames `Incr` to `IncrBy` |
 | Keys or entries stored differently | 0.2.0 and 0.3.0: rate limit counters start from zero; 0.3.0: tagged entries reload once |
 | A higher required version of a dependency | unreleased: go-redis `v9.18.0` instead of `v9.0.0` |

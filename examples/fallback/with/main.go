@@ -1,5 +1,4 @@
-// Command fallback loses its Redis in the middle of the work. With Policy.Fallback the database
-// gets one load per key while Redis is down.
+// Command fallback: with Policy.Fallback a lost Redis costs one load per key.
 package main
 
 import (
@@ -11,55 +10,24 @@ import (
 	"github.com/eugeneliukindev/gashe/backend/memory"
 )
 
-// flaky stands for Redis: once down, every read fails, as with a lost connection.
-type flaky struct {
-	gashe.Backend
+// down stands for a lost Redis: every read fails, as with a lost connection.
+type down struct{ gashe.Backend }
 
-	down bool
-}
-
-func (f *flaky) Get(ctx context.Context, key string) ([]byte, error) {
-	if f.down {
-		return nil, errors.New("redis: connection refused")
-	}
-	return f.Backend.Get(ctx, key)
+func (down) Get(context.Context, string) ([]byte, error) {
+	return nil, errors.New("redis: connection refused")
 }
 
 func main() {
 	ctx := context.Background()
-	mem := memory.New(memory.Options{})
-	defer mem.Close()
-	// --8<-- [start:api]
-	redis := &flaky{Backend: mem} // Redis, which fails once down is set
-	c := gashe.New(redis, gashe.Options{})
-
-	spare := memory.New(memory.Options{MaxBytes: 32 << 20}) // process memory
-	defer spare.Close()
+	c := gashe.New(down{memory.New(memory.Options{})}, gashe.Options{})
 	policy := gashe.Policy[string]{
-		TTL: gashe.TTL{For: time.Hour},
-		Fallback: gashe.Fallback{
-			Backend: spare,
-			MaxTTL:  30 * time.Second,
-		}, // answer from spare while Redis fails
-		Prefix: "user:",
+		TTL:      gashe.TTL{For: time.Hour},
+		Fallback: gashe.Fallback{Backend: memory.New(memory.Options{}), MaxTTL: 30 * time.Second},
 	}
 
 	queries := 0
-	loadUser := func(context.Context) (string, error) {
-		queries++ // a query to the database
-		return "Ann", nil
+	for range 100 { // 100 requests while Redis is down
+		gashe.GetOrLoad(ctx, c, "user:42", policy, func(context.Context) (string, error) { queries++; return "Ann", nil })
 	}
-
-	for range 100 {
-		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
-	}
-	// Redis up: queries is 1
-
-	redis.down = true
-	queries = 0
-	for range 100 {
-		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
-	}
-	// Redis down: queries is 1 again, the result comes from Fallback
-	// --8<-- [end:api]
+	// queries is 1: the result comes from Fallback
 }

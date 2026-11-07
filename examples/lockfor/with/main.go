@@ -23,7 +23,6 @@ func main() {
 	defer client.Close()
 	c := gashe.New(gasheredis.New(client), gashe.Options{})
 
-	// --8<-- [start:api]
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:      gashe.TTL{For: time.Hour},
 		Stampede: gashe.Stampede{LockFor: 5 * time.Second}, // one load for all processes
@@ -38,5 +37,4 @@ func main() {
 	}
 
 	users.GetOrLoad(ctx, "42", loadUser) // Ann: one process queries
-	// --8<-- [end:api]
 }

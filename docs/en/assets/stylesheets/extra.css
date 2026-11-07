@@ -1,8 +1,77 @@
-/* Highlighted code lines are the lines a variant adds: green, as added lines in a diff. */
-:root > * {
-  --md-code-hl-color: rgba(46, 160, 67, 1);
-  --md-code-hl-color--light: rgba(46, 160, 67, 0.18);
+/* The blues of the Go brand, which our gopher wears too, with their warm opposite, orange, for
+   the accent. Every pair passes APCA, Lc 75 for text on the header and for links, 60 for the
+   accent. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #007d9c;
+  --md-primary-fg-color--light: #00add8;
+  --md-primary-fg-color--dark: #006682;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+  --md-typeset-a-color: #006682;
 }
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #c2410c;
+  --md-accent-fg-color--transparent: rgba(194, 65, 12, 0.1);
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-default-bg-color: #0f171b;
+  --md-default-fg-color: #e0e3e5;
+  --md-typeset-a-color: #8ddcee;
+}
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: #fdba74;
+  --md-accent-bg-color: #0f171b;
+}
+/* A line in the blue of the gopher under the header and its tabs. */
+.md-tabs { background-color: var(--md-primary-fg-color); box-shadow: inset 0 -3px 0 #00add8; }
+
+/* Highlighted code lines are the lines a variant adds: in the blue of the gopher. */
+:root > * {
+  --md-code-hl-color: rgba(0, 173, 216, 0.5);
+  --md-code-hl-color--light: rgba(0, 173, 216, 0.07);
+}
+
+/* Code reads best a little larger than the theme sets it: dark on light helps most with small
+   text. */
+.md-typeset code { font-size: 0.9em; }
+
+/* Code in the One Dark theme of Atom, with One Light, its pair, in the light scheme; comments
+   in the gray of One Dark Pro, which reads better. assets/javascripts/go-roles.js finds the
+   calls and the types, as Pygments marks every Go name the same. */
+[data-md-color-scheme="default"] {
+  --md-code-bg-color: #fafafa;
+  --md-code-fg-color: #383a42;
+  --gx-keyword: #a626a4;
+  --gx-fn: #4078f2;
+  --gx-string: #50a14f;
+  --gx-number: #986801;
+  --gx-type: #c18401;
+  --gx-operator: #0184bc;
+  --gx-comment: #a0a1a7;
+}
+[data-md-color-scheme="slate"] {
+  --md-code-bg-color: #282c34;
+  --md-code-fg-color: #abb2bf;
+  --gx-keyword: #c678dd;
+  --gx-fn: #61afef;
+  --gx-string: #98c379;
+  --gx-number: #d19a66;
+  --gx-type: #e5c07b;
+  --gx-operator: #56b6c2;
+  --gx-comment: #7f848e;
+}
+.md-typeset .highlight :is(.k, .kd, .kr, .kn, .kp) { color: var(--gx-keyword); }
+.md-typeset .highlight .nx[data-role="fn"] { color: var(--gx-fn); }
+.md-typeset .highlight :is(.s, .s1, .s2, .sb, .sc, .se) { color: var(--gx-string); }
+.md-typeset .highlight :is(.m, .mi, .mf, .mh, .mo, .kc) { color: var(--gx-number); }
+.md-typeset .highlight :is(.kt, .nx[data-role="type"]) { color: var(--gx-type); }
+.md-typeset .highlight .o { color: var(--gx-operator); }
+.md-typeset .highlight :is(.p, .nx) { color: var(--md-code-fg-color); }
+.md-typeset .highlight .nx[data-role="fn"] { color: var(--gx-fn); }
+.md-typeset .highlight .nx[data-role="type"] { color: var(--gx-type); }
+.md-typeset .highlight :is(.c, .c1, .cm) { color: var(--gx-comment); font-style: italic; }
 
 /* "Added in v0.5": API that is not in a release yet. */
 .version-badge {
@@ -14,4 +83,58 @@
   line-height: 1.6;
   color: var(--md-accent-bg-color);
   background-color: var(--md-accent-fg-color);
+}
+
+/* The life of an entry (docs/snippets/lifecycle.html): fresh, stale, gone on one time line. */
+.lifecycle { margin: 1em 0; font-size: 0.75rem; }
+.lifecycle-bar { display: grid; grid-template-columns: 4fr 3fr 2fr; border-radius: 0.3em; overflow: hidden; }
+.lifecycle-bar span { padding: 0.6em 0.8em; color: #fff; }
+.lifecycle-fresh { background: rgb(46, 160, 67); }
+.lifecycle-stale { background: rgb(191, 135, 0); }
+.lifecycle-gone { background: rgb(110, 118, 129); }
+.lifecycle-axis { display: grid; grid-template-columns: 4fr 3fr 2fr; color: var(--md-default-fg-color--light); }
+.lifecycle-axis span { padding: 0.3em 0 0; border-left: 2px solid var(--md-default-fg-color--lighter); padding-left: 0.4em; }
+
+/* Admonition types of the cards, as Pydantic has: "api" for the API documentation of a card,
+   "version" for the release a feature is added in. */
+:root {
+  --md-admonition-icon--api: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.7 15.9 4.8 12l3.9-3.9a1 1 0 0 0-1.4-1.4l-4.6 4.6a1 1 0 0 0 0 1.4l4.6 4.6a1 1 0 0 0 1.4-1.4zm6.6 0 3.9-3.9-3.9-3.9a1 1 0 0 1 1.4-1.4l4.6 4.6a1 1 0 0 1 0 1.4l-4.6 4.6a1 1 0 0 1-1.4-1.4z"/></svg>');
+  --md-admonition-icon--version: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.4 11.6 12.4 2.6A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .6.2 1.1.6 1.4l9 9a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg>');
+}
+.md-typeset .admonition.api,
+.md-typeset details.api { border-color: rgb(100, 116, 139); }
+.md-typeset .api > .admonition-title,
+.md-typeset .api > summary { background-color: rgba(100, 116, 139, 0.1); }
+.md-typeset .api > .admonition-title::before,
+.md-typeset .api > summary::before {
+  background-color: rgb(100, 116, 139);
+  -webkit-mask-image: var(--md-admonition-icon--api);
+  mask-image: var(--md-admonition-icon--api);
+}
+.md-typeset .admonition.version,
+.md-typeset details.version { border-color: rgb(46, 160, 67); }
+.md-typeset .version > .admonition-title,
+.md-typeset .version > summary { background-color: rgba(46, 160, 67, 0.1); }
+.md-typeset .version > .admonition-title::before,
+.md-typeset .version > summary::before {
+  background-color: rgb(46, 160, 67);
+  -webkit-mask-image: var(--md-admonition-icon--version);
+  mask-image: var(--md-admonition-icon--version);
+}
+/* A version block has a title only: one line, no empty body under it. */
+.md-typeset .admonition.version { padding-bottom: 0; }
+.md-typeset .version > .admonition-title { margin-bottom: 0; }
+
+/* Diagrams open scaled to the window on a click: assets/javascripts/mermaid-zoom.js. */
+.md-typeset .mermaid { cursor: zoom-in; }
+.md-typeset .mermaid.zoomed {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 10;
+  margin: 0;
+  transform: translate(-50%, -50%) scale(var(--zoom));
+  background: var(--md-default-bg-color);
+  box-shadow: 0 0 0 100vmax var(--md-default-bg-color); /* hides the page behind */
+  cursor: zoom-out;
 }

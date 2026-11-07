@@ -1,4 +1,0 @@
-load from the database
-got {ID:42 Name:Ann}
-got {ID:42 Name:Ann}
-got {ID:42 Name:Ann}

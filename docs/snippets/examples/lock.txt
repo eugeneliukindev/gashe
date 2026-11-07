@@ -1,3 +1,0 @@
-worker 1 took the lock: true
-worker 2 took the lock: false
-worker 3 took the lock: false

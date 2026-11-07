@@ -112,7 +112,7 @@ integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
 [group('test')]
 [working-directory('examples')]
 examples: work
-    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi|lockfor/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
+    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi/*|lockfor/*|docs/backends/redis-*|docs/rate-limits/login|docs/quickstart/redis|docs/index/example|docs/setup/shutdown|docs/metrics/prometheus|docs/postgres/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
 
 # Run the benchmarks; flags go to go test, such as `just bench -count=5`. docs/en/internals/benchmarks.md has the results.
 [group('test')]

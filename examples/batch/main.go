@@ -18,7 +18,6 @@ func main() {
 
 	db := map[string]string{"1": "Mug", "2": "Kettle", "3": "Spoon"}
 
-	// --8<-- [start:api]
 	policy := gashe.Policy[string]{
 		TTL:    gashe.TTL{For: time.Hour},
 		Prefix: "product:",
@@ -37,5 +36,4 @@ func main() {
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "2"}, policy, loadProducts)      // loads 1, 2
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, policy, loadProducts) // loads 3
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "99"}, policy, loadProducts)     // loads 99: absent
-	// --8<-- [end:api]
 }

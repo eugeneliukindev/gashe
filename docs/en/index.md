@@ -4,6 +4,11 @@
   <img src="assets/logo.svg" width="180" alt="The gashe gopher, its cheeks full of cached data">
 </p>
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg)](https://pkg.go.dev/github.com/eugeneliukindev/gashe)
+[![Release](https://img.shields.io/github/v/tag/eugeneliukindev/gashe?filter=v*&label=release)](https://github.com/eugeneliukindev/gashe/tags)
+[![Go version](https://img.shields.io/github/go-mod/go-version/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/LICENSE)
+
 Caching for Go services that run as many processes. One `*gashe.Cache` stores the results of
 expensive calls, keeps answering while a dependency is slow or down, and guards dependencies with
 locks, rate limits and circuit breakers. Each process has its own memory; over Redis, entries,
@@ -11,23 +16,63 @@ tags, locks and limits are shared by every process.
 
 ## Why gashe { #why-gashe }
 
-- **One load, not a thousand:** concurrent calls for a key share one load, and with `LockOnMiss`
-  one process loads for all of them.
-- **Answers while things fail:** the stale result while the database is slow or down, the memory
-  of the process while Redis is.
-- **Invalidation that works:** tags drop many entries with one write; a near cache drops its copy
-  when another process changes the key through gashe (`NewBus`), or when anyone changes it in Redis
-  (`NewTrackingBus`, a single Redis, not a Cluster).
-- **Guards for dependencies:** distributed locks, rate limits and circuit breakers on the same cache.
-- **HTTP responses:** a middleware that caches whole pages, with `ETag`, `304` and `Cache-Status`.
-- **No dependencies:** the core module needs nothing but the standard library, Go 1.23 or newer.
+<div class="grid cards" markdown>
+
+-   :lucide-zap: **Fast**
+
+    ---
+
+    Hits come from Redis, or from the memory of the process with a near cache: a hot key costs no
+    round trip.
+
+-   :lucide-shield-check: **Protects your database**
+
+    ---
+
+    A thousand requests for a cold key make one query, across every process. Past the TTL, the old
+    result answers at once while one process reloads it.
+
+-   :lucide-life-buoy: **Keeps answering**
+
+    ---
+
+    The database is slow or down: the last result answers. Redis is down: the memory of the
+    process does.
+
+-   :lucide-refresh-cw: **Invalidation that works**
+
+    ---
+
+    One write drops every entry of a tag, and every process sees it.
+
+-   :lucide-lock: **Guards in the same cache**
+
+    ---
+
+    Distributed locks, rate limits and circuit breakers, shared by every process: no second system
+    to run.
+
+-   :lucide-package: **No dependencies**
+
+    ---
+
+    The core needs only the Go standard library, from Go 1.23. One call, `GetOrLoad`, does the
+    caching.
+
+</div>
+
+How gashe compares with other Go caches: [Alternatives](about/alternatives.md).
 
 ## Install { #install }
 
 ```bash
-go get github.com/eugeneliukindev/gashe
-go get github.com/eugeneliukindev/gashe/backend/redis # Redis backend, on go-redis v9
+go get github.com/eugeneliukindev/gashe               # the core: memory backend, near cache, HTTP middleware
+go get github.com/eugeneliukindev/gashe/backend/redis # Redis and Valkey, on go-redis v9
+go get github.com/eugeneliukindev/gashe/codec/msgpack # values in MessagePack, on vmihailenco/msgpack
+go get github.com/eugeneliukindev/gashe/compress/zstd # values compressed with Zstandard, on klauspost/compress
 ```
+
+Only the core is needed; each other module is added for what you use, with its own dependency.
 
 Features marked <span class="version-badge">Added in v0.5</span> need v0.5, not released yet:
 v0.4.0 is the latest release. See the [changelog](changelog.md).
@@ -38,109 +83,37 @@ A user is loaded once, then answered from Redis by every process for an hour; af
 stale result answers at once while one process reloads it.
 
 ```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"time"
-
-	goredis "github.com/redis/go-redis/v9"
-
-	"github.com/eugeneliukindev/gashe"
-	gasheredis "github.com/eugeneliukindev/gashe/backend/redis"
-)
-
-type User struct {
-	ID   int
-	Name string
-}
-
-func main() {
-	ctx := context.Background()
-	client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
-	defer client.Close()
-	c := gashe.New(gasheredis.New(client), gashe.Options{Prefix: "app:"})
-	defer c.Shutdown(ctx)
-
-	users := gashe.For(c, gashe.Policy[User]{
-		TTL:                  time.Hour,
-		StaleWhileRevalidate: 10 * time.Minute, // answer at once, reload in the background
-		LockOnMiss:           5 * time.Second,  // a cold key loads once for all processes
-		Prefix:               "user:",
-	})
-
-	u, err := users.GetOrLoad(ctx, "42", func(ctx context.Context) (User, error) {
-		return User{ID: 42, Name: "Ann"}, nil // your database query
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(u.Name)
-}
+--8<-- "examples/docs/index/example/main.go"
 ```
 
-## Next { #next }
-
-<div class="grid cards" markdown>
-
--   **[Quickstart](quickstart.md)**
-
-    ---
-
-    From the install to a cache shared by every process, in four steps.
-
--   **[Recipes](recipes/index.md)**
-
-    ---
-
-    Ready code for Postgres, external APIs, metrics, tests and warm-up.
-
--   **[Concepts](concepts/setup.md)**
-
-    ---
-
-    One page per problem: stale data, stampedes, outages, invalidation, locks, limits.
-
--   **[Errors](errors.md)**
-
-    ---
-
-    Every error gashe returns, and when.
-
--   **[API reference](reference.md)**
-
-    ---
-
-    Every package on pkg.go.dev.
-
--   **[How it stores data](internals/storage.md)**
-
-    ---
-
-    Keys, entries and what each strategy keeps in Redis.
-
-</div>
+1. For 10 minutes after the TTL, the stale result answers at once while one process reloads it in the background.
+2. A cold key loads once for all processes.
 
 ## What it solves { #what-it-solves }
 
-| Problem | Known as | Solution |
-|---|---|---|
-| The same expensive call again and again | [Memoization](https://en.wikipedia.org/wiki/Memoization) | [`GetOrLoad`](concepts/loading.md#getorload) |
-| Every request waits when a popular key expires | [Cache stampede](https://en.wikipedia.org/wiki/Cache_stampede) on a hot key | [`StaleWhileRevalidate`](concepts/stale.md#stalewhilerevalidate-answer-old-data-while-reloading) |
-| The database is down, and the stored result has just expired | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation) | [`StaleIfError`](concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
-| The database is slow, and every request waits for it | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation) | [`StaleIfSlow`](concepts/stale.md#staleiferror-staleifslow-answer-old-data-while-the-source-fails) |
-| Lookups of missing ids always reach the database | [Negative cache](https://en.wikipedia.org/wiki/Negative_cache), cache penetration | [`Negative`](concepts/negative.md#negative-cache-not-found) |
-| A heavy page is rendered on every request | [Web cache](https://en.wikipedia.org/wiki/Web_cache) | [`httpcache`](concepts/httpcache.md#httpcache-whole-http-responses) |
-| One change makes many entries stale | [Cache invalidation](https://en.wikipedia.org/wiki/Cache_invalidation) | [`Tags`, `InvalidateTags`](concepts/invalidation.md#tags-invalidate-many-entries-with-one-write) |
-| A thousand different cold keys flood the database at once | [Bulkhead pattern](https://en.wikipedia.org/wiki/Bulkhead_pattern), load shedding | [`MaxConcurrentLoads`](concepts/stampedes.md#maxconcurrentloads-protect-the-source-from-too-many-loads-at-once) |
-| A cold key: a thousand identical queries | [Cache stampede](https://en.wikipedia.org/wiki/Cache_stampede), dog-piling | built in for one process, [`LockOnMiss`](concepts/stampedes.md) for all processes |
-| N+1 queries on a list page | N+1 query problem | [`GetOrLoadMany`](concepts/lists.md#getorloadmany) |
-| Keys stored together expire together | [Thundering herd](https://en.wikipedia.org/wiki/Thundering_herd_problem), cache avalanche | [`Jitter`](concepts/stampedes.md#jitter-spread-expiry) |
-| A hot key costs a round trip on every read | Hot key | [`nearcache`](concepts/backends.md#backendnearcache) |
-| Work must run once at a time across processes | [Mutual exclusion](https://en.wikipedia.org/wiki/Mutual_exclusion), [distributed lock](https://en.wikipedia.org/wiki/Distributed_lock_manager) | [`c.WithLock`, `c.TryLock`](concepts/locks.md#locks) |
-| A client calls far too often | [Rate limiting](https://en.wikipedia.org/wiki/Rate_limiting) | [`c.RateLimit`](concepts/rate-limits.md#cratelimit) |
-| A failing dependency drags the service down | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`gashe.Guard`, `c.CircuitBreaker`](concepts/breakers.md#gasheguard) |
-| The cache backend is down, and every request goes to the database | [Graceful degradation](https://en.wikipedia.org/wiki/Graceful_degradation), gutter pool | [`Policy.Fallback`](concepts/outages.md#fallback-answer-from-memory-while-the-backend-is-down) |
-| The cache backend is down, and every request waits for its timeout | [Cascading failure](https://en.wikipedia.org/wiki/Cascading_failure) | [`Options.CircuitBreaker`](concepts/outages.md#circuitbreaker-keep-working-when-the-backend-is-down) |
-| A deploy changed a cached type | [Schema evolution](https://en.wikipedia.org/wiki/Schema_evolution) | built in: [shapes](concepts/loading.md#type-shapes-type-changes-after-a-deploy) |
+**Basics**
+
+- The same expensive call again and again: [Loading](concepts/loading.md#getorload)
+- N+1 queries on a list page: [Loading](concepts/loading.md#getorloadmany)
+- One change makes many entries stale: [Tags](concepts/invalidation.md#tags)
+- A hot key costs a round trip on every read: [Backends](concepts/backends.md#backendnearcache)
+- A deploy changed a cached type: [Loading](concepts/loading.md#type-shapes)
+
+**Resilience**
+
+- Every request waits when a popular key expires: [Stale data](concepts/stale.md#stalewhilerevalidate)
+- The database is slow or down: [Stale data](concepts/stale.md#staleiferror-staleifslow)
+- A cold key sends a thousand identical queries (cache stampede): [Stampedes](concepts/stampedes.md)
+- Keys stored together expire together (thundering herd): [Stampedes](concepts/stampedes.md#jitter)
+- Lookups of missing ids always reach the database (cache penetration): [Negative caching](concepts/negative.md)
+- The cache backend is down: [Outages](concepts/outages.md)
+
+**Protection**
+
+- A job must run once at a time across processes: [Locks](concepts/locks.md)
+- A client calls far too often: [Rate limiting](concepts/rate-limits.md)
+- A failing dependency drags the service down (cascading failure): [Circuit breakers](concepts/breakers.md)
+
+**HTTP**
+
+- A heavy page is rendered on every request: [HTTP caching](concepts/httpcache.md)

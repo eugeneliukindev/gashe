@@ -1,166 +1,37 @@
-# Values, keys and counters { #values-keys-and-counters }
+# Values and counters { #values-keys-and-counters }
 
-Store and read plain values by key, walk keys by pattern and keep counters, without a `Policy`.
+This page shows how you store and read plain values by key, walk keys by pattern and keep
+counters, without a `Policy`. In this section, we will go through [values by key](#values-by-key)
+and [keys and counters](#keys-and-counters).
 
 ## Values by key { #values-by-key }
 
-The basic API: plain values, a TTL in every call, no `Policy`. It does not read entries of
-`GetOrLoad`: keep one key on one side.
+The basic API takes plain values and a TTL in every call, with no `Policy`.
 
-### `c.Set`: store a value { #cset }
+!!! warning
+    It does not read entries of `GetOrLoad`: keep one key on one side.
 
-Stores the value, replacing the entry and its TTL.
-
-API: [`gashe.Cache.Set`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Set)
-
-```go
-err := c.Set(ctx, "key", v, time.Hour) // ttl 0 = no expiry
+```go hl_lines="18 21"
+--8<-- "examples/basic/main.go"
 ```
 
-| What | How |
+| Method | What it does |
 |---|---|
-| Errors | `ErrInvalidTTL` - the TTL is negative; codec and backend errors, such as `memory.ErrTooLarge` |
-| Redis | `SET`, with `EX` or `PX` for a TTL |
+| [`Cache.Set`](../reference/gashe.md#Cache.Set) | stores a value with a TTL, replacing the entry and its TTL |
+| [`Cache.SetIfAbsent`](../reference/gashe.md#Cache.SetIfAbsent) | stores only if the key has no entry, so the first of two processes wins; returns whether it stored |
+| [`Cache.SetIfPresent`](../reference/gashe.md#Cache.SetIfPresent) | stores only if the key has an entry, so an expired or deleted key does not come back |
+| [`Cache.SetMany`](../reference/gashe.md#Cache.SetMany) | stores many values with one TTL in one call |
+| [`Cache.Get`](../reference/gashe.md#Cache.Get) | decodes the stored value into `dst`: `ErrNotFound` on a miss |
+| [`Cache.GetMany`](../reference/gashe.md#Cache.GetMany) | reads many keys in one call: one `Value` per key, in order, not found for a missing key |
+| [`Cache.Delete`](../reference/gashe.md#Cache.Delete) | deletes the key as it is, without `Policy.Prefix`; returns whether it existed |
+| [`Cache.DeleteMany`](../reference/gashe.md#Cache.DeleteMany) | deletes many keys in one call; missing keys are fine |
 
-- **Example:** [examples/basic](https://github.com/eugeneliukindev/gashe/blob/main/examples/basic/main.go)
+- A TTL of 0 means no expiry; a negative TTL returns `ErrInvalidTTL`.
+- `ErrWrongType`: a Redis key that is not a string, such as a hash.
 
-???+ example "examples/basic/main.go"
-
-    ```go hl_lines="20 22"
-    --8<-- "examples/basic/main.go"
-    ```
-
-    Output:
-
-    ```text
-    --8<-- "docs/snippets/examples/basic.txt"
-    ```
-
----
-
-### `c.SetIfAbsent`: store only a new key { #csetifabsent }
-
-Stores the value only if the key has no entry.
-
-API: [`gashe.Cache.SetIfAbsent`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.SetIfAbsent)
-
-```go
-stored, err := c.SetIfAbsent(ctx, "key", v, time.Hour)
-```
-
-| What | How |
-|---|---|
-| Returns | whether it stored |
-| Errors | as `c.Set` |
-| Redis | `SET ... NX EX or PX`; `SETNX` without a TTL |
-
----
-
-### `c.SetIfPresent`: replace only an existing key { #csetifpresent }
-
-Stores the value only if the key has an entry.
-
-API: [`gashe.Cache.SetIfPresent`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.SetIfPresent)
-
-```go
-stored, err := c.SetIfPresent(ctx, "key", v, time.Hour)
-```
-
-| What | How |
-|---|---|
-| Returns | whether it stored |
-| Errors | as `c.Set` |
-| Redis | `SET ... XX`, with `EX` or `PX` for a TTL |
-
----
-
-### `c.SetMany`: store many values { #csetmany }
-
-Stores all values with one TTL.
-
-API: [`gashe.Cache.SetMany`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.SetMany)
-
-```go
-err := c.SetMany(ctx, map[string]any{"a": 1, "b": 2}, time.Hour)
-```
-
-| What | How |
-|---|---|
-| Errors | as `c.Set` |
-| Redis | `SET` per key in one pipeline |
-
----
-
-### `c.Get`: read a value { #cget }
-
-Decodes the stored value into `dst`.
-
-API: [`gashe.Cache.Get`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Get)
-
-```go
-err := c.Get(ctx, "key", &dst)
-```
-
-| What | How |
-|---|---|
-| Errors | `ErrNotFound` - a miss. `ErrWrongType` - a Redis key that is not a string, such as a hash. A decode error; backend errors |
-| Redis | `GET` |
-
----
-
-### `c.GetMany`: read many values { #cgetmany }
-
-Reads the keys in one call.
-
-API: [`gashe.Cache.GetMany`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.GetMany), [`gashe.Value`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Value)
-
-```go
-values, err := c.GetMany(ctx, "a", "b")
-if values[0].Found() {
-	err = values[0].Decode(&dst) // values[0].Key() is "a"
-}
-```
-
-| What | How |
-|---|---|
-| Returns | one `Value` per key, in order; a missing key, or a Redis key that is not a string, gives a value that is not found |
-| Errors | backend errors; `Decode` of a value not found returns `ErrNotFound` |
-| Redis | `GET` per key in one pipeline |
-
----
-
-### `c.Delete`: delete a key { #cdelete }
-
-Deletes the key as it is, without `Policy.Prefix`.
-
-API: [`gashe.Cache.Delete`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Delete)
-
-```go
-existed, err := c.Delete(ctx, "key")
-```
-
-| What | How |
-|---|---|
-| Returns | whether the key existed |
-| Errors | backend errors |
-| Redis | `UNLINK` |
-
----
-
-### `c.DeleteMany`: delete many keys { #cdeletemany }
-
-Deletes the keys; missing keys are fine.
-
-API: [`gashe.Cache.DeleteMany`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.DeleteMany)
-
-```go
-err := c.DeleteMany(ctx, "a", "b")
-```
-
-| What | How |
-|---|---|
-| Errors | backend errors |
-| Redis | `UNLINK` per key in one pipeline |
+!!! tip
+    To delete an entry of `GetOrLoad` under its `Policy.Prefix`, use
+    [`Cached.Delete`](invalidation.md#cacheddelete).
 
 ---
 
@@ -168,134 +39,54 @@ err := c.DeleteMany(ctx, "a", "b")
 
 Patterns are Redis globs: `*`, `?`, `[abc]`, `[^a]`, `[a-z]`, `\` to escape.
 
-### `c.Keys`: walk keys by pattern { #ckeys }
-
-Yields every key that matches the pattern.
-
-API: [`gashe.Cache.Keys`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Keys)
-
-```go
-for key, err := range c.Keys(ctx, "user:*") {
-	if err != nil {
-		return err
-	}
-	fmt.Println(key) // without Options.Prefix
-}
+```go hl_lines="24 30"
+--8<-- "examples/docs/values/keys-counters/main.go"
 ```
 
-| What | How |
+| Method | What it does |
 |---|---|
-| Errors | a failure is yielded once, and the scan stops |
-| Redis | `SCAN MATCH` on every Cluster master |
-| Large backends | walks the whole database and may yield a key twice; use tags |
+| [`Cache.Keys`](../reference/gashe.md#Cache.Keys) | walks every key that matches the pattern, without `Options.Prefix`; it may yield a key twice |
+| [`Cache.All`](../reference/gashe.md#Cache.All) | walks every live value whose key matches the pattern |
+| [`Cache.DeleteMatch`](../reference/gashe.md#Cache.DeleteMatch) | deletes every key that matches the pattern, never past `Options.Prefix` |
+| [`Cache.IncrBy`](../reference/gashe.md#Cache.IncrBy) | adds `by` to the integer under the key, created from 0, and returns the new value |
+| [`Cache.Exists`](../reference/gashe.md#Cache.Exists) | whether the key has a live entry |
+| [`Cache.Expire`](../reference/gashe.md#Cache.Expire) | gives the key a new TTL from now; returns whether it existed |
+| [`Cache.TTL`](../reference/gashe.md#Cache.TTL) | the time the key has left, `gashe.NoExpiry` without a TTL, `ErrNotFound` for a missing key |
 
----
+!!! warning
+    `Cache.Keys`, `Cache.All` and `Cache.DeleteMatch` walk the whole database: on large backends, use tags.
 
-### `c.All`: walk values by pattern { #call }
+The TTL of `Cache.IncrBy` applies only when the counter is created: with one hour, the counter lives one
+hour from its first call, however often it is raised.
 
-Yields every live value whose key matches the pattern.
-
-API: [`gashe.Cache.All`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.All), [`gashe.Value`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Value)
-
-```go
-for v, err := range c.All(ctx, "user:*") {
-	if err != nil {
-		return err
-	}
-	_ = v.Decode(&dst) // v.Key() is the key
-}
+```mermaid
+sequenceDiagram
+    participant A as App
+    participant C as Cache
+    A->>C: IncrBy 1, TTL 1h
+    C-->>A: 1, expires at t = 1h
+    A->>C: t = 30m: IncrBy 1, TTL 1h
+    C-->>A: 2, still expires at t = 1h
+    A->>C: t = 1h: IncrBy 1, TTL 1h
+    C-->>A: 1, created again, expires at t = 2h
 ```
 
-| What | How |
-|---|---|
-| Errors | as `c.Keys` |
-| Redis | `SCAN`, then `GET` of the found keys in pipelines of 100 |
+- `Cache.IncrBy` returns `ErrWrongType` when the value is not an integer, and an error on int64
+  overflow.
+- A failure of `Cache.Keys` or `Cache.All` is yielded once, and the scan stops.
 
----
-
-### `c.DeleteMatch`: delete keys by pattern { #cdeletematch }
-
-Deletes every key that matches the pattern, never past `Options.Prefix`.
-
-API: [`gashe.Cache.DeleteMatch`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.DeleteMatch)
-
-```go
-err := c.DeleteMatch(ctx, "user:*")
-```
-
-| What | How |
-|---|---|
-| Errors | backend errors |
-| Redis | `SCAN`, then `UNLINK` in pipelines of 100 |
-| Large backends | walks the whole database; use tags |
-
----
-
-### `c.IncrBy`: a counter { #cincrby }
-
-Adds `by` to the integer under the key; creates it from 0.
-
-API: [`gashe.Cache.IncrBy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.IncrBy)
-
-```go
-n, err := c.IncrBy(ctx, "visits", 1, time.Hour) // by may be negative
-```
-
-| What | How |
-|---|---|
-| Returns | the new value |
-| Errors | `ErrWrongType` - the value is not an integer. `ErrInvalidTTL` - the TTL is negative. An error on int64 overflow; backend errors |
-| Redis | `INCRBY`; with a TTL, `SET key 0 NX EX or PX` and `INCRBY` in one `MULTI` |
-| The TTL | applies only when the counter is created; later calls neither extend nor reset it |
-
----
-
-### `c.Exists`: check a key { #cexists }
-
-Reports whether the key has a live entry.
-
-API: [`gashe.Cache.Exists`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Exists)
-
-```go
-ok, err := c.Exists(ctx, "key")
-```
-
-| What | How |
-|---|---|
-| Errors | backend errors |
-| Redis | `EXISTS` |
-
----
-
-### `c.Expire`: a new TTL { #cexpire }
-
-Sets a new TTL from now.
-
-API: [`gashe.Cache.Expire`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.Expire)
-
-```go
-existed, err := c.Expire(ctx, "key", time.Minute)
-```
-
-| What | How |
-|---|---|
-| Returns | whether the key existed |
-| Errors | `ErrInvalidTTL` - the TTL is not positive; backend errors |
-| Redis | `PEXPIRE` |
-
----
-
-### `c.TTL`: the time a key has left { #cttl }
-
-Returns the time left; `gashe.NoExpiry` for a key without a TTL.
-
-API: [`gashe.Cache.TTL`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Cache.TTL)
-
-```go
-left, err := c.TTL(ctx, "key")
-```
-
-| What | How |
-|---|---|
-| Errors | `ErrNotFound` - the key is missing; backend errors |
-| Redis | `PTTL` |
+??? note "Technical details"
+    | Method | In Redis |
+    |---|---|
+    | `Cache.Set`, `Cache.SetMany` | `SET`, with `EX` or `PX` for a TTL; one pipeline for many |
+    | `Cache.SetIfAbsent` | `SET ... NX EX or PX`; `SETNX` without a TTL |
+    | `Cache.SetIfPresent` | `SET ... XX`, with `EX` or `PX` for a TTL |
+    | `Cache.Get`, `Cache.GetMany` | `GET`; one pipeline for many |
+    | `Cache.Delete`, `Cache.DeleteMany` | `UNLINK`; one pipeline for many |
+    | `Cache.Keys` | `SCAN MATCH` on every Cluster master |
+    | `Cache.All` | `SCAN`, then `GET` of the found keys in pipelines of 100 |
+    | `Cache.DeleteMatch` | `SCAN`, then `UNLINK` in pipelines of 100 |
+    | `Cache.IncrBy` | `INCRBY`; with a TTL, `SET key 0 NX EX or PX` and `INCRBY` in one `MULTI` |
+    | `Cache.Exists` | `EXISTS` |
+    | `Cache.Expire` | `PEXPIRE` |
+    | `Cache.TTL` | `PTTL` |

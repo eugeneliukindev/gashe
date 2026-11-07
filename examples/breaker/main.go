@@ -15,7 +15,6 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	// --8<-- [start:api]
 	payments := gashe.CircuitBreaker{
 		FailurePercent: 50,
 		MinCalls:       3,
@@ -37,5 +36,4 @@ func main() {
 
 	done, _ := c.CircuitBreaker("payments-api", payments) // a test call
 	done(nil)                                             // it succeeds: closed
-	// --8<-- [end:api]
 }

@@ -16,7 +16,6 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	// --8<-- [start:api]
 	// Worker 1 comes first and takes the lock for a minute.
 	lease, _, _ := c.TryLock(ctx, "job:daily-report", time.Minute) // ok: it runs
 
@@ -26,5 +25,4 @@ func main() {
 
 	lease.Extend(ctx, time.Minute) // long work keeps the lock
 	lease.Unlock(ctx)              // the report is done: the next run may take the lock
-	// --8<-- [end:api]
 }

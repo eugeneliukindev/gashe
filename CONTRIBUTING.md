@@ -64,16 +64,13 @@ and the recipes run them through `uv run --project docs`:
 uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
 just docs            # build the site into site/; a broken link or anchor fails it
 just docs-serve      # preview it at http://localhost:8000/gashe/
-just docs-output     # run the examples and curl, and refresh their outputs in docs/snippets/
 just docs-links      # external links, with lychee in Docker; CI checks them weekly
 ```
 
-The pages include the code of the examples from `examples/` and their outputs from
-`docs/snippets/` with `--8<--`, so those are never copied by hand. Recipes show their code inline:
-`just docs-check` compiles it, and every output must come from a real run. Headings carry fixed
-ids (`{ #id }`), so links keep working when a heading is reworded.
+The pages include the code of the examples from `examples/` with `--8<--`: the part between
+`// --8<-- [start:api]` and `// --8<-- [end:api]`, so a page shows the API, not the setup. An
+example prints nothing: a comment at each call says what it returns, checked against a real run.
+Responses of curl and what the backend holds are in `docs/snippets/`. Headings carry fixed ids
+(`{ #id }`), so links keep working when a heading is reworded.
 
-The documentation is in English only until the API settles. `docs/build.py` can build more
-languages: one `[[project.extra.alternate]]` per language in `zensical.toml` and a
-`docs/<lang>/lang.toml`; a page without a translation shows the English one with a notice, and
-`just docs-check` lists translations behind their English page.
+The documentation is in English only.

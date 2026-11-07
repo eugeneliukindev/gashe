@@ -1,212 +1,270 @@
 # Stale data { #stale }
 
-Answer the stale result while the source reloads, fails or is slow.
+This page shows how to answer a stale result while the source reloads, fails or is slow. In this
+section, we will go through the [`Stale`](#stale-options) field of `Policy` and its three windows:
+[`WhileRevalidate`](#stalewhilerevalidate), [`IfError`](#staleiferror-staleifslow) and
+[`IfSlow`](#stale-ifslow).
 
-## `StaleWhileRevalidate`: answer the stale result while reloading { #stalewhilerevalidate-answer-old-data-while-reloading }
+## `Policy.Stale` { #stale-options }
 
-For this long after `TTL`, every call gets the stale result at once, and one process reloads it in
-the background ([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-3)).
+A result has just expired, and the call has to wait for the source, or fail with it. With `Stale`,
+you say when a result past its `TTL`, the stale result, still answers: at once while it reloads,
+instead of a failing loader, or instead of a slow one. Each has its own window after `TTL`.
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy)
+--8<-- "docs/snippets/lifecycle.html"
 
-```go
-feedCache := gashe.For(c, gashe.Policy[[]Item]{TTL: 5 * time.Minute, StaleWhileRevalidate: 30 * time.Minute})
+??? api "API documentation"
+
+    [`gashe.Stale`](../reference/gashe.md#Stale)<br>
+    [`gashe.StaleIfError`](../reference/gashe.md#StaleIfError)<br>
+    [`gashe.StaleIfSlow`](../reference/gashe.md#StaleIfSlow)<br>
+
+```go hl_lines="24-35"
+--8<-- "examples/docs/stale/policy/main.go"
 ```
+
+| Field | Default | What it does |
+|---|---|---|
+| [`WhileRevalidate`](#stalewhilerevalidate) | 0: off | how long after `TTL` the stale result is answered at once while one process reloads it in the background |
+| [`IfError`](#staleiferror-staleifslow) | zero: off | how long after `TTL` the stale result answers a failing loader, and which errors are failures |
+| [`IfSlow`](#stale-ifslow) | zero: off | how long after `TTL` the stale result answers a slow loader, and how long a call waits for it |
+
+With the policy above, a call to a key goes through these windows, counted from when it was stored:
+
+| Time | The entry is | A call gets |
+|---|---|---|
+| up to `TTL`, 1 minute | fresh | the stored result, a `hit` |
+| up to `TTL + WhileRevalidate`, 11 minutes | stale | the stale result at once, `stale-while-revalidate`; one process reloads in the background. Checked first: within it, `IfError` and `IfSlow` do not apply |
+| up to `TTL + IfSlow.For`, 1 hour 1 minute | stale | the loader runs: slower than `IfSlow.After`, the stale result, `stale-if-slow`; a failure, the stale result, `stale-if-error` |
+| up to `TTL + IfError.For`, 6 hours 1 minute | stale | the loader runs and is waited for: a failure, the stale result, `stale-if-error` |
+| past the longest window | gone | a `miss`: the loader runs, and its error is returned |
+
+- The entry is kept for `TTL` plus the longest of `WhileRevalidate`, `IfError.For` and `IfSlow.For`.
+- `IfError` and `IfSlow` each work only within their own window: here, between 1 and 6 hours after
+  `TTL` a slow loader is waited for, and only its error is answered by the stale result.
+- `GetOrLoadMany` returns `ErrInvalidOptions` for a policy with `Stale`.
+
+!!! tip
+    Start with `IfError`: it is what keeps your pages up while the source is down. Add
+    `WhileRevalidate` for popular keys, and `IfSlow` when the source can hang.
+
+One key past its TTL, while the database is slow and while it is down. The comments say what each
+call returns; the versions differ in the lines highlighted.
+
+=== "WhileRevalidate"
+
+    ```go hl_lines="25"
+    --8<-- "examples/stale/while-revalidate/main.go"
+    ```
+
+    Past the TTL the stale result answers at once, also while the database is slow or down; the reload runs in the background.
+
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/stale-while-revalidate.txt"
+    ```
+
+=== "IfError"
+
+    ```go hl_lines="25"
+    --8<-- "examples/stale/if-error/main.go"
+    ```
+
+    Past the TTL a call waits for the slow loader, and the stale result answers its error.
+
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/stale-if-error.txt"
+    ```
+
+=== "IfSlow"
+
+    ```go hl_lines="25-28"
+    --8<-- "examples/stale/if-slow/main.go"
+    ```
+
+    Past the TTL the stale result answers a loader slower than 100ms, which goes on in the background, and a loader error.
+
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/stale-if-slow.txt"
+    ```
+
+=== "TTL only"
+
+    ```go
+    --8<-- "examples/stale/ttl-only/main.go"
+    ```
+
+    Past the TTL every call waits for the loader, and fails with it.
+
+    ```text title="In the backend"
+    --8<-- "docs/snippets/backend/stale-ttl-only.txt"
+    ```
+
+---
+
+## `Stale.WhileRevalidate` { #stalewhilerevalidate }
+
+A popular key expires, and every request waits for the loader. With `Stale.WhileRevalidate`, you
+answer the stale result at once while one process reloads it in the background
+([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-3)).
+
+??? api "API documentation"
+
+    [`gashe.Stale`](../reference/gashe.md#Stale)<br>
+
+```go hl_lines="24"
+--8<-- "examples/docs/stale/while-revalidate/main.go"
+```
+
+With the policy above, past 5 minutes every process answers the stale result at once, and only the
+one that takes the refresh lock reloads.
+
+| Time after the store | In the backend | A call gets |
+|---|---|---|
+| up to 5 minutes | the entry, fresh | `hit` |
+| 5 to 35 minutes | the same entry, stale; `__refresh:<key>` while one process reloads | the stale result at once, `stale-while-revalidate`; the reload stores a new entry, fresh for 5 minutes again |
+| past 35 minutes | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
 
 ```mermaid
 sequenceDiagram
-    participant A as Process A
-    participant R as Redis
-    participant B as Process B
-    A->>R: GET key: stale, A answers it
-    B->>R: GET key: stale, B answers it
-    A->>R: SET __refresh:key NX
-    R-->>A: ok: A reloads in the background
-    B->>R: SET __refresh:key NX
-    R-->>B: taken: no reload
-    A->>R: SET key: the new result
+    participant P as Process
+    participant K as Backend
+    participant DB as Database
+    Note over P,DB: t = 6 minutes: past TTL, within Stale.WhileRevalidate
+    P->>K: read the key
+    K-->>P: stale: answered at once
+    P->>K: take the refresh lock
+    Note over K: other processes find it taken and do not reload
+    P->>DB: reload in the background
+    P->>K: store: fresh for 5 minutes
 ```
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `StaleWhileRevalidate` | `time.Duration` | 0: off | how long after `TTL` the stale result is answered at once while one process reloads it in the background |
+| Field | Default | What it does |
+|---|---|---|
+| `WhileRevalidate` | 0: off | how long after `TTL` the stale result is answered at once while one process reloads it in the background |
 
-| What | How |
-|---|---|
-| Why | without it, every request for an expired popular key waits for the loader |
-| Redis | `SET __refresh:<key> NX EX or PX` for the reload, for `min(StaleWhileRevalidate, 1 minute)` |
-| The reload | runs after the request has ended, with the deadline `min(StaleWhileRevalidate, 1 minute)` |
-| `MaxConcurrentLoads` full | the reload is skipped; the next call tries again |
+- It is checked first: within it, the call never waits for the loader, so `IfError` and `IfSlow`
+  apply only past it.
+- The reload can run after the request has ended, with the deadline
+  `min(WhileRevalidate, 1 minute)`.
+- When `Stampede.MaxLoads` is full, the reload is skipped; the next call tries again.
+
+!!! tip
+    Make `WhileRevalidate` as long as old data is still fine to show: past `TTL` plus the longest
+    window, the entry is gone, and the next call waits for the loader.
 
 !!! warning
     Do not use an open transaction or other request-scoped resources in the loader: the reload
     outlives the request.
 
-- **Example:** [examples/stale](https://github.com/eugeneliukindev/gashe/tree/main/examples/stale)
+??? note "Technical details"
 
-???+ example "examples/stale: TTL only and each stale option"
-
-    One key past its TTL, while the database is slow and while it is down. The versions differ
-    in the lines highlighted.
-
-    === "StaleWhileRevalidate"
-
-        ```go hl_lines="28"
-
-        --8<-- "examples/stale/while-revalidate/main.go"
-
-        ```
-
-        Output: past the TTL the stale result answers at once, also while the database is slow or down; the reload runs in the background.
-
-        ```text
-        --8<-- "docs/snippets/examples/stale-while-revalidate.txt"
-        ```
-
-    === "StaleIfError"
-
-        ```go hl_lines="28"
-
-        --8<-- "examples/stale/if-error/main.go"
-
-        ```
-
-        Output: past the TTL a call waits for the slow loader, and the stale result answers its error.
-
-        ```text
-        --8<-- "docs/snippets/examples/stale-if-error.txt"
-        ```
-
-    === "StaleIfSlow"
-
-        ```go hl_lines="28 29"
-
-        --8<-- "examples/stale/if-slow/main.go"
-
-        ```
-
-        Output: past the TTL the stale result answers a loader slower than 100ms, which goes on in the background, and a loader error.
-
-        ```text
-        --8<-- "docs/snippets/examples/stale-if-slow.txt"
-        ```
-
-    === "TTL only"
-
-        ```go
-
-        --8<-- "examples/stale/ttl-only/main.go"
-
-        ```
-
-        Output: past the TTL every call waits for the loader, and fails with it.
-
-        ```text
-        --8<-- "docs/snippets/examples/stale-ttl-only.txt"
-        ```
+    In Redis, the refresh lock is `SET __refresh:<key> NX EX or PX`, held for
+    `min(WhileRevalidate, 1 minute)`.
 
 ---
 
-## `StaleIfError`, `StaleIfSlow`: answer the stale result while the source fails { #staleiferror-staleifslow-answer-old-data-while-the-source-fails }
+## `Stale.IfError` { #staleiferror-staleifslow }
 
-For `StaleIfError` after `TTL`, the stale result answers a failing or slow loader
+The source fails, and your users get errors. With `Stale.IfError`, the stale result answers a
+failing loader for `For` after `TTL`
 ([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-4)).
 
-API: [`gashe.Policy`](https://pkg.go.dev/github.com/eugeneliukindev/gashe#Policy)
+??? api "API documentation"
 
-```go
-rateCache := gashe.For(c, gashe.Policy[Rates]{
-	TTL:          time.Minute,
-	StaleIfError: 6 * time.Hour,
-	StaleIf:      func(err error) bool { return errors.Is(err, ErrAPIDown) }, // nil = any error
-	StaleIfSlow:  200 * time.Millisecond,                                     // needs StaleIfError
-})
+    [`gashe.StaleIfError`](../reference/gashe.md#StaleIfError)<br>
+
+```go hl_lines="25-30"
+--8<-- "examples/docs/stale/if-error/main.go"
 ```
 
-```mermaid
-flowchart LR
-    G[GetOrLoad] --> L[loader]
-    L -- "an error StaleIf accepts" --> E["the stale result, the error to OnError"]
-    L -- "slower than StaleIfSlow" --> S["the stale result now"]
-    S -. "the load goes on" .-> N["stores the new result"]
-    L -- "a result in time" --> R["the new result"]
-```
+| Field | Default | What it does |
+|---|---|---|
+| `For` | 0: off | how long after `TTL` the stale result answers a failure |
+| `IsFailure` | nil: any error | which loader errors are failures the stale result answers |
 
-| Field | Type | Default | What it does |
-|---|---|---|---|
-| `StaleIfError` | `time.Duration` | 0: off | how long after `TTL` the stale result answers a loader error |
-| `StaleIf` | `func(error) bool` | nil: any error | which loader errors `StaleIfError` covers |
-| `StaleIfSlow` | `time.Duration` | 0: wait for the loader | how long a call waits for the loader before the stale result answers; needs `StaleIfError` |
+With the policy above:
 
-| What | How |
-|---|---|
-| A "not found" | an error `Negative.If` accepts is an answer, not a failure: it is returned and stored, never hidden by the stale result |
-| `StaleIfSlow`, the slow load | holds the `__refresh:<key>` lock and goes on in the background with a 1 minute deadline; meanwhile other calls get the stale result at once |
-| `MaxConcurrentLoads` full | the call does not wait for a slot: its `ErrOverloaded` is answered by the stale result, unless `StaleIf` rejects it |
+| Time after the store | In the backend | A call gets |
+|---|---|---|
+| up to 1 minute | the entry, fresh | `hit` |
+| 1 minute to 6 hours 1 minute | the same entry, stale | the loader runs and is waited for: its result, `miss`, stored as a new entry; a failure, the stale result, `stale-if-error`, and the entry stays as it is |
+| past 6 hours 1 minute | nothing: Redis dropped the entry | `miss`: the loader runs, and its error is returned |
+
+- A failure is answered by the stale result, and the error goes to `OnError`.
+- A "not found", an error `Negative.IsNotFound` accepts, is never a failure: it is returned as
+  `gashe.ErrNotFound` and stored, never hidden by the stale result.
+- When `Stampede.MaxLoads` is full, the call does not wait for a slot: the stale result answers
+  it, whatever `IsFailure` says.
+
+!!! tip
+    Add [`IfSlow`](#stale-ifslow) when the source can hang, not only fail: without it, every call
+    waits for the loader before the stale result answers its error.
 
 !!! warning
-    A result can be up to `TTL + StaleIfError` old. Do not use it where stale is wrong rather than
+    A result can be up to `TTL + IfError.For` old. Do not use it where stale is wrong rather than
     late: permissions, balances, prices at checkout.
 
-- **Example:** [examples/stale](https://github.com/eugeneliukindev/gashe/tree/main/examples/stale)
+`IsFailure` picks which errors the stale result answers. Without it, every error does, so a row that
+was deleted keeps showing until `TTL + IfError.For`:
 
-???+ example "examples/stale: TTL only and each stale option"
+=== "With IsFailure"
 
-    One key past its TTL, while the database is slow and while it is down. The versions differ
-    in the lines highlighted.
+    ```go hl_lines="23-26"
+    --8<-- "examples/staleif/with/main.go"
+    ```
 
-    === "StaleWhileRevalidate"
+    The stale result answers the outage, and the deleted page gets its error.
 
-        ```go hl_lines="28"
 
-        --8<-- "examples/stale/while-revalidate/main.go"
+=== "Without IsFailure"
 
-        ```
+    ```go
+    --8<-- "examples/staleif/without/main.go"
+    ```
 
-        Output: past the TTL the stale result answers at once, also while the database is slow or down; the reload runs in the background.
+    The stale result answers both, so the deleted page is still shown.
 
-        ```text
-        --8<-- "docs/snippets/examples/stale-while-revalidate.txt"
-        ```
 
-    === "StaleIfError"
+---
 
-        ```go hl_lines="28"
+## `Stale.IfSlow` { #stale-ifslow }
 
-        --8<-- "examples/stale/if-error/main.go"
+The source hangs, and every call waits for it. With `Stale.IfSlow`, a call waits for the loader at
+most `After`, then gets the stale result, for `For` after `TTL`; the load goes on in the background
+and stores what it gets.
 
-        ```
+??? api "API documentation"
 
-        Output: past the TTL a call waits for the slow loader, and the stale result answers its error.
+    [`gashe.StaleIfSlow`](../reference/gashe.md#StaleIfSlow)<br>
 
-        ```text
-        --8<-- "docs/snippets/examples/stale-if-error.txt"
-        ```
+```go hl_lines="23-26"
+--8<-- "examples/docs/stale/if-slow/main.go"
+```
 
-    === "StaleIfSlow"
+| Field | Default | What it does |
+|---|---|---|
+| `For` | 0: off | how long after `TTL` the stale result answers a slow loader; needs `After` |
+| `After` | 0: off | how long a call waits for the loader before the stale result answers it; needs `For` |
 
-        ```go hl_lines="28 29"
+With the policy above:
 
-        --8<-- "examples/stale/if-slow/main.go"
+| Time after the store | In the backend | A call gets |
+|---|---|---|
+| up to 1 minute | the entry, fresh | `hit` |
+| 1 minute to 1 hour 1 minute | the same entry, stale; `__refresh:<key>` while a slow load goes on | a loader within 200ms: its result, `miss`, or its error; a slower one: the stale result, `stale-if-slow`, and the load stores its result in the background |
+| past 1 hour 1 minute | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
 
-        ```
+- Set both or neither: one without the other returns `ErrInvalidOptions`.
+- It needs no `IfError`, but answers only slowness: a loader that fails within `After` gets its error
+  returned, unless `IfError` covers it. `IsFailure` does not apply: there is no error yet.
+- The slow load goes on in the background with a 1 minute deadline and stores its result;
+  meanwhile other calls of the key get the stale result at once.
 
-        Output: past the TTL the stale result answers a loader slower than 100ms, which goes on in the background, and a loader error.
+!!! tip
+    Set `After` a little above how long the source takes when it is fine, such as its p99: a slower
+    call is a sign it hangs.
 
-        ```text
-        --8<-- "docs/snippets/examples/stale-if-slow.txt"
-        ```
+??? note "Technical details"
 
-    === "TTL only"
+    In Redis, the slow load holds `__refresh:<key>`, taken with `SET __refresh:<key> NX EX or PX`.
 
-        ```go
-
-        --8<-- "examples/stale/ttl-only/main.go"
-
-        ```
-
-        Output: past the TTL every call waits for the loader, and fails with it.
-
-        ```text
-        --8<-- "docs/snippets/examples/stale-ttl-only.txt"
-        ```

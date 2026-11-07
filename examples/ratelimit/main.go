@@ -17,7 +17,6 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	// --8<-- [start:api]
 	login := gashe.FixedWindow{
 		Calls:  5,
 		Per:    time.Minute,
@@ -35,5 +34,4 @@ func main() {
 		c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // calls 1-3: allowed
 	}
 	c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // call 4: refused
-	// --8<-- [end:api]
 }
