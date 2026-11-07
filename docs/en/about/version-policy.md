@@ -38,10 +38,10 @@ their versions differ.
 
 | What | Go |
 |---|---|
-| Lowest | Go 1.23, the `go` line of every `go.mod` |
-| Supported | Go 1.23 and newer: five releases at the moment |
-| Tested | before every tag, on Go 1.23 and on the Go that makes the release |
-| Not decided | when the lowest version is raised |
+| Lowest | Go 1.25, the `go` line of every `go.mod` |
+| Supported | Go 1.25 and newer: the two releases Go supports, and the one before them |
+| Tested | on every push and pull request, on Go 1.25 and on the two newest Go |
+| Raised | in a minor release, when Go 1.25 leaves the support of the libraries we depend on, or a fix needs a newer Go |
 
 ## Redis and Valkey servers { #redis-and-valkey-servers }
 

@@ -12,25 +12,24 @@ The repository holds six modules. Run every command in each of them.
 | `benchmarks/` | benchmarks, `just bench`, never released | the gashe modules |
 
 The tests of `backend/redis` against a real server read its address from `GASHE_REDIS_ADDR` and are
-skipped without it, so `go test` needs no Docker. `just integration` starts a server in Docker,
-runs them against the local code of the repository through `go.work`, and removes the
-server; `just integration-all` runs them on Redis 7.0 and Valkey 8, and `just integration-cluster`
+skipped without it, so `go test` needs no Docker. `just redis test` starts a server of
+`backend/redis/compose.yaml` in Docker and runs them against the local code of the repository
+through `go.work`; `just redis all` runs them on Redis 7.0 and Valkey 8, and `just redis cluster`
 on a Redis Cluster of three masters, where keys of one call land on different nodes.
+`just redis down` stops the servers.
 
-The modules support Go 1.23 and newer, five releases at the moment. Tests that need
-`testing/synctest` are behind `//go:build go1.25`, so on Go 1.23 and 1.24 they are skipped and the
-rest still run.
+The modules support Go 1.25 and newer: the two releases Go supports, and the one before them.
 
 Tasks run with [just](https://just.systems) and go through every module; `just` lists them:
 
 ```bash
 just check          # before a commit: golangci-lint, tests with -race, govulncheck
-just release-check  # before a tag: check, tests on Go 1.23 through goenv, Redis and a Cluster in Docker, gorelease
+just release-check  # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, gorelease
 just fmt            # format with the formatters of .golangci.yml
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
-just integration-all               # the Redis tests on Redis 7.0 and Valkey 8, in Docker
-just integration-cluster           # the Cluster tests on three masters, in Docker
-just integration docker.dragonflydb.io/dragonflydb/dragonfly -v  # any other server
+just redis all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
+just redis cluster  # the Cluster tests on three masters, in Docker
+REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just redis test redis -v  # any other server
 ```
 
 `govulncheck` and `gorelease` run through `go run` at the versions pinned in the `justfile`, so
@@ -49,8 +48,12 @@ modules with the local copies and always builds against the code of the reposito
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the date, then
 tag the root first (`v0.5.0`), raise the version the other modules require, and tag the modules
 that changed with their directory in front (`backend/redis/v0.4.0`). The latest tags are `v0.5.0`,
-`backend/redis/v0.4.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. Copy the section into
-the GitHub release of the tag.
+`backend/redis/v0.4.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. A tag gets its GitHub
+release from CI.
+
+Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request adds an
+entry under `Unreleased` in `CHANGELOG.md`, or has the `skip-changelog` label when users see no
+change.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
@@ -62,9 +65,10 @@ and the recipes run them through `uv run --project docs`:
 
 ```bash
 uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
-just docs            # build the site into site/; a broken link or anchor fails it
-just docs-serve      # preview it at http://localhost:8000/gashe/
-just docs-links      # external links, with lychee in Docker; CI checks them weekly
+just docs build      # build the site into docs/site/; a broken link or anchor fails it
+just docs serve      # preview it at http://localhost:8000/gashe/
+just docs reference  # write the API reference from the doc comments, after an API change
+just docs links      # external links, with lychee in Docker; CI checks them weekly
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between

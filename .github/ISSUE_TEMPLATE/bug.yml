@@ -1,0 +1,26 @@
+name: Bug
+description: Something in gashe does not work as documented.
+labels: [bug]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: gashe and its modules (`go list -m all | grep gashe`), Go, Redis or Valkey.
+    validations:
+      required: true
+  - type: textarea
+    id: program
+    attributes:
+      label: Program
+      description: A short program that shows the problem, ideally on the memory backend, with the backend and the policy you use.
+      render: go
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and happened
+      description: What you expected, and what happened, with the error or the Result from Options.Hooks.OnResult.
+    validations:
+      required: true

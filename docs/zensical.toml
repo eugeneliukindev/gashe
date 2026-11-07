@@ -1,4 +1,3 @@
-# The documentation site of gashe: `just docs` builds it, `just docs-serve` previews it.
 [project]
 site_name = "gashe"
 site_description = "Caching for Go services that run as many processes"
@@ -6,7 +5,7 @@ site_url = "https://eugeneliukindev.github.io/gashe/"
 repo_url = "https://github.com/eugeneliukindev/gashe"
 repo_name = "eugeneliukindev/gashe"
 edit_uri = "edit/main/docs/en/"
-docs_dir = "docs/en"
+docs_dir = "en"
 site_dir = "site"
 copyright = "MIT license"
 extra_css = ["assets/stylesheets/extra.css"]
@@ -71,13 +70,11 @@ nav = [
 ]
 
 [project.theme]
-# A colored header in the colors of the logo: docs/en/assets/stylesheets/extra.css.
 variant = "classic"
 language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
-# The announcement bar on top of every page: docs/overrides/main.html.
-custom_dir = "docs/overrides"
+custom_dir = "overrides"
 features = [
   "content.action.edit",
   "content.action.view",
@@ -89,6 +86,8 @@ features = [
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.instant.preview",
   "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
@@ -123,12 +122,6 @@ accent = "custom"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to system preference"
 
-# The version selector: mike keeps every version of the site in the gh-pages branch (dev for main,
-# 0.5 for a release); see .github/workflows/docs.yml.
-[project.extra.version]
-provider = "mike"
-
-# llms.txt and llms-full.txt: the pages as Markdown for AI assistants.
 [project.plugins.llmstxt]
 full_output = "llms-full.txt"
 markdown_description = "gashe is a caching library for Go services that run as many processes: GetOrLoad with stale data, locks, tags, rate limits, circuit breakers and an HTTP middleware, over memory or Redis."
@@ -150,8 +143,22 @@ markdown_description = "gashe is a caching library for Go services that run as m
 ]
 "About" = ["about/*.md"]
 
-# Open Graph images: a card with the title of the page when a link is shared.
+# A preview card for shared links.
 [project.plugins.social]
+
+# External fonts and scripts are served from the site.
+[project.plugins.privacy]
+# Scripts of theme features the site does not use.
+assets_exclude = [
+  "unpkg.com/pyodide*",
+  "unpkg.com/ace-builds*",
+  "unpkg.com/glightbox*",
+  "cdn.plyr.io/*",
+  "player.vimeo.com/*",
+  "imasdk.googleapis.com/*",
+  "pagead2.googlesyndication.com/*",
+  "s0.2mdn.net/*",
+]
 
 [project.markdown_extensions]
 admonition = {}
@@ -162,18 +169,18 @@ toc.permalink = true
 pymdownx.details = {}
 pymdownx.highlight.anchor_linenums = true
 pymdownx.inlinehilite = {}
-# Diagrams: a ```mermaid block is drawn by Mermaid.js in the colors of the theme.
 pymdownx.superfences.custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
 ]
 pymdownx.tabbed.alternate_style = true
-# Code and outputs come from the repository: examples/, docs/snippets/, CHANGELOG.md.
+# Snippet paths start at the repository root.
 pymdownx.snippets.base_path = ["."]
 pymdownx.snippets.check_paths = true
-pymdownx.snippets.dedent_subsections = true # a section inside a function starts at the left
-# Terms with a tooltip on every page.
+pymdownx.snippets.dedent_subsections = true
+# Tooltips for terms on every page.
 pymdownx.snippets.auto_append = ["docs/snippets/abbreviations.md"]
 abbr = {}
-# Icons in text, such as :lucide-zap:.
+# A preview on hover for every link inside the site.
+zensical.extensions.preview.targets.include = ["*"]
 pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
 pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"

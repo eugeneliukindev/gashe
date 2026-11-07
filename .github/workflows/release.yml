@@ -1,4 +1,4 @@
-# Makes the GitHub release of every tag, with the section of CHANGELOG.md that names the tag.
+# Makes the GitHub release of every tag.
 name: release
 
 on:
@@ -6,25 +6,26 @@ on:
     tags: ["v[0-9]*", "backend/redis/v*", "codec/msgpack/v*", "compress/zstd/v*"]
 
 permissions:
-  contents: write # gh release create
+  contents: write # creates the release
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - name: Release the tag with its changelog section
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the earlier tags, for the notes of a module
+      # A root tag: its section of CHANGELOG.md.
+      - if: startsWith(github.ref_name, 'v')
+        uses: taiki-e/create-gh-release-action@045e5c0ed9c50cc1f96de7e891a09ad3daea245f # v1.12.0
+        with:
+          changelog: CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+      # A module tag, such as backend/redis/v0.4.0: the pull requests since its last tag.
+      - if: ${{ !startsWith(github.ref_name, 'v') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$GITHUB_REF_NAME"
-          version="${tag##*v}"
-          # A root tag has a section of its own; a module tag is named in the section it came with.
-          notes=$(awk -v v="$version" -v tag="$tag" '
-            BEGIN { root = tag ~ /^v/ }
-            /^## \[/ { if (found) { printf "%s", sec; done = 1; exit }
-                       insec = 1; sec = ""; found = root && index($0, "[" v "]"); next }
-            insec { sec = sec $0 "\n"; if (!root && index($0, "`" tag "`")) found = 1 }
-            END { if (found && !done) printf "%s", sec }
-          ' CHANGELOG.md)
-          gh release create "$tag" --verify-tag --title "$tag" --notes "${notes:-See CHANGELOG.md.}"
+          last=$(git tag -l "${GITHUB_REF_NAME%/v*}/v*" --sort=-v:refname | sed -n 2p)
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes ${last:+--notes-start-tag "$last"}

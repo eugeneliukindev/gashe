@@ -3,7 +3,7 @@ version: "2"
 # The examples are read in the documentation: they show the API of gashe in one straight main,
 # so the strict rules of the released modules do not apply. Only real mistakes are reported.
 run:
-  go: "1.23"
+  go: "1.25"
 
 linters:
   default: standard

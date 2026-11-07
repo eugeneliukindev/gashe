@@ -55,9 +55,7 @@ func TestConcurrentUse(t *testing.T) {
 	c := zstd.New()
 	var wg sync.WaitGroup
 	for i := range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			want := []byte(strings.Repeat("n", i+1))
 			data, err := c.Compress(want)
 			var got []byte
@@ -67,7 +65,7 @@ func TestConcurrentUse(t *testing.T) {
 			if err != nil || !bytes.Equal(got, want) {
 				t.Errorf("goroutine %d: %q, %v", i, got, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

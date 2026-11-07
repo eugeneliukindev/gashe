@@ -2,7 +2,7 @@ version: "2"
 
 run:
   # Lint against the oldest supported Go so linters do not suggest newer features.
-  go: "1.23"
+  go: "1.25"
 
 linters:
   default: all

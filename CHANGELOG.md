@@ -7,6 +7,18 @@ the API. The root module, `backend/redis`, `codec/msgpack` and `compress/zstd` a
 their own tags (`v0.5.0`, `backend/redis/v0.4.0`, `compress/zstd/v0.1.0`); a section names the
 module it is about.
 
+## [Unreleased]
+
+### Changed
+
+- The modules need Go 1.25 or newer; before, Go 1.23. Go supports 1.26 and 1.27, and the fix
+  below needs Go 1.25.
+
+### Security
+
+- `compress/zstd`: klauspost/compress `v1.20.3`, which fixes GO-2026-6865, a panic on frames of two
+  blocks; before, `v1.18.4`.
+
 ## [0.5.0] - 2026-11-07
 
 Released as `v0.5.0` and `backend/redis/v0.4.0`. `codec/msgpack` and `compress/zstd` have no
@@ -257,6 +269,7 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.3.0

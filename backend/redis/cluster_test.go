@@ -17,12 +17,12 @@ import (
 )
 
 // newClusterClient connects to the Redis Cluster in GASHE_REDIS_CLUSTER, a comma separated list of
-// nodes; `just integration-cluster` starts one in Docker. Without it the test is skipped.
+// nodes; `just redis cluster` starts one in Docker. Without it the test is skipped.
 func newClusterClient(t *testing.T) *goredis.ClusterClient {
 	t.Helper()
 	addrs := os.Getenv("GASHE_REDIS_CLUSTER")
 	if addrs == "" {
-		t.Skip("no Redis Cluster: GASHE_REDIS_CLUSTER is not set; run `just integration-cluster`")
+		t.Skip("no Redis Cluster: GASHE_REDIS_CLUSTER is not set; run `just redis cluster`")
 	}
 	client := goredis.NewClusterClient(&goredis.ClusterOptions{Addrs: strings.Split(addrs, ",")})
 	t.Cleanup(func() { _ = client.Close() })
