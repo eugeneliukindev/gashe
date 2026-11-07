@@ -3,7 +3,7 @@ module github.com/eugeneliukindev/gashe/codec/msgpack
 go 1.23
 
 require (
-	github.com/eugeneliukindev/gashe v0.3.0
+	github.com/eugeneliukindev/gashe v0.5.0
 	github.com/vmihailenco/msgpack/v5 v5.0.0
 )
 

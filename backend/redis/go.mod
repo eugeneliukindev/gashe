@@ -3,7 +3,7 @@ module github.com/eugeneliukindev/gashe/backend/redis
 go 1.23
 
 require (
-	github.com/eugeneliukindev/gashe v0.3.0
+	github.com/eugeneliukindev/gashe v0.5.0
 	github.com/redis/go-redis/v9 v9.18.0
 )
 
