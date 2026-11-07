@@ -1,0 +1,7 @@
+contact_links:
+  - name: Security problem
+    url: https://github.com/eugeneliukindev/gashe/security/advisories/new
+    about: Report it privately, not in a public issue.
+  - name: Help
+    url: https://eugeneliukindev.github.io/gashe/help/
+    about: Troubleshooting, errors and where to ask.
