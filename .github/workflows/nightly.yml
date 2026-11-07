@@ -23,7 +23,7 @@ jobs:
           just-version: 1.59.0
       - run: just govulncheck
 
-  docs-links:
+  lychee:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -32,6 +32,6 @@ jobs:
       - uses: extractions/setup-just@v4.0.0
         with:
           just-version: 1.59.0
-      - run: just docs-links
+      - run: just lychee
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub rate limits links checked without one

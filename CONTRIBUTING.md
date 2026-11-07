@@ -23,13 +23,13 @@ The modules support Go 1.25 and newer: the two releases Go supports, and the one
 Tasks run with [just](https://just.systems) and go through every module; `just` lists them:
 
 ```bash
-just check   # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
-just check-all  # before a tag: check-commit, the examples, Redis, Valkey and a Cluster in Docker, the site
+just check          # before a commit: golangci-lint, typos, tombi, actionlint, rumdl, tests with -race, govulncheck
+just check-all      # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, the site
 just golangci-fmt   # format with the formatters of .golangci.yml
-just pre-commit-install   # install the git hooks of prek.toml, which run the linters on the changed files
+just prek-install   # install the git hooks of prek.toml, which run the linters on the changed files
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
-just test-redis-all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
-just test-cluster  # the Cluster tests on three masters, in Docker
+just test-redis-all # the Redis tests on Redis 7.0 and Valkey 8, in Docker
+just test-cluster   # the Cluster tests on three masters, in Docker
 REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just test-redis redis -v  # any other server
 ```
 
@@ -48,7 +48,7 @@ modules with the local copies and always builds against the code of the reposito
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
 date and merge it. Then, on `main`, run `just check-all`, see the next tag of each module that
-changed with `just version-next` and `just version-next backend/redis`, and publish a GitHub
+changed with `just commitizen-next` and `just commitizen-next backend/redis`, and publish a GitHub
 release of each; GitHub creates the tag:
 
 ```bash
@@ -57,12 +57,12 @@ gh release create backend/redis/v0.5.1 --target main --generate-notes
 ```
 
 The root goes first when another module needs its new version. commitizen counts the commits of
-the whole repository, so check what it proposes; `just version-next compress/zstd PATCH` takes a
+the whole repository, so check what it proposes; `just commitizen-next compress/zstd PATCH` takes a
 chosen increment. A published release of the root deploys the site; a docs fix between releases
 deploys it with the release workflow run by hand.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
-`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just pre-commit-install` installs checks them.
+`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just prek-install` installs checks them.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
 see adds an entry under `Unreleased` in `CHANGELOG.md`.
@@ -77,11 +77,11 @@ and the recipes run them through `uv run --project docs`:
 
 ```bash
 uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
-just rumdl-check        # lint the Markdown of the pages with rumdl; `just rumdl-fmt` fixes it
-just docs-build    # build the site into docs/site/; a broken link or anchor fails it
-just docs-serve    # preview it at http://localhost:8000/gashe/
-just docs-api         # write docs/en/reference/ from the doc comments; the builds run it, it is not committed
-just docs-links            # external links, with lychee in Docker; CI checks them weekly
+just rumdl-check       # lint the Markdown of the pages with rumdl; `just rumdl-fmt` fixes it
+just zensical-build    # build the site into docs/site/; a broken link or anchor fails it
+just zensical-serve    # preview it at http://localhost:8000/gashe/
+just gomarkdoc         # write docs/en/reference/ from the doc comments; the builds run it, it is not committed
+just lychee            # external links, with lychee in Docker; CI checks them every night
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between

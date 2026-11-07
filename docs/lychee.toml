@@ -1,4 +1,4 @@
-scheme = ["https", "http"]  # links inside the site are checked by docs-build --strict
+scheme = ["https", "http"]  # links inside the site are checked by zensical-build --strict
 exclude_loopback = true
 exclude = [
   '^https://eugeneliukindev\.github\.io/gashe',
