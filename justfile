@@ -148,7 +148,7 @@ zensical-serve: gomarkdoc
 [doc("Check external links")]
 [group('docs')]
 lychee:
-    {{ lychee }} --config docs/lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
+    {{ lychee }} --config docs/lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md RELEASING.md examples/README.md 'docs/*/**/*.md'
 
 [doc("Tidy go.mod of every module")]
 [group('deps')]
