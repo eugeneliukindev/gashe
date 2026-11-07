@@ -1,13 +1,15 @@
 # gashe { #gashe }
 
 <p align="center">
-  <img src="assets/logo.svg" width="180" alt="The gashe gopher, its cheeks full of cached data">
+  <img src="assets/logo.svg" width="260" alt="The gashe gopher, its cheeks full of cached data">
 </p>
 
+<p align="center" markdown>
 [![Go Reference](https://pkg.go.dev/badge/github.com/eugeneliukindev/gashe.svg)](https://pkg.go.dev/github.com/eugeneliukindev/gashe)
 [![Release](https://img.shields.io/github/v/tag/eugeneliukindev/gashe?filter=v*&label=release)](https://github.com/eugeneliukindev/gashe/tags)
 [![Go version](https://img.shields.io/github/go-mod/go-version/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/go.mod)
 [![License](https://img.shields.io/github/license/eugeneliukindev/gashe)](https://github.com/eugeneliukindev/gashe/blob/main/LICENSE)
+</p>
 
 Caching for Go services that run as many processes. One [`*gashe.Cache`](reference/gashe.md#Cache) stores the results of
 expensive calls, keeps answering while a dependency is slow or down, and guards dependencies with
