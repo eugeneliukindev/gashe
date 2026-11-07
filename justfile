@@ -182,10 +182,3 @@ commitizen-check file:
 [group('deploy')]
 commitizen-bump module="." increment="USE_GIT_COMMITS":
     cd "$1" && t=$({{ commitizen }} version --project --tag --next "$2") && git tag -a "$t" -m "$t" && echo "$t"
-
-# Tag the modules on origin/main and push the tags: just release . backend/redis
-[group('deploy')]
-release +modules: release-check
-    git fetch -q origin main && test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-    for m in "$@"; do {{ just_executable() }} commitizen-bump "$m"; done
-    git push --atomic origin $(git tag --points-at HEAD)

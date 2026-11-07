@@ -48,12 +48,13 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
-date, merge it, and run `just release` on `main` with the modules to release: `just release .
-backend/redis` checks everything with `release-check`, tags each module with the next version
-commitizen reads from its `cz.toml` and the commits since its last tag, and pushes the tags. The
-root goes first when another module needs its new version. `just commitizen-bump compress/zstd
-PATCH` tags one module with a chosen increment; commitizen counts the commits of the whole
-repository, so check what it proposes. A tag gets its GitHub release from CI.
+date and merge it. Then, on `main`, run `just release-check`, tag each module that changed with
+`just commitizen-bump`, which takes the next version from its `cz.toml` and the commits since its
+last tag (`just commitizen-bump`, `just commitizen-bump backend/redis`), and push the tags with
+`git push origin <tag>...`. The root goes first when another module needs its new version.
+commitizen counts the commits of the whole repository, so check what it proposes; `just
+commitizen-bump compress/zstd PATCH` takes a chosen increment. A tag gets its GitHub release from
+CI.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
 `feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just hooks` installs checks them.
