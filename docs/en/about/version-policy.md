@@ -20,15 +20,15 @@ their versions differ.
 
 | Module | Import path | Tag | Holds |
 |---|---|---|---|
-| root | `github.com/eugeneliukindev/gashe` | `v0.4.0` | `gashe`, `backend/memory`, `backend/nearcache`, `backendtest`, `httpcache`, `codec/raw`, `compress/gzip` |
-| Redis | `github.com/eugeneliukindev/gashe/backend/redis` | `backend/redis/v0.3.0` | the Redis backend and buses, on go-redis v9 |
+| root | `github.com/eugeneliukindev/gashe` | `v0.5.0` | `gashe`, `backend/memory`, `backend/nearcache`, `backendtest`, `httpcache`, `codec/raw`, `compress/gzip` |
+| Redis | `github.com/eugeneliukindev/gashe/backend/redis` | `backend/redis/v0.4.0` | the Redis backend and buses, on go-redis v9 |
 | MessagePack | `github.com/eugeneliukindev/gashe/codec/msgpack` | `codec/msgpack/v0.3.0` | a MessagePack codec |
 | Zstandard | `github.com/eugeneliukindev/gashe/compress/zstd` | `compress/zstd/v0.1.0` | a Zstandard compressor |
 
 - **Order:** the root is tagged first; the other modules then require that released version of the
   root and get their own tags.
-- **Together:** a module may require a newer root than you have: `compress/zstd` requires gashe
-  `v0.4.0`; `go get` raises the root for you.
+- **Together:** a module may require a newer root than you have: `backend/redis/v0.4.0` requires
+  gashe `v0.5.0`; `go get` raises the root for you.
 - **Retracted:** `v0.1.0` and `v0.2.0` of the root, `backend/redis/v0.1.0` and
   `backend/redis/v0.2.0`, `codec/msgpack/v0.1.0`: their API broke before `v0.3.0`.
 - **Dependencies:** the root module has none; the other three each need one library, see their
@@ -55,12 +55,12 @@ The changes that broke an upgrade so far:
 
 | Kind | Example from the changelog |
 |---|---|
-| A name removed or renamed | 0.3.0: `Incr` becomes `IncrBy`; 0.4.0: `Gzip` is removed |
-| A signature or field type changed | 0.2.0: `Options.Hooks.OnResult` receives an `Outcome`; 0.3.0: `Policy.TTL.For` takes several types |
-| A method of an interface you implement renamed | 0.3.0: a backend of yours renames `Incr` to `IncrBy` |
+| A name removed or renamed | 0.3.0: `Incr` becomes [`IncrBy`](../reference/gashe.md#Cache.IncrBy); 0.4.0: `Gzip` is removed |
+| A signature or field type changed | 0.2.0: [`Options.Hooks.OnResult`](../reference/gashe.md#Options) receives an [`Outcome`](../reference/gashe.md#Outcome); 0.3.0: [`Policy.TTL.For`](../reference/gashe.md#Policy) takes several types |
+| A method of an interface you implement renamed | 0.3.0: a backend of yours renames `Incr` to [`IncrBy`](../reference/gashe.md#Cache.IncrBy) |
 | Keys or entries stored differently | 0.2.0 and 0.3.0: rate limit counters start from zero; 0.3.0: tagged entries reload once |
-| A higher required version of a dependency | unreleased: go-redis `v9.18.0` instead of `v9.0.0` |
-| A behaviour changed | unreleased: `httpcache` no longer caches requests with a `Cookie` header |
+| A higher required version of a dependency | 0.5.0: go-redis `v9.18.0` instead of `v9.0.0` |
+| A behaviour changed | 0.5.0: `httpcache` no longer caches requests with a `Cookie` header |
 
 Stored data counts: an upgrade can make old entries misses, so they load again, or reset counters.
 The changelog says what each release does to stored data. Whether `0.x` releases keep the stored

@@ -47,9 +47,9 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the date, then
-tag the root first (`v0.4.0`), raise the version the other modules require, and tag the modules
-that changed with their directory in front (`backend/redis/v0.3.0`). The latest tags are `v0.4.0`,
-`backend/redis/v0.3.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. Copy the section into
+tag the root first (`v0.5.0`), raise the version the other modules require, and tag the modules
+that changed with their directory in front (`backend/redis/v0.4.0`). The latest tags are `v0.5.0`,
+`backend/redis/v0.4.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. Copy the section into
 the GitHub release of the tag.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc

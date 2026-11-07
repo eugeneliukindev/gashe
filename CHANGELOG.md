@@ -4,10 +4,13 @@ Notable changes of every release, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/): while the version is `0.x`, a minor release may change
 the API. The root module, `backend/redis`, `codec/msgpack` and `compress/zstd` are released with
-their own tags (`v0.4.0`, `backend/redis/v0.3.0`, `compress/zstd/v0.1.0`); a section names the
+their own tags (`v0.5.0`, `backend/redis/v0.4.0`, `compress/zstd/v0.1.0`); a section names the
 module it is about.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-07
+
+Released as `v0.5.0` and `backend/redis/v0.4.0`. `codec/msgpack` and `compress/zstd` have no
+changes and stay at `v0.3.0` and `v0.1.0`.
 
 ### Added
 
@@ -254,7 +257,7 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.3.0
 [0.2.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.2.0
