@@ -140,7 +140,7 @@ jobs:
       - run: just api
 
   changelog:
-    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read # the files and labels of the pull request
