@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -18,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	renders := 0
 	listProducts := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		renders++
@@ -27,31 +27,27 @@ func main() {
 
 	cached := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{
-			TTL:          time.Minute,
-			StaleIfError: time.Hour, // a 5xx gets the last good page
-			Prefix:       "http:",
+			TTL:    gashe.TTL{For: time.Minute},
+			Prefix: "http:",
+			Stale:  gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}, // 5xx: last page
 		},
 	})
 	mux := http.NewServeMux()
 	mux.Handle("/products", cached(listProducts))
-	srv := httptest.NewServer(mux) // a real server would be http.ListenAndServe(":8080", mux)
+	srv := httptest.NewServer(mux) // or http.ListenAndServe(":8080", mux)
 	defer srv.Close()
 	url := srv.URL + "/products"
 
-	resp, _ := http.Get(url)
+	resp, _ := http.Get(url) // 200, Cache-Status: gashe; fwd=uri-miss; stored
 	etag := resp.Header.Get("ETag")
-	fmt.Println("GET:", resp.StatusCode, resp.Header.Get("Cache-Status"), "ETag:", etag) // fwd=uri-miss; stored
 
-	resp, _ = http.Get(url)
-	fmt.Println("GET:", resp.StatusCode, resp.Header.Get("Cache-Status")) // hit
+	http.Get(url) // 200, Cache-Status: gashe; hit
 
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	req.Header.Set("If-None-Match", etag)
-	resp, _ = http.DefaultClient.Do(req)
-	fmt.Println("GET If-None-Match:", resp.StatusCode, resp.Header.Get("Cache-Status")) // 304 with no body
+	http.DefaultClient.Do(req) // 304, Cache-Status: gashe; hit, no body
 
-	resp, _ = http.Post(url, "", nil)
-	fmt.Println("POST:", resp.StatusCode, resp.Header.Get("Cache-Status")) // fwd=method: never cached
-
-	fmt.Println("handler ran", renders, "times") // handler ran 2 times: the first GET and the POST
+	http.Post(url, "", nil) // 200, Cache-Status: gashe; fwd=method: never cached
+	// renders is 2: the first GET and the POST
+	// --8<-- [end:api]
 }

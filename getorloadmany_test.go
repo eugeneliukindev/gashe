@@ -42,7 +42,7 @@ func byName(asked *[][]string) func(context.Context, []string) (map[string]user,
 func TestGetOrLoadManyLoadsOnlyMissing(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[user]{TTL: time.Minute, Prefix: "user:"}
+	o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}, Prefix: "user:"}
 	var asked [][]string
 	load := byName(&asked)
 
@@ -71,7 +71,7 @@ func TestGetOrLoadManyLoadsOnlyMissing(t *testing.T) {
 func TestGetOrLoadManyTags(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[user]{TTL: time.Minute, Tags: []string{"users"}}
+	o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}, Tags: []string{"users"}}
 	var asked [][]string
 	load := byName(&asked)
 
@@ -89,7 +89,7 @@ func TestGetOrLoadManyTags(t *testing.T) {
 func TestGetOrLoadManyCacheIf(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[user]{TTL: time.Minute, CacheIf: func(u user) bool { return u.Name != "a" }}
+	o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}, CacheIf: func(u user) bool { return u.Name != "a" }}
 	var asked [][]string
 	load := byName(&asked)
 
@@ -107,12 +107,19 @@ func TestGetOrLoadManyBackendDown(t *testing.T) {
 	var reported []error
 	c := gashe.New(
 		down,
-		gashe.Options{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
+		gashe.Options{
+			Hooks: gashe.Hooks{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
+		},
 	)
 	var asked [][]string
 
-	got, err := gashe.GetOrLoadMany(context.Background(), c, []string{"a", "b"}, gashe.Policy[user]{TTL: time.Minute},
-		byName(&asked))
+	got, err := gashe.GetOrLoadMany(
+		context.Background(),
+		c,
+		[]string{"a", "b"},
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}},
+		byName(&asked),
+	)
 	if err != nil || len(got) != 2 || down.setManys != 0 {
 		t.Fatalf("got %v, %v, %d writes; want the loader result and no write", got, err, down.setManys)
 	}
@@ -125,17 +132,39 @@ func TestGetOrLoadManyErrors(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	var asked [][]string
-	if _, err := gashe.GetOrLoadMany(ctx, c, []string{"a"},
-		gashe.Policy[user]{TTL: time.Minute, StaleWhileRevalidate: time.Minute}, byName(&asked)); !errors.Is(
+	if _, err := gashe.GetOrLoadMany(
+		ctx,
+		c,
+		[]string{"a"},
+		gashe.Policy[user]{
+			TTL:   gashe.TTL{For: time.Minute},
+			Stale: gashe.Stale{WhileRevalidate: time.Minute},
+		},
+		byName(&asked),
+	); !errors.Is(
 		err, gashe.ErrInvalidOptions) {
 		t.Fatalf("StaleWhileRevalidate: %v, want ErrInvalidOptions", err)
 	}
 	failing := func(context.Context, []string) (map[string]user, error) { return nil, errAPI }
-	if _, err := gashe.GetOrLoadMany(ctx, c, []string{"a"}, gashe.Policy[user]{TTL: time.Minute}, failing); !errors.Is(
-		err, errAPI) {
+	if _, err := gashe.GetOrLoadMany(
+		ctx,
+		c,
+		[]string{"a"},
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}},
+		failing,
+	); !errors.Is(
+		err,
+		errAPI,
+	) {
 		t.Fatalf("loader error: %v", err)
 	}
-	if got, err := gashe.GetOrLoadMany(ctx, c, nil, gashe.Policy[user]{TTL: time.Minute}, failing); err != nil ||
+	if got, err := gashe.GetOrLoadMany(
+		ctx,
+		c,
+		nil,
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}},
+		failing,
+	); err != nil ||
 		len(got) != 0 {
 		t.Fatalf("no keys: %v, %v", got, err)
 	}

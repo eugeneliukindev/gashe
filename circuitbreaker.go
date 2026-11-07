@@ -13,17 +13,17 @@ const (
 	percent        = 100
 )
 
-// CircuitBreakerOptions configures Cache.CircuitBreaker and Options.CircuitBreaker. FailurePercent,
+// CircuitBreaker configures Cache.CircuitBreaker, Guard and Options.CircuitBreaker. FailurePercent,
 // Window and OpenFor are required. Use the same options for the same key.
-type CircuitBreakerOptions struct {
+type CircuitBreaker struct {
 	// FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
 	FailurePercent int
-	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
-	MinCalls int
 	// Window is the span of recent time calls and failures are counted over.
 	Window time.Duration
 	// OpenFor is how long the open breaker refuses calls.
 	OpenFor time.Duration
+	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
+	MinCalls int
 	// HalfOpenCalls is how many test calls are let through after OpenFor: the first one that
 	// succeeds closes the breaker, one that fails opens it again. 0 means the breaker just
 	// closes after OpenFor.
@@ -42,14 +42,14 @@ type DoneFunc func(err error)
 // ErrCircuitOpen while the breaker is open; otherwise it returns a DoneFunc to report how the
 // call went. The breaker lives in the memory of this process: every process judges the dependency
 // by its own calls, and checking it costs no backend round trip.
-func (c *Cache) CircuitBreaker(key string, o CircuitBreakerOptions) (DoneFunc, error) {
+func (c *Cache) CircuitBreaker(key string, o CircuitBreaker) (DoneFunc, error) {
 	if err := o.check(); err != nil {
 		return nil, err
 	}
 	return c.breakers.get(key).allow(o, time.Now())
 }
 
-func (o CircuitBreakerOptions) check() error {
+func (o CircuitBreaker) check() error {
 	if o.FailurePercent <= 0 || o.FailurePercent >= percent || o.Window <= 0 || o.OpenFor <= 0 ||
 		o.MinCalls < 0 || o.HalfOpenCalls < 0 {
 		return fmt.Errorf("%w: a breaker needs FailurePercent 1..99, positive Window and OpenFor, "+
@@ -116,7 +116,7 @@ func (b *breaker) state(now time.Time) breakerState {
 	return breakerClosed
 }
 
-func (b *breaker) allow(o CircuitBreakerOptions, now time.Time) (DoneFunc, error) {
+func (b *breaker) allow(o CircuitBreaker, now time.Time) (DoneFunc, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	switch b.state(now) {
@@ -157,7 +157,7 @@ func (b *breaker) fail(n, now int64) {
 
 // trial lets one test call through while trials are left; its outcome closes or reopens the
 // breaker. b.mu is held.
-func (b *breaker) trial(o CircuitBreakerOptions) (DoneFunc, error) {
+func (b *breaker) trial(o CircuitBreaker) (DoneFunc, error) {
 	if b.trialsLeft == 0 {
 		return nil, ErrCircuitOpen
 	}
@@ -188,7 +188,7 @@ func (b *breaker) slot(n int64) *bucket {
 
 // overLimit reports whether the buckets of the window ending at bucket n have enough calls and
 // enough failures to open.
-func (b *breaker) overLimit(o CircuitBreakerOptions, n int64) bool {
+func (b *breaker) overLimit(o CircuitBreaker, n int64) bool {
 	var total, failures int
 	for _, s := range b.buckets {
 		if s.n > n-breakerBuckets && s.n <= n {
@@ -200,7 +200,7 @@ func (b *breaker) overLimit(o CircuitBreakerOptions, n int64) bool {
 }
 
 // trip opens the breaker, arms the trial phase that follows it and clears the counters.
-func (b *breaker) trip(o CircuitBreakerOptions, now time.Time) {
+func (b *breaker) trip(o CircuitBreaker, now time.Time) {
 	b.openUntil = now.Add(o.OpenFor)
 	b.trialUntil = time.Time{}
 	if o.HalfOpenCalls > 0 {
@@ -211,13 +211,13 @@ func (b *breaker) trip(o CircuitBreakerOptions, now time.Time) {
 	b.buckets = [breakerBuckets]bucket{}
 }
 
-func failed(o CircuitBreakerOptions, err error) bool {
+func failed(o CircuitBreaker, err error) bool {
 	return err != nil && (o.IsFailure == nil || o.IsFailure(err))
 }
 
 // Guard runs call through the breaker for key, as CircuitBreaker does, and reports its error:
 // ErrCircuitOpen while the breaker is open, otherwise what call returned.
-func Guard[T any](c *Cache, key string, o CircuitBreakerOptions, call func() (T, error)) (T, error) {
+func Guard[T any](c *Cache, key string, o CircuitBreaker, call func() (T, error)) (T, error) {
 	done, err := c.CircuitBreaker(key, o)
 	if err != nil {
 		var zero T

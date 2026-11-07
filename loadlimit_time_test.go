@@ -42,7 +42,10 @@ func (g *gate) load(ctx context.Context) (user, error) {
 func TestMaxConcurrentLoadsHoldsTheLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		users := gashe.For(newCache(t), gashe.Policy[user]{TTL: time.Hour, MaxConcurrentLoads: 2})
+		users := gashe.For(
+			newCache(t),
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{MaxLoads: 2}},
+		)
 		g := newGate()
 		var wg sync.WaitGroup
 		for _, key := range []string{"1", "2", "3", "4", "5"} {
@@ -66,7 +69,10 @@ func TestMaxConcurrentLoadsHoldsTheLimit(t *testing.T) {
 
 func TestMaxConcurrentLoadsWaitsAsLongAsCtx(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		users := gashe.For(newCache(t), gashe.Policy[user]{TTL: time.Hour, MaxConcurrentLoads: 1})
+		users := gashe.For(
+			newCache(t),
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{MaxLoads: 1}},
+		)
 		g := newGate()
 		defer close(g.open)
 		go func() { _, _ = users.GetOrLoad(context.Background(), "1", g.load) }()
@@ -85,9 +91,9 @@ func TestMaxConcurrentLoadsAnswersAnOldResultAtOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		users := gashe.For(newCache(t), gashe.Policy[user]{
-			TTL:                time.Minute,
-			StaleIfError:       time.Hour,
-			MaxConcurrentLoads: 1,
+			TTL:      gashe.TTL{For: time.Minute},
+			Stampede: gashe.Stampede{MaxLoads: 1},
+			Stale:    gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
 		})
 		_, _ = users.GetOrLoad(ctx, "old", func(context.Context) (user, error) { return user{Name: "old"}, nil })
 		time.Sleep(2 * time.Minute) // "old" is past its TTL, within StaleIfError
@@ -105,12 +111,56 @@ func TestMaxConcurrentLoadsAnswersAnOldResultAtOnce(t *testing.T) {
 	})
 }
 
+// A full limit answers with the stale result whenever a stale window covers the key: IfSlow alone,
+// and IfError even when IsFailure does not count ErrOverloaded as a failure.
+func TestMaxConcurrentLoadsAnswersTheStaleResultOfAnyWindow(t *testing.T) {
+	for name, stale := range map[string]gashe.Stale{
+		"IfSlow":                 {IfSlow: gashe.StaleIfSlow{For: time.Hour, After: time.Second}},
+		"IfError, any IsFailure": {IfError: gashe.StaleIfError{For: time.Hour, IsFailure: func(error) bool { return false }}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				users := gashe.For(
+					newCache(t),
+					gashe.Policy[user]{
+						TTL:      gashe.TTL{For: time.Minute},
+						Stampede: gashe.Stampede{MaxLoads: 1},
+						Stale:    stale,
+					},
+				)
+				_, _ = users.GetOrLoad(
+					ctx,
+					"old",
+					func(context.Context) (user, error) { return user{Name: "old"}, nil },
+				)
+				time.Sleep(2 * time.Minute) // "old" is past its TTL, within the window
+
+				g := newGate()
+				defer close(g.open)
+				go func() { _, _ = users.GetOrLoad(ctx, "busy", g.load) }() // takes the only slot
+				synctest.Wait()
+
+				if got, err := users.GetOrLoad(ctx, "old", g.load); err != nil || got.Name != "old" {
+					t.Fatalf("got %+v, %v; want the stale result at once", got, err)
+				}
+			})
+		})
+	}
+}
+
 func TestMaxConcurrentLoadsIsPerKindOfData(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "u:", MaxConcurrentLoads: 1})
-		admins := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "a:", MaxConcurrentLoads: 1})
+		users := gashe.For(
+			c,
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "u:", Stampede: gashe.Stampede{MaxLoads: 1}},
+		)
+		admins := gashe.For(
+			c,
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "a:", Stampede: gashe.Stampede{MaxLoads: 1}},
+		)
 		g := newGate()
 		defer close(g.open)
 		go func() { _, _ = users.GetOrLoad(ctx, "1", g.load) }()

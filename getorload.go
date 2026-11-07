@@ -12,9 +12,10 @@ import (
 // GetOrLoad returns the result stored under key, or calls load, stores its result and returns
 // it; o says when a stored result is still good enough. Stored results are shared by every
 // process that uses the same backend. Concurrent calls with the same key and type share one
-// lookup and one load; this sharing lives in the memory of this process.
+// lookup and one load, when Stampede.SingleFlight is set; this sharing lives in the memory of this
+// process.
 //
-// An error from load is returned as is and is not stored, unless StaleIfError answers it or
+// An error from load is returned as is and is not stored, unless Stale.IfError answers it or
 // Negative caches it. If the backend fails, GetOrLoad returns the result of load without storing
 // it. Errors it works around go to Options.OnError. Invalid options return ErrInvalidOptions.
 func GetOrLoad[V any](
@@ -46,7 +47,13 @@ func getOrLoad[V any](
 		v, r, getErr := l.get(ctx)
 		return answer[V]{v: v, r: r, took: l.took}, getErr
 	}
-	shared, err := c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, run)
+	var shared any
+	var err error
+	if o.Stampede.SingleFlight {
+		shared, err = c.calls.do(ctx, groupKey{key: l.key, typ: reflect.TypeFor[V]()}, run)
+	} else {
+		shared, err = run(ctx)
+	}
 	a, _ := shared.(answer[V]) // empty when the wait was cancelled
 	if a.r != 0 {
 		c.onResult(ctx, Outcome{Key: l.key, Result: a.r, Load: a.took})
@@ -115,7 +122,7 @@ type loading[V any] struct {
 	gens  []int64       // current generations of o.Tags, read before loading
 	shape uint64        // shapeOf V
 	took  time.Duration // how long the loader ran in this call
-	stale bool          // an old result can answer, so a full MaxConcurrentLoads fails at once
+	stale bool          // an old result can answer, so a full Stampede.MaxLoads fails at once
 	spare spare         // Policy.Fallback
 }
 
@@ -167,7 +174,7 @@ func (l *loading[V]) get(ctx context.Context) (V, Result, error) {
 
 // miss loads a key that has no usable entry.
 func (l *loading[V]) miss(ctx context.Context) (V, Result, error) {
-	if l.o.LockOnMiss > 0 {
+	if l.o.Stampede.LockFor > 0 {
 		return l.loadLocked(ctx)
 	}
 	v, err := l.loadAndStore(ctx)
@@ -180,10 +187,10 @@ func (l *loading[V]) answer(ctx context.Context, e entry[V]) (V, Result, error) 
 	switch {
 	case e.Neg:
 		var zero V
-		return zero, ResultNegativeHit, l.o.Negative.Err
+		return zero, ResultNegativeHit, ErrNotFound
 	case now.Before(e.At):
 		return e.V, ResultHit, nil
-	case now.Before(e.At.Add(l.o.StaleWhileRevalidate)):
+	case now.Before(e.At.Add(l.o.Stale.WhileRevalidate)):
 		l.refreshInBackground(ctx)
 		return e.V, ResultStaleWhileRevalidate, nil
 	}
@@ -237,15 +244,21 @@ func (l *loading[V]) loadAndStore(ctx context.Context) (V, error) {
 	if err != nil {
 		if l.notFound(err) {
 			l.storeNegative(ctx)
+			return v, notFoundError(err)
 		}
 		return v, err
 	}
 	return l.storeResult(ctx, v), nil
 }
 
+// notFoundError is the error of a "not found" the loader returned: ErrNotFound, wrapping err.
+func notFoundError(err error) error {
+	return fmt.Errorf("%w: %w", ErrNotFound, err)
+}
+
 // notFound reports whether err is an answer Negative caches, not a failure.
 func (l *loading[V]) notFound(err error) bool {
-	return l.o.Negative.If != nil && l.o.Negative.If(err)
+	return l.o.Negative.IsNotFound != nil && l.o.Negative.IsNotFound(err)
 }
 
 // storeResult stores v as the policy says and returns it as it reads back.
@@ -253,7 +266,7 @@ func (l *loading[V]) storeResult(ctx context.Context, v V) V {
 	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
 		return v
 	}
-	fresh, ok := l.freshFor(v)
+	fresh, ok := l.freshFor(ctx, v)
 	if !ok {
 		return v
 	}
@@ -268,9 +281,14 @@ func (l *loading[V]) storeResult(ctx context.Context, v V) V {
 }
 
 // freshFor returns the jittered fresh TTL of v, and false if v must not be stored.
-func (l *loading[V]) freshFor(v V) (time.Duration, bool) {
+func (l *loading[V]) freshFor(ctx context.Context, v V) (time.Duration, bool) {
 	fresh := l.ttl(v)
-	if fresh < 0 || fresh+l.o.keep() <= 0 {
+	if fresh < 0 {
+		l.c.onError(ctx, fmt.Errorf("%w: TTL.For returned %v for %q; leave a result out with CacheIf",
+			ErrInvalidOptions, fresh, l.key))
+		return 0, false
+	}
+	if fresh+l.o.keep() <= 0 {
 		return 0, false
 	}
 	return l.o.spread(fresh), true
@@ -285,7 +303,7 @@ func (l *loading[V]) storeNegative(ctx context.Context) {
 // loadLocked loads a missing key under the load lock and answers with the result of whoever held
 // the lock before, if there is one. If the backend cannot lock, it loads without the lock.
 func (l *loading[V]) loadLocked(ctx context.Context) (V, Result, error) {
-	lease, err := l.c.Lock(ctx, ownLoad+l.key, l.o.LockOnMiss)
+	lease, err := l.c.Lock(ctx, ownLoad+l.key, l.o.Stampede.LockFor)
 	if err != nil {
 		if ctx.Err() != nil {
 			var zero V
@@ -300,8 +318,8 @@ func (l *loading[V]) loadLocked(ctx context.Context) (V, Result, error) {
 		switch now := time.Now(); {
 		case e.Neg && now.Before(e.At): // the holder before stored "not found"
 			var zero V
-			return zero, ResultNegativeHit, l.o.Negative.Err
-		case !e.Neg && now.Before(e.At.Add(l.o.StaleWhileRevalidate)):
+			return zero, ResultNegativeHit, ErrNotFound
+		case !e.Neg && now.Before(e.At.Add(l.o.Stale.WhileRevalidate)):
 			return e.V, ResultHit, nil
 		}
 	}

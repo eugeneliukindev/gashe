@@ -1,11 +1,9 @@
-// Command stale shows how a call past the TTL is answered with TTL only: it waits for the
-// loader, and fails with it.
+// Command stale/ttl-only: past the TTL every call waits for the loader, and fails with it.
 package main
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -16,40 +14,33 @@ func main() {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{
-		OnResult: func(_ context.Context, o gashe.Outcome) {
-			fmt.Printf("  %s: %s\n", o.Key, o.Result) // how each call was answered
-		},
-	})
+	c := gashe.New(mem, gashe.Options{})
 	defer c.Shutdown(ctx) // waits for the background loads
 
-	policy := gashe.Policy[string]{
-		TTL: time.Second,
-	}
+	errDown := errors.New("database is down")
 
-	// Each call below passes the loader the database would act as at that moment.
-	loadV1 := func(context.Context) (string, error) { return "v1", nil }
-	loadSlowV2 := func(context.Context) (string, error) {
+	// --8<-- [start:api]
+	// The loader of each call stands for the database at that moment.
+	v1 := func(context.Context) (string, error) { return "v1", nil }
+	slowV2 := func(context.Context) (string, error) {
 		time.Sleep(500 * time.Millisecond)
 		return "v2", nil
 	}
-	loadV2 := func(context.Context) (string, error) { return "v2", nil }
-	fail := func(context.Context) (string, error) { return "", errors.New("database is down") }
+	v2 := func(context.Context) (string, error) { return "v2", nil }
+	down := func(context.Context) (string, error) { return "", errDown }
 
-	fmt.Println("The database has v1:")
-	v, _ := gashe.GetOrLoad(ctx, c, "page", policy, loadV1)
-	fmt.Println("  got", v)
+	pages := gashe.For(c, gashe.Policy[string]{
+		TTL: gashe.TTL{For: time.Second},
+	})
 
-	fmt.Println("Past the TTL, the database is slow and has v2:")
-	time.Sleep(1100 * time.Millisecond)
-	v, _ = gashe.GetOrLoad(ctx, c, "page", policy, loadSlowV2)
-	fmt.Println("  got", v)
-	time.Sleep(600 * time.Millisecond) // a load in the background, if any, is done
-	v, _ = gashe.GetOrLoad(ctx, c, "page", policy, loadV2)
-	fmt.Println("  got", v)
+	pages.GetOrLoad(ctx, "home", v1) // "v1", miss
 
-	fmt.Println("Past the TTL, the database is down:")
-	time.Sleep(1100 * time.Millisecond)
-	v, err := gashe.GetOrLoad(ctx, c, "page", policy, fail)
-	fmt.Printf("  got %q, err: %v\n", v, err)
+	time.Sleep(1100 * time.Millisecond)  // past the TTL, the database is slow
+	pages.GetOrLoad(ctx, "home", slowV2) // "v2" after 500ms, miss
+	time.Sleep(600 * time.Millisecond)   // background loads are done
+	pages.GetOrLoad(ctx, "home", v2)     // "v2", hit
+
+	time.Sleep(1100 * time.Millisecond) // past the TTL, the database is down
+	pages.GetOrLoad(ctx, "home", down)  // err: database is down, miss
+	// --8<-- [end:api]
 }

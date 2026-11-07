@@ -49,7 +49,7 @@ func TestRateLimitLetsCallsThroughWhenBackendFails(t *testing.T) {
 	ctx := context.Background()
 	var reported int
 	c := gashe.New(incrDown{Backend: newCache(t).Backend()}, gashe.Options{
-		OnError: func(context.Context, error) { reported++ },
+		Hooks: gashe.Hooks{OnError: func(context.Context, error) { reported++ }},
 	})
 	for range 3 {
 		if err := c.RateLimit(ctx, "k", gashe.FixedWindow{Calls: 1, Per: time.Minute}); err != nil {

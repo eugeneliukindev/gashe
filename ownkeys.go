@@ -4,7 +4,7 @@ package gashe
 // keys that start with "__" are reserved. Options.Prefix comes before them like before any key.
 const (
 	ownTag     = "__tag:"          // the generation counter of a tag
-	ownLoad    = "__load:"         // the LockOnMiss lock of an entry
+	ownLoad    = "__load:"         // the Stampede.LockFor lock of an entry
 	ownRefresh = "__refresh:"      // the lock of the one reload of a stale entry
 	ownSliding = "__rate:sliding:" // a SlidingWindow counter, followed by the window number
 	ownFixed   = "__rate:fixed:"   // a FixedWindow counter

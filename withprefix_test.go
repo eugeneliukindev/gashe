@@ -43,7 +43,7 @@ func TestPrefixesAddUp(t *testing.T) {
 	mem := memory.New(memory.Options{PurgeInterval: -1})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{Prefix: "orders:"})
-	cachedUsers := gashe.Policy[string]{TTL: time.Hour, Prefix: "users:v2:", Tags: []string{"users"}}
+	cachedUsers := gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}, Prefix: "users:v2:", Tags: []string{"users"}}
 
 	_, _ = gashe.GetOrLoad(ctx, c, "42", cachedUsers, func(context.Context) (string, error) { return "Ann", nil })
 	for _, key := range []string{"orders:users:v2:42", "orders:__tag:users"} {

@@ -28,8 +28,13 @@ func TestUnreachableServer(t *testing.T) {
 	}
 
 	var reported []error
-	c := gashe.New(b, gashe.Options{OnError: func(_ context.Context, err error) { reported = append(reported, err) }})
-	got, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[string]{TTL: time.Hour},
+	c := gashe.New(
+		b,
+		gashe.Options{
+			Hooks: gashe.Hooks{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
+		},
+	)
+	got, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (string, error) { return "fresh", nil })
 	if err != nil || got != "fresh" {
 		t.Fatalf("Do = %q, %v; want the loader result", got, err)

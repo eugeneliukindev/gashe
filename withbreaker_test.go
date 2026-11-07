@@ -29,7 +29,7 @@ func (f *flaky) Ping(context.Context) error {
 	return errBackendDown
 }
 
-var cacheBreaker = gashe.CircuitBreakerOptions{
+var cacheBreaker = gashe.CircuitBreaker{
 	FailurePercent: 50,
 	MinCalls:       3,
 	Window:         time.Minute,
@@ -46,7 +46,7 @@ func newFlaky(t *testing.T) *flaky {
 func TestBreakerStopsCallingAFailingBackend(t *testing.T) {
 	ctx := context.Background()
 	f := newFlaky(t)
-	b := gashe.New(f, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
+	b := gashe.New(f, gashe.Options{CircuitBreaker: cacheBreaker}).Backend()
 
 	for range 3 {
 		if _, err := b.Get(ctx, "k"); !errors.Is(err, errBackendDown) {
@@ -68,7 +68,7 @@ func TestBreakerIgnoresMisses(t *testing.T) {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = mem.Close() })
-	b := gashe.New(mem, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
+	b := gashe.New(mem, gashe.Options{CircuitBreaker: cacheBreaker}).Backend()
 
 	for range 10 {
 		if _, err := b.Get(ctx, "missing"); !errors.Is(err, gashe.ErrNotFound) {
@@ -79,9 +79,9 @@ func TestBreakerIgnoresMisses(t *testing.T) {
 
 func TestGetOrLoadThroughAnOpenBreaker(t *testing.T) {
 	ctx := context.Background()
-	c := gashe.New(newFlaky(t), gashe.Options{CircuitBreaker: &cacheBreaker})
+	c := gashe.New(newFlaky(t), gashe.Options{CircuitBreaker: cacheBreaker})
 	_, load := versions()
-	o := gashe.Policy[int]{TTL: time.Minute}
+	o := gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}}
 
 	for i := range 5 {
 		if got, err := gashe.GetOrLoad(ctx, c, "k", o, load); err != nil || got != i+1 {
@@ -96,7 +96,10 @@ func TestBreakerPanicsOnInvalidOptions(t *testing.T) {
 			t.Fatal("no panic")
 		}
 	}()
-	gashe.New(newFlaky(t), gashe.Options{CircuitBreaker: &gashe.CircuitBreakerOptions{}})
+	gashe.New(
+		newFlaky(t),
+		gashe.Options{CircuitBreaker: gashe.CircuitBreaker{FailurePercent: 50}},
+	) // no Window, no OpenFor
 }
 
 func TestBreakerContract(t *testing.T) {
@@ -104,7 +107,7 @@ func TestBreakerContract(t *testing.T) {
 		t.Helper()
 		mem := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = mem.Close() })
-		return gashe.New(mem, gashe.Options{CircuitBreaker: &cacheBreaker}).Backend()
+		return gashe.New(mem, gashe.Options{CircuitBreaker: cacheBreaker}).Backend()
 	})
 }
 
@@ -127,7 +130,7 @@ func TestBreakerCountsDeadlinesOfAHungBackend(t *testing.T) {
 	mem := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = mem.Close() })
 	b := &hung{Backend: mem}
-	c := gashe.New(b, gashe.Options{CircuitBreaker: &cacheBreaker})
+	c := gashe.New(b, gashe.Options{CircuitBreaker: cacheBreaker})
 	var s string
 	for range 5 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
@@ -144,7 +147,7 @@ func TestBreakerIgnoresCallsAlreadyOutOfTime(t *testing.T) {
 	mem := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = mem.Close() })
 	b := &hung{Backend: mem}
-	c := gashe.New(b, gashe.Options{CircuitBreaker: &cacheBreaker})
+	c := gashe.New(b, gashe.Options{CircuitBreaker: cacheBreaker})
 	late, cancel := context.WithTimeout(context.Background(), -time.Second)
 	defer cancel()
 	var s string

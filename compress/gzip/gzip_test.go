@@ -25,7 +25,7 @@ func TestGetOrLoadRoundTrip(t *testing.T) {
 	want := page{Body: strings.Repeat("<li>a product</li>", 10_000)}
 
 	for range 2 { // a miss, then a hit read back through a pooled reader
-		got, err := gashe.GetOrLoad(ctx, c, "p", gashe.Policy[page]{TTL: time.Minute},
+		got, err := gashe.GetOrLoad(ctx, c, "p", gashe.Policy[page]{TTL: gashe.TTL{For: time.Minute}},
 			func(context.Context) (page, error) { return want, nil })
 		if err != nil || got != want {
 			t.Fatalf("got %d bytes, %v; want the page back", len(got.Body), err)

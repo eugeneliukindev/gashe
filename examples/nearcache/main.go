@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -25,11 +24,12 @@ func main() {
 		log.Fatalf("this example needs Redis on localhost:6379: %v", err)
 	}
 
+	// --8<-- [start:api]
 	// Process A: its own local memory in front of the shared Redis.
 	localA := memory.New(memory.Options{})
 	defer localA.Close()
 	nearA := nearcache.New(localA, gasheredis.New(client), nearcache.Options{
-		LocalTTL: time.Hour, // long on purpose: without the Bus, a change would stay unseen for an hour
+		LocalTTL: time.Hour, // without the Bus, a change is unseen for an hour
 		Bus:      gasheredis.NewBus(client, "gashe-example:invalidate"),
 	})
 	defer nearA.Close()
@@ -49,11 +49,10 @@ func main() {
 
 	var price int
 	b.Set(ctx, "price", 100, 0)
-	a.Get(ctx, "price", &price)
-	fmt.Println("process A reads:", price) // process A reads: 100, now kept in its memory
+	a.Get(ctx, "price", &price) // 100, now kept in the memory of A
 
 	b.Set(ctx, "price", 120, 0)
 	time.Sleep(50 * time.Millisecond) // the message travels through Redis
-	a.Get(ctx, "price", &price)
-	fmt.Println("process B changed it, process A reads:", price) // process B changed it, process A reads: 120
+	a.Get(ctx, "price", &price)       // 120: the Bus dropped the copy of A
+	// --8<-- [end:api]
 }

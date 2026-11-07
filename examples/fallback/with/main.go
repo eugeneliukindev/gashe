@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -30,15 +29,19 @@ func main() {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
-	redis := &flaky{Backend: mem}
+	// --8<-- [start:api]
+	redis := &flaky{Backend: mem} // Redis, which fails once down is set
 	c := gashe.New(redis, gashe.Options{})
 
-	spare := memory.New(memory.Options{MaxBytes: 32 << 20}) // the memory of this process, for Fallback
+	spare := memory.New(memory.Options{MaxBytes: 32 << 20}) // process memory
 	defer spare.Close()
 	policy := gashe.Policy[string]{
-		TTL:      time.Hour,
-		Fallback: &gashe.FallbackOptions{Backend: spare, MaxTTL: 30 * time.Second}, // answer from spare while Redis fails
-		Prefix:   "user:",
+		TTL: gashe.TTL{For: time.Hour},
+		Fallback: gashe.Fallback{
+			Backend: spare,
+			MaxTTL:  30 * time.Second,
+		}, // answer from spare while Redis fails
+		Prefix: "user:",
 	}
 
 	queries := 0
@@ -50,12 +53,13 @@ func main() {
 	for range 100 {
 		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
 	}
-	fmt.Println("Redis up, 100 requests, database queries:", queries)
+	// Redis up: queries is 1
 
 	redis.down = true
 	queries = 0
 	for range 100 {
 		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
 	}
-	fmt.Println("Redis down, 100 requests, database queries:", queries)
+	// Redis down: queries is 1 again, the result comes from Fallback
+	// --8<-- [end:api]
 }

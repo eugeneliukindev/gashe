@@ -15,11 +15,11 @@ type userV2 struct{ FullName string }
 func TestChangedTypeIsAMiss(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	_, _ = gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV1]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV1]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (userV1, error) { return userV1{Name: "Ann"}, nil })
 
 	// The next deploy renamed the field: the stored entry must not decode into an empty FullName.
-	got, err := gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV2]{TTL: time.Hour},
+	got, err := gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV2]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (userV2, error) { return userV2{FullName: "Ann"}, nil })
 	if err != nil || got.FullName != "Ann" {
 		t.Fatalf("got %+v, %v; want the loader result, not the old entry", got, err)
@@ -29,7 +29,7 @@ func TestChangedTypeIsAMiss(t *testing.T) {
 func TestSameTypeIsAHit(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[userV1]{TTL: time.Hour}
+	o := gashe.Policy[userV1]{TTL: gashe.TTL{For: time.Hour}}
 	calls := 0
 	load := func(context.Context) (userV1, error) { calls++; return userV1{Name: "Ann"}, nil }
 	_, _ = gashe.GetOrLoad(ctx, c, "user:42", o, load)
@@ -47,7 +47,7 @@ func TestEntryWithoutShapeIsAccepted(t *testing.T) {
 	if err := c.Backend().Set(ctx, "user:42", raw, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	got, err := gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV1]{TTL: time.Hour},
+	got, err := gashe.GetOrLoad(ctx, c, "user:42", gashe.Policy[userV1]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (userV1, error) {
 			t.Fatal("an entry without a shape must be read, so an upgrade does not empty the cache")
 			return userV1{}, nil
@@ -70,18 +70,18 @@ func TestShapeFollowsWhatJSONStores(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	store := func(key string) {
-		_, _ = gashe.GetOrLoad(ctx, c, key, gashe.Policy[userV1]{TTL: time.Hour},
+		_, _ = gashe.GetOrLoad(ctx, c, key, gashe.Policy[userV1]{TTL: gashe.TTL{For: time.Hour}},
 			func(context.Context) (userV1, error) { return userV1{Name: "Ann"}, nil })
 	}
 	store("a")
 	store("b")
 	missed := false
-	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[tagged]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[tagged]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (tagged, error) { missed = true; return tagged{}, nil })
 	if !missed {
 		t.Fatal("a new json tag must change the shape")
 	}
-	_, _ = gashe.GetOrLoad(ctx, c, "b", gashe.Policy[withPrivate]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "b", gashe.Policy[withPrivate]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (withPrivate, error) {
 			t.Fatal("an unexported field must not change the shape")
 			return withPrivate{}, nil
@@ -101,10 +101,10 @@ type packedV2 struct {
 func TestShapeFollowsMsgpackTags(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV1]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV1]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (packedV1, error) { return packedV1{Name: "Ann"}, nil })
 	missed := false
-	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV2]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "a", gashe.Policy[packedV2]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (packedV2, error) { missed = true; return packedV2{}, nil })
 	if !missed {
 		t.Fatal("a renamed msgpack tag must change the shape")

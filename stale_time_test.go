@@ -17,7 +17,13 @@ import (
 func TestGetOrLoadStaleIfError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.Policy[int]{TTL: 7 * time.Minute, StaleIfError: 3 * time.Minute})
+		s := newCached(
+			newCache(t),
+			gashe.Policy[int]{
+				TTL:   gashe.TTL{For: 7 * time.Minute},
+				Stale: gashe.Stale{IfError: gashe.StaleIfError{For: 3 * time.Minute}},
+			},
+		)
 		calls, load := versions()
 		failing := func(context.Context) (int, error) { return 0, errAPI }
 
@@ -44,8 +50,8 @@ func TestGetOrLoadStaleWhileRevalidate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		s := newCached(newCache(t), gashe.Policy[int]{
-			TTL:                  7 * time.Minute,
-			StaleWhileRevalidate: 3 * time.Minute,
+			TTL:   gashe.TTL{For: 7 * time.Minute},
+			Stale: gashe.Stale{WhileRevalidate: 3 * time.Minute},
 		})
 		calls, load := versions()
 
@@ -69,7 +75,7 @@ func TestGetOrLoadRevalidatesOnceAcrossProcesses(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		opts := gashe.Policy[int]{TTL: time.Minute, StaleWhileRevalidate: time.Hour}
+		opts := gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}, Stale: gashe.Stale{WhileRevalidate: time.Hour}}
 		// Two strategy values over one cache stand for two processes: no in-process sharing.
 		a, b := newCached(c, opts), newCached(c, opts)
 		var calls atomic.Int32
@@ -96,7 +102,7 @@ func TestGetOrLoadDynamicMode(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		// TTL 0: never fresh; every call answers at once and refreshes in the background.
-		s := newCached(newCache(t), gashe.Policy[int]{StaleWhileRevalidate: 24 * time.Hour})
+		s := newCached(newCache(t), gashe.Policy[int]{Stale: gashe.Stale{WhileRevalidate: 24 * time.Hour}})
 		_, load := versions()
 		for i, want := range []int{1, 1, 2, 3} {
 			if got, _ := s.Do(ctx, "k", load); got != want {
@@ -111,9 +117,8 @@ func TestGetOrLoadRevalidateThenStaleIfError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		s := newCached(newCache(t), gashe.Policy[int]{
-			TTL:                  time.Minute,
-			StaleWhileRevalidate: time.Minute,
-			StaleIfError:         10 * time.Minute,
+			TTL:   gashe.TTL{For: time.Minute},
+			Stale: gashe.Stale{WhileRevalidate: time.Minute, IfError: gashe.StaleIfError{For: 10 * time.Minute}},
 		})
 		_, load := versions()
 		_, _ = s.Do(ctx, "k", load)
@@ -129,7 +134,7 @@ func TestGetOrLoadMissLock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		opts := gashe.Policy[int]{TTL: time.Hour, LockOnMiss: 10 * time.Second}
+		opts := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{LockFor: 10 * time.Second}}
 		var calls atomic.Int32
 		slow := func(context.Context) (int, error) {
 			time.Sleep(time.Second)
@@ -161,22 +166,21 @@ func TestStaleIfErrorDoesNotHideNotFound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		p := gashe.Policy[int]{
-			TTL:          time.Minute,
-			StaleIfError: time.Hour,
+			TTL: gashe.TTL{For: time.Minute},
 			Negative: gashe.Negative{
-				If:  func(err error) bool { return errors.Is(err, errNotFound) },
-				Err: errNotFound,
-				TTL: time.Minute,
+				IsNotFound: func(err error) bool { return errors.Is(err, errNotFound) },
+				TTL:        time.Minute,
 			},
+			Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
 		}
 		c := newCache(t)
 		_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (int, error) { return 1, nil })
 		time.Sleep(2 * time.Minute) // stale, within StaleIfError
 		deleted := func(context.Context) (int, error) { return 0, errNotFound }
-		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, errNotFound) {
+		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, gashe.ErrNotFound) {
 			t.Fatalf("the call got %v, want not found: the data is gone", err)
 		}
-		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, errNotFound) {
+		if _, err := gashe.GetOrLoad(ctx, c, "k", p, deleted); !errors.Is(err, gashe.ErrNotFound) {
 			t.Fatalf("the next call got %v, want the cached not found", err)
 		}
 	})

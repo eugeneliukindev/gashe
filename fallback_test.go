@@ -27,22 +27,24 @@ func (deadBackend) SetIfAbsent(context.Context, string, []byte, time.Duration) (
 
 // withFallback returns a cache over a dead backend, a fallback for its policies, and what
 // OnResult saw.
-func withFallback(t *testing.T, maxTTL time.Duration) (*gashe.Cache, *gashe.FallbackOptions, *[]gashe.Result) {
+func withFallback(t *testing.T, maxTTL time.Duration) (*gashe.Cache, gashe.Fallback, *[]gashe.Result) {
 	t.Helper()
 	spare := memory.New(memory.Options{PurgeInterval: -1})
 	t.Cleanup(func() { _ = spare.Close() })
 	results := new([]gashe.Result)
 	c := gashe.New(deadBackend{Backend: newCache(t).Backend()}, gashe.Options{
-		OnResult: func(_ context.Context, o gashe.Outcome) { *results = append(*results, o.Result) },
+		Hooks: gashe.Hooks{
+			OnResult: func(_ context.Context, o gashe.Outcome) { *results = append(*results, o.Result) },
+		},
 	})
-	return c, &gashe.FallbackOptions{Backend: spare, MaxTTL: maxTTL}, results
+	return c, gashe.Fallback{Backend: spare, MaxTTL: maxTTL}, results
 }
 
 func TestFallbackAnswersWhileTheBackendIsDown(t *testing.T) {
 	ctx := context.Background()
 	c, fb, results := withFallback(t, 0)
 	calls, load := counter(user{Name: "Ann"})
-	users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Fallback: fb})
+	users := gashe.For(c, gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Fallback: fb})
 
 	for range 3 {
 		if got, err := users.GetOrLoad(ctx, "42", load); err != nil || got.Name != "Ann" {
@@ -63,7 +65,7 @@ func TestWithoutFallbackEveryCallLoads(t *testing.T) {
 	c := gashe.New(deadBackend{Backend: newCache(t).Backend()}, gashe.Options{})
 	calls, load := counter(user{Name: "Ann"})
 	for range 3 {
-		_, _ = gashe.GetOrLoad(ctx, c, "42", gashe.Policy[user]{TTL: time.Hour}, load)
+		_, _ = gashe.GetOrLoad(ctx, c, "42", gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}}, load)
 	}
 	if *calls != 3 {
 		t.Fatalf("loader ran %d times, want 3 without a fallback", *calls)
@@ -73,7 +75,7 @@ func TestWithoutFallbackEveryCallLoads(t *testing.T) {
 func TestFallbackKeepsListsAndReloads(t *testing.T) {
 	ctx := context.Background()
 	c, fb, _ := withFallback(t, 0)
-	users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "u:", Fallback: fb})
+	users := gashe.For(c, gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "u:", Fallback: fb})
 	asked := 0
 	loadMany := func(_ context.Context, missing []string) (map[string]user, error) {
 		asked += len(missing)
@@ -110,11 +112,11 @@ func TestInvalidFallbackIsRejected(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	_, load := counter(user{})
-	for name, fb := range map[string]*gashe.FallbackOptions{
-		"no backend":      {},
-		"negative MaxTTL": {Backend: memory.New(memory.Options{PurgeInterval: -1}), MaxTTL: -time.Second},
+	for name, fb := range map[string]gashe.Fallback{
+		"MaxTTL without a Backend": {MaxTTL: time.Second},
+		"negative MaxTTL":          {Backend: memory.New(memory.Options{PurgeInterval: -1}), MaxTTL: -time.Second},
 	} {
-		_, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[user]{TTL: time.Hour, Fallback: fb}, load)
+		_, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Fallback: fb}, load)
 		if !errors.Is(err, gashe.ErrInvalidOptions) {
 			t.Errorf("%s: %v, want ErrInvalidOptions", name, err)
 		}
@@ -126,8 +128,8 @@ func TestFallbackIsPerPolicy(t *testing.T) {
 	c, fb, _ := withFallback(t, 0)
 	kept, keptLoad := counter(user{Name: "Ann"})
 	plain, plainLoad := counter(user{Name: "Ann"})
-	with := gashe.Policy[user]{TTL: time.Hour, Prefix: "kept:", Fallback: fb}
-	without := gashe.Policy[user]{TTL: time.Hour, Prefix: "plain:"}
+	with := gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "kept:", Fallback: fb}
+	without := gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "plain:"}
 	for range 2 {
 		_, _ = gashe.GetOrLoad(ctx, c, "42", with, keptLoad)
 		_, _ = gashe.GetOrLoad(ctx, c, "42", without, plainLoad)
@@ -143,17 +145,16 @@ func TestFallbackKeepsNotFound(t *testing.T) {
 	calls := 0
 	missing := func(context.Context) (user, error) { calls++; return user{}, errAPI }
 	users := gashe.For(c, gashe.Policy[user]{
-		TTL: time.Hour,
+		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			If:  func(err error) bool { return errors.Is(err, errAPI) },
-			Err: errAPI,
-			TTL: time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errAPI) },
+			TTL:        time.Minute,
 		},
 		Fallback: fb,
 	})
 	for range 3 {
-		if _, err := users.GetOrLoad(ctx, "ghost", missing); !errors.Is(err, errAPI) {
-			t.Fatalf("err = %v, want the Negative.Err", err)
+		if _, err := users.GetOrLoad(ctx, "ghost", missing); !errors.Is(err, gashe.ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
 		}
 	}
 	if calls != 1 {

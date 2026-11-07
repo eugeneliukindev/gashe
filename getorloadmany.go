@@ -15,7 +15,7 @@ import (
 // stored.
 //
 // It reads entries stored by GetOrLoad with the same policy and the other way round. It supports
-// TTL, Jitter, Tags, CacheIf and Prefix; StaleWhileRevalidate, StaleIfError, LockOnMiss
+// TTL, Tags, CacheIf and Prefix; Stale, Stampede.LockFor
 // and Negative return ErrInvalidOptions. Unlike GetOrLoad, concurrent calls do not share a load.
 // An error from load is returned as is; if the backend fails, the result of load is returned
 // without storing it.
@@ -42,9 +42,11 @@ func getOrLoadMany[V any](
 	ttl func(V) time.Duration,
 	load func(ctx context.Context, missing []string) (map[string]V, error),
 ) (map[string]V, error) {
-	if o.keep() > 0 || o.LockOnMiss > 0 || o.Negative.If != nil {
-		return nil, fmt.Errorf("%w: GetOrLoadMany does not support StaleWhileRevalidate, StaleIfError, "+
-			"LockOnMiss or Negative", ErrInvalidOptions)
+	if o.keep() > 0 || o.Stampede.LockFor > 0 || o.Negative.IsNotFound != nil {
+		return nil, fmt.Errorf(
+			"%w: GetOrLoadMany does not support Stale, Stampede.LockFor or Negative",
+			ErrInvalidOptions,
+		)
 	}
 	keys = slices.Compact(slices.Sorted(slices.Values(keys)))
 	if len(keys) == 0 {
@@ -121,7 +123,7 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 			continue
 		}
 		out[k] = v
-		fresh, ok := l.freshFor(v)
+		fresh, ok := l.freshFor(ctx, v)
 		if !ok || (l.o.CacheIf != nil && !l.o.CacheIf(v)) {
 			continue
 		}
@@ -162,7 +164,7 @@ func (l *loading[V]) usable(e *entry[V], now time.Time) bool {
 	return !e.Neg && now.Before(e.At) && slices.Equal(e.G, l.gens) && e.sameShape(l.shape)
 }
 
-// loadMany runs the loader for missing within Policy.MaxConcurrentLoads: one batch takes one slot.
+// loadMany runs the loader for missing within Stampede.MaxLoads: one batch takes one slot.
 func (l *loading[V]) loadMany(
 	ctx context.Context,
 	load func(ctx context.Context, missing []string) (map[string]V, error),

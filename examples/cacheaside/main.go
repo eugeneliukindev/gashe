@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -22,17 +21,17 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	policy := gashe.Policy[User]{
-		TTL:    time.Minute,
+		TTL:    gashe.TTL{For: time.Minute},
 		Prefix: "user:",
 	}
 	loadUser := func(context.Context) (User, error) {
-		fmt.Println("load from the database") // SELECT ... WHERE id = 42
-		return User{ID: 42, Name: "Ann"}, nil
+		return User{ID: 42, Name: "Ann"}, nil // SELECT ... WHERE id = 42
 	}
 
-	for range 3 {
-		u, _ := gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
-		fmt.Printf("got %+v\n", u) // three times; the database is asked only the first time
-	}
+	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: the loader runs
+	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: from the cache
+	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: from the cache
+	// --8<-- [end:api]
 }

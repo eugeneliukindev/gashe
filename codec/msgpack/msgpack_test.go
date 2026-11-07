@@ -22,7 +22,7 @@ func TestGetOrLoadRoundTrip(t *testing.T) {
 	t.Cleanup(func() { _ = mem.Close() })
 	c := gashe.New(mem, gashe.Options{Codec: msgpack.Codec{}})
 	want := user{ID: 1, Name: "Ann", Created: time.Date(2026, 1, 2, 3, 4, 5, 6, time.UTC)}
-	o := gashe.Policy[user]{TTL: time.Minute, Tags: []string{"users"}}
+	o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}, Tags: []string{"users"}}
 
 	for range 2 { // a miss, then a hit decoded from MessagePack
 		got, err := gashe.GetOrLoad(ctx, c, "u:1", o, func(context.Context) (user, error) { return want, nil })

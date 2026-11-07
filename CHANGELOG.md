@@ -11,12 +11,12 @@ module it is about.
 
 ### Added
 
-- `Policy.MaxConcurrentLoads`: at most this many loads of one kind of data, its type and `Prefix`,
+- `Policy.Stampede.MaxLoads`: at most this many loads of one kind of data, its type and `Prefix`,
   run at once in a process; a call over the limit waits as long as its `ctx` allows and then gets
   `ErrOverloaded`, and one an old result can answer gets it at once. `httpcache` answers a request
   held back with `503`.
 
-- `Policy.Fallback`: while the backend fails or `CircuitBreaker` is open, every load of the policy,
+- `Policy.Fallback`, a `gashe.Fallback`: while the backend fails or `CircuitBreaker` is open, every load of the policy,
   through `GetOrLoad`, `GetOrLoadMany`, `Reload` or `httpcache`, keeps what the loader returns in a
   backend of its own, usually memory, and answers from it, so the database gets one load per key and
   process instead of one per call. `MaxTTL`, 30 seconds by default, caps how long an entry stays
@@ -36,6 +36,30 @@ module it is about.
 
 ### Changed
 
+- Fields that belong together are grouped, and sorted by how often they are set:
+  `Policy{TTL: d, Jitter: j}` becomes `Policy{TTL: gashe.TTL{For: d, Jitter: j}}`;
+  `LockOnMiss: d` becomes `Stampede: gashe.Stampede{LockFor: d}`;
+  `Options{OnResult: r, OnError: e}` becomes `Options{Hooks: gashe.Hooks{OnResult: r, OnError: e}}`.
+- Concurrent calls for one key in a process share one load only with
+  `Stampede: gashe.Stampede{SingleFlight: true}`; before, they always did. Set it to keep the old
+  behavior. Leave it off when the loader reads from `ctx` what the key does not name: a shared load
+  runs with the `ctx` values of the call that started it.
+- `CircuitBreakerOptions` is `CircuitBreaker`, and `Options.CircuitBreaker` is a value, not a
+  pointer: its zero value, with no `FailurePercent`, means no breaker.
+- `Negative.If` is `Negative.IsNotFound`, named as `IsFailure` is.
+- A negative TTL from the function of `TTL.For` no longer means "do not store" silently: the
+  result is still not stored, and `OnError` gets `ErrInvalidOptions`. Leave a result out with
+  `CacheIf`.
+- The stale options of `Policy` are one struct, `Policy.Stale`, and each way to answer with the
+  stale result has its own window after `TTL`:
+  `StaleWhileRevalidate: d` becomes `Stale: gashe.Stale{WhileRevalidate: d}`;
+  `StaleIfError: d, StaleIf: f` becomes `Stale: gashe.Stale{IfError: gashe.StaleIfError{For: d, IsFailure: f}}`;
+  `StaleIfSlow: s` becomes `Stale: gashe.Stale{IfSlow: gashe.StaleIfSlow{For: d, After: s}}`, where
+  `For` is a window of its own, so `IfSlow` no longer needs `IfError`.
+- `Negative.Err` is removed: a "not found" of `Policy.Negative` returns `ErrNotFound`, wrapping
+  the loader error when it loaded and alone while it is cached, so callers check
+  `errors.Is(err, gashe.ErrNotFound)`. `Negative{If: f, Err: e, TTL: d}` becomes
+  `Negative{IsNotFound: f, TTL: d}`.
 - The documentation moved from the README to a site, https://eugeneliukindev.github.io/gashe/,
   built from `docs/` with Zensical, with code from `examples/` and outputs of real runs, curl
   against `httpcache` included. The README keeps a short example.
@@ -52,6 +76,8 @@ module it is about.
 
 ### Fixed
 
+- With every `MaxConcurrentLoads` slot taken, a call answers the stale result within any window of
+  `Policy.Stale`, `IfSlow` included and whatever `IsFailure` says; it waited for a slot before.
 - Concurrent calls for one key share a load that no longer runs with the `ctx` of the first
   caller: when that caller left, the others got its `context canceled`, and `httpcache` stored the
   page its cancelled handler wrote. The load is cancelled once every caller has left.

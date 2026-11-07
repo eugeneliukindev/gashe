@@ -47,8 +47,8 @@ func (p *page) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func serve(t *testing.T, c *gashe.Cache, opts *httpcache.Options, h http.Handler) http.Handler {
 	t.Helper()
 	o := *opts
-	if o.Policy.TTL == nil && o.Policy.StaleIfError == 0 {
-		o.Policy.TTL = time.Minute
+	if o.Policy.TTL.For == nil && o.Policy.Stale.IfError.For == 0 {
+		o.Policy.TTL.For = time.Minute
 	}
 	return httpcache.New(c, o)(h)
 }
@@ -117,7 +117,8 @@ func TestHandlerETagIsKept(t *testing.T) {
 func TestStaleIfErrorAnswersServerErrors(t *testing.T) {
 	p := &page{body: "last good page"}
 	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		StaleIfError: time.Hour, // TTL 0: the handler runs every time, its failures get the stored page
+		// TTL 0: the handler runs every time, its failures get the stored page
+		Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
 	}}, p)
 
 	get(h, http.MethodGet, "/")
@@ -194,7 +195,7 @@ func TestCacheIfDecidesStatuses(t *testing.T) {
 	p := &page{body: "no such product"}
 	p.status.Store(http.StatusNotFound)
 	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:     time.Minute,
+		TTL:     gashe.TTL{For: time.Minute},
 		CacheIf: func(r httpcache.Response) bool { return r.Status == 200 || r.Status == 404 },
 	}}, p)
 
@@ -273,7 +274,14 @@ func TestHead(t *testing.T) {
 
 func TestStaleIfErrorDoesNotHideAnswersThatAreNotStored(t *testing.T) {
 	p := &page{body: "product"}
-	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{StaleIfError: time.Hour}}, p)
+	h := serve(
+		t,
+		newCache(t),
+		&httpcache.Options{
+			Policy: gashe.Policy[httpcache.Response]{Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}},
+		},
+		p,
+	)
 
 	get(h, http.MethodGet, "/p/1")
 	p.status.Store(http.StatusNotFound) // the product was deleted: a real answer, not a failure
@@ -423,7 +431,10 @@ func TestOverloadedRequestGets503(t *testing.T) {
 		_, _ = io.WriteString(w, "page")
 	})
 	h := serve(t, newCache(t), &httpcache.Options{
-		Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute, MaxConcurrentLoads: 1},
+		Policy: gashe.Policy[httpcache.Response]{
+			TTL:      gashe.TTL{For: time.Minute},
+			Stampede: gashe.Stampede{SingleFlight: true, MaxLoads: 1},
+		},
 	}, slow)
 	done := make(chan struct{})
 	go func() { get(h, http.MethodGet, "/a"); close(done) }() // takes the only slot
@@ -449,7 +460,17 @@ func TestRequestPastItsDeadlineGets503(t *testing.T) {
 		<-release
 		_, _ = io.WriteString(w, "page")
 	})
-	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{TTL: time.Minute}}, slow)
+	h := serve(
+		t,
+		newCache(t),
+		&httpcache.Options{
+			Policy: gashe.Policy[httpcache.Response]{
+				TTL:      gashe.TTL{For: time.Minute},
+				Stampede: gashe.Stampede{SingleFlight: true},
+			},
+		},
+		slow,
+	)
 	done := make(chan struct{})
 	go func() { get(h, http.MethodGet, "/a"); close(done) }() // renders /a
 	time.Sleep(50 * time.Millisecond)
@@ -510,8 +531,8 @@ func TestFallbackServesPagesWhileTheBackendIsDown(t *testing.T) {
 	c := gashe.New(deadBackend{Backend: newCache(t).Backend()}, gashe.Options{})
 	p := &page{body: "catalog"}
 	h := serve(t, c, &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:      time.Minute,
-		Fallback: &gashe.FallbackOptions{Backend: spare},
+		TTL:      gashe.TTL{For: time.Minute},
+		Fallback: gashe.Fallback{Backend: spare},
 	}}, p)
 
 	for range 3 {
@@ -529,11 +550,16 @@ func TestFallbackServesPagesWhileTheBackendIsDown(t *testing.T) {
 func TestServerErrorIsSharedWithWaiters(t *testing.T) {
 	release := make(chan struct{})
 	var runs atomic.Int32
-	h := serve(t, newCache(t), &httpcache.Options{}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		runs.Add(1)
-		<-release
-		http.Error(w, "down", http.StatusInternalServerError)
-	}))
+	h := serve(
+		t,
+		newCache(t),
+		&httpcache.Options{Policy: gashe.Policy[httpcache.Response]{Stampede: gashe.Stampede{SingleFlight: true}}},
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			runs.Add(1)
+			<-release
+			http.Error(w, "down", http.StatusInternalServerError)
+		}),
+	)
 	codes := make(chan int, 4)
 	for range 4 {
 		go func() { codes <- get(h, http.MethodGet, "/").Code }()
@@ -557,8 +583,8 @@ func TestNegativeIsRejected(t *testing.T) {
 		}
 	}()
 	httpcache.New(newCache(t), httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:      time.Minute,
-		Negative: gashe.Negative{If: func(error) bool { return true }, TTL: time.Minute},
+		TTL:      gashe.TTL{For: time.Minute},
+		Negative: gashe.Negative{IsNotFound: func(error) bool { return true }, TTL: time.Minute},
 	}})
 }
 

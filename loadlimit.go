@@ -7,14 +7,14 @@ import (
 	"sync"
 )
 
-// loadKind is a kind of data, as far as MaxConcurrentLoads goes: the type of its results and its
+// loadKind is a kind of data, as far as Stampede.MaxLoads goes: the type of its results and its
 // Policy.Prefix.
 type loadKind struct {
 	typ    reflect.Type
 	prefix string
 }
 
-// loadLimits holds the slots of every kind of data a Cache loads with MaxConcurrentLoads.
+// loadLimits holds the slots of every kind of data a Cache loads with Stampede.MaxLoads.
 type loadLimits struct {
 	mu sync.Mutex
 	m  map[loadKind]chan struct{}
@@ -60,12 +60,12 @@ func (ls *loadLimits) slots(kind loadKind, n int) chan struct{} {
 	return s
 }
 
-// acquire takes a slot of Policy.MaxConcurrentLoads for one load of this kind of data.
+// acquire takes a slot of Stampede.MaxLoads for one load of this kind of data.
 func (l *loading[V]) acquire(ctx context.Context) (release func(), err error) {
 	return l.c.loads.acquire(
 		ctx,
 		loadKind{typ: reflect.TypeFor[V](), prefix: l.o.Prefix},
-		l.o.MaxConcurrentLoads,
+		l.o.Stampede.MaxLoads,
 		l.stale,
 	)
 }

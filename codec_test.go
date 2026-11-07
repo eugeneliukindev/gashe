@@ -32,7 +32,7 @@ func TestCompressorOnEveryPath(t *testing.T) {
 	if err := c.Set(ctx, "a", "Ann", 0); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = gashe.GetOrLoad(ctx, c, "b", gashe.Policy[string]{TTL: time.Hour},
+	_, _ = gashe.GetOrLoad(ctx, c, "b", gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}},
 		func(context.Context) (string, error) { return "Bob", nil })
 	for _, key := range []string{"a", "b"} {
 		if raw, _ := mem.Get(ctx, key); !bytes.HasPrefix(raw, []byte("z:")) {

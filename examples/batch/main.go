@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -18,15 +17,16 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 
 	db := map[string]string{"1": "Mug", "2": "Kettle", "3": "Spoon"}
+
+	// --8<-- [start:api]
 	policy := gashe.Policy[string]{
-		TTL:    time.Hour,
+		TTL:    gashe.TTL{For: time.Hour},
 		Prefix: "product:",
 	}
 	// The loader gets only the ids the cache does not have.
-	loadProducts := func(_ context.Context, missing []string) (map[string]string, error) {
-		fmt.Println("  database query for", missing) // SELECT ... WHERE id = ANY($1)
-		found := map[string]string{}
-		for _, id := range missing {
+	loadProducts := func(_ context.Context, ids []string) (map[string]string, error) {
+		found := map[string]string{} // SELECT ... WHERE id = ANY($1)
+		for _, id := range ids {
 			if name, ok := db[id]; ok {
 				found[id] = name
 			}
@@ -34,10 +34,8 @@ func main() {
 		return found, nil
 	}
 
-	for _, ids := range [][]string{{"1", "2"}, {"1", "2", "3"}, {"1", "2", "3", "99"}} {
-		fmt.Println("page asks for", ids)
-		products, _ := gashe.GetOrLoadMany(ctx, c, ids, policy, loadProducts)
-		// a query for [1 2], then for [3] only, then for [99]: it does not exist, so it is left out
-		fmt.Println("  got", products)
-	}
+	gashe.GetOrLoadMany(ctx, c, []string{"1", "2"}, policy, loadProducts)      // loads 1, 2
+	gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, policy, loadProducts) // loads 3
+	gashe.GetOrLoadMany(ctx, c, []string{"1", "99"}, policy, loadProducts)     // loads 99: absent
+	// --8<-- [end:api]
 }

@@ -54,7 +54,7 @@ func (p Cached[V]) Set(ctx context.Context, key string, v V) error {
 	if err != nil {
 		return err
 	}
-	fresh, ok := l.freshFor(v)
+	fresh, ok := l.freshFor(ctx, v)
 	if !ok || (p.o.CacheIf != nil && !p.o.CacheIf(v)) {
 		_, err = p.c.backend.Delete(ctx, l.key)
 		return err

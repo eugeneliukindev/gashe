@@ -17,7 +17,7 @@ func TestShutdownWaitsForBackgroundReloads(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		o := gashe.Policy[int]{TTL: time.Minute, StaleWhileRevalidate: time.Hour}
+		o := gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}, Stale: gashe.Stale{WhileRevalidate: time.Hour}}
 		release := make(chan struct{})
 		var loads atomic.Int32
 		load := func(context.Context) (int, error) {

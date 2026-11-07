@@ -1,6 +1,6 @@
 // Package httpcache caches whole HTTP responses of a handler in a gashe.Cache. A hit does not call
 // the handler at all, and every strategy of gashe.Policy applies to responses: stale-if-error
-// serves the last good page while the handler fails, LockOnMiss renders a cold page once for all
+// serves the last good page while the handler fails, Stampede.LockFor renders a cold page once for all
 // processes, and Tags invalidate pages together.
 //
 // Only GET and HEAD requests are cached, and only responses that are safe to share between
@@ -59,7 +59,7 @@ const (
 )
 
 var (
-	// errServer marks a 5xx response, so StaleIfError can answer it with the last good one.
+	// errServer marks a 5xx response, so Stale.IfError can answer it with the last good one.
 	errServer = errors.New("httpcache: server error")
 	// errNotStored marks a response that must not be stored or shared with other requests.
 	errNotStored = errors.New("httpcache: response not stored")
@@ -104,14 +104,14 @@ type Options struct {
 // Authorization or Cookie header Vary does not cover. A response is stored only if CacheIf
 // allows its status and it has no Set-Cookie, no Vary header beyond Options.Vary, no Cache-Control
 // no-store, private or no-cache, and a body within MaxBodyBytes; otherwise it is sent as is to the
-// request that made it. A 5xx response counts as a loader error, so StaleIfError answers it with
-// the last stored response; a request Policy.MaxConcurrentLoads holds back, or one whose ctx
+// request that made it. A 5xx response counts as a loader error, so Stale.IfError answers it with
+// the last stored response; a request Stampede.MaxLoads holds back, or one whose ctx
 // deadline passes while it waits for a load, gets 503.
 //
 // Request Cache-Control and Pragma headers are ignored, so clients cannot make the handler run on
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
 // response from the cache, and Cache-Status (RFC 9211), with fwd=stale and fwd-status on a stale
-// page StaleIfError answered; a matching If-None-Match gets 304. It panics on a negative
+// page Stale.IfError answered; a matching If-None-Match gets 304. It panics on a negative
 // MaxBodyBytes and on Policy.Negative, which cannot apply: CacheIf stores 404 responses.
 //
 //nolint:gocritic // options by value, like gashe.New
@@ -119,7 +119,7 @@ func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 	if o.MaxBodyBytes < 0 {
 		panic("httpcache: negative MaxBodyBytes")
 	}
-	if o.Policy.Negative.If != nil {
+	if o.Policy.Negative.IsNotFound != nil {
 		// The loader returns only server errors and responses not to store, never "not found".
 		panic("httpcache: Policy.Negative does not apply; store 404 responses with CacheIf")
 	}
@@ -131,9 +131,9 @@ func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 		maxBody: cmp.Or(o.MaxBodyBytes, defaultMaxBody),
 	}
 	m.policy.CacheIf = nil // the loader applies it, with the rules above
-	staleIf := o.Policy.StaleIf
-	m.policy.StaleIf = func(err error) bool {
-		return !errors.Is(err, errNotStored) && (staleIf == nil || staleIf(err))
+	isFailure := o.Policy.Stale.IfError.IsFailure
+	m.policy.Stale.IfError.IsFailure = func(err error) bool {
+		return !errors.Is(err, errNotStored) && (isFailure == nil || isFailure(err))
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { m.serve(w, r, next) })
@@ -202,7 +202,7 @@ func (m *middleware) answer(
 	case errors.As(err, &shared):
 		write(w, r, shared.resp, statusMiss) // the 5xx another request rendered for this key
 	case errors.Is(err, gashe.ErrOverloaded), errors.Is(err, context.DeadlineExceeded):
-		// Policy.MaxConcurrentLoads is full, or the request is out of time while it waits for a
+		// Stampede.MaxLoads is full, or the request is out of time while it waits for a
 		// load: rendering anyway would load what the limit holds back, or answer too late.
 		w.Header().Set(headerCacheStatus, string(statusMiss))
 		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
@@ -217,7 +217,7 @@ func (m *middleware) answer(
 }
 
 // statusOf tells a stored resp this request rendered, mine, from one it found in the cache, and
-// from a stale one StaleIfError answered because mine failed.
+// from a stale one Stale.IfError answered because mine failed.
 func statusOf(resp, mine *Response) cacheStatus {
 	switch {
 	case mine == nil:

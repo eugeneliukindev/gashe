@@ -8,7 +8,7 @@ import (
 )
 
 // withBreaker returns b behind a breaker, see Options.CircuitBreaker. It panics on invalid options.
-func withBreaker(b Backend, o CircuitBreakerOptions) Backend {
+func withBreaker(b Backend, o CircuitBreaker) Backend {
 	if err := o.check(); err != nil {
 		panic(err)
 	}
@@ -28,7 +28,7 @@ type breakerBackend struct {
 	Backend
 
 	breaker *breaker
-	o       CircuitBreakerOptions
+	o       CircuitBreaker
 }
 
 // guard runs call through the breaker. A call whose ctx was done before it started is not

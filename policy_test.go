@@ -16,16 +16,28 @@ func TestGetOrLoadRejectsInvalidOptions(t *testing.T) {
 	c := newCache(t)
 	_, load := counter(user{})
 	for _, o := range []gashe.Policy[user]{
-		{},                  // nothing would ever be stored
-		{TTL: -time.Second}, // negative duration
-		{TTL: "-1h"},        // negative duration as a string
-		{TTL: "1hr"},        // not a duration
-		{TTL: 3600},         // an int, not a time.Duration
-		{TTL: func(string) time.Duration { return time.Hour }},                           // a func of another type
-		{TTL: (func(user) time.Duration)(nil)},                                           // a nil func
-		{TTL: time.Hour, MaxConcurrentLoads: -1},                                         // a negative limit
-		{TTL: time.Hour, Jitter: 1},                                                      // jitter of 100% or more
-		{TTL: time.Hour, Negative: gashe.Negative{If: func(error) bool { return true }}}, // no Err, no TTL
+		// nothing would ever be stored
+		{},
+		// negative duration
+		{TTL: gashe.TTL{For: -time.Second}},
+		// negative duration as a string
+		{TTL: gashe.TTL{For: "-1h"}},
+		// not a duration
+		{TTL: gashe.TTL{For: "1hr"}},
+		// an int, not a time.Duration
+		{TTL: gashe.TTL{For: 3600}},
+		// a func of another type
+		{TTL: gashe.TTL{For: func(string) time.Duration { return time.Hour }}},
+		// a nil func
+		{TTL: gashe.TTL{For: (func(user) time.Duration)(nil)}},
+		// jitter of 100% or more
+		{TTL: gashe.TTL{For: time.Hour, Jitter: 1}},
+		// a negative limit
+		{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{MaxLoads: -1}},
+		// a negative lock
+		{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{LockFor: -1}},
+		// no TTL
+		{TTL: gashe.TTL{For: time.Hour}, Negative: gashe.Negative{IsNotFound: func(error) bool { return true }}},
 	} {
 		if _, err := gashe.GetOrLoad(ctx, c, "k", o, load); !errors.Is(err, gashe.ErrInvalidOptions) {
 			t.Errorf("%+v: got %v, want ErrInvalidOptions", o, err)
@@ -62,11 +74,10 @@ func TestGetOrLoadNegative(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	users := gashe.Policy[user]{
-		TTL: time.Hour,
+		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			If:  func(err error) bool { return errors.Is(err, errNoRows) },
-			Err: errNoRows,
-			TTL: time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errNoRows) },
+			TTL:        time.Minute,
 		},
 	}
 	calls := 0
@@ -75,9 +86,20 @@ func TestGetOrLoadNegative(t *testing.T) {
 		return user{}, errNoRows
 	}
 
-	for range 3 {
-		if _, err := gashe.GetOrLoad(ctx, c, "user:999", users, missing); !errors.Is(err, errNoRows) {
-			t.Fatalf("got %v, want errNoRows", err)
+	// The first call wraps the loader error; the cached answers are ErrNotFound alone.
+	if _, err := gashe.GetOrLoad(
+		ctx,
+		c,
+		"user:999",
+		users,
+		missing,
+	); !errors.Is(err, gashe.ErrNotFound) ||
+		!errors.Is(err, errNoRows) {
+		t.Fatalf("got %v, want ErrNotFound wrapping errNoRows", err)
+	}
+	for range 2 {
+		if _, err := gashe.GetOrLoad(ctx, c, "user:999", users, missing); !errors.Is(err, gashe.ErrNotFound) {
+			t.Fatalf("got %v, want ErrNotFound", err)
 		}
 	}
 	if calls != 1 {
@@ -96,7 +118,7 @@ func TestGetOrLoadNegative(t *testing.T) {
 func TestGetOrLoadJitter(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[int]{TTL: time.Hour, Jitter: 0.5}
+	o := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour, Jitter: 0.5}}
 	seen := map[time.Duration]bool{}
 	for i := range 20 {
 		key := "k" + string(rune('a'+i))
@@ -112,12 +134,14 @@ func TestGetOrLoadJitter(t *testing.T) {
 	}
 }
 
-func TestStaleIfSlowNeedsStaleIfError(t *testing.T) {
-	_, err := gashe.GetOrLoad(context.Background(), newCache(t), "k",
-		gashe.Policy[int]{TTL: time.Minute, StaleIfSlow: time.Second},
-		func(context.Context) (int, error) { return 1, nil })
-	if !errors.Is(err, gashe.ErrInvalidOptions) {
-		t.Fatalf("err = %v, want ErrInvalidOptions", err)
+func TestStaleIfSlowNeedsForAndAfter(t *testing.T) {
+	for _, slow := range []gashe.StaleIfSlow{{For: time.Hour}, {After: time.Second}} {
+		_, err := gashe.GetOrLoad(context.Background(), newCache(t), "k",
+			gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}, Stale: gashe.Stale{IfSlow: slow}},
+			func(context.Context) (int, error) { return 1, nil })
+		if !errors.Is(err, gashe.ErrInvalidOptions) {
+			t.Fatalf("IfSlow %+v: err = %v, want ErrInvalidOptions", slow, err)
+		}
 	}
 }
 
@@ -130,7 +154,7 @@ func TestGetOrLoadTTLForms(t *testing.T) {
 	} {
 		c := newCache(t)
 		_, load := counter(user{})
-		if _, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[user]{TTL: ttl}, load); err != nil {
+		if _, err := gashe.GetOrLoad(ctx, c, "k", gashe.Policy[user]{TTL: gashe.TTL{For: ttl}}, load); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if left, _ := c.TTL(ctx, "k"); left <= 59*time.Minute || left > time.Hour {

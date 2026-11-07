@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -30,11 +29,12 @@ func main() {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
-	redis := &flaky{Backend: mem}
+	// --8<-- [start:api]
+	redis := &flaky{Backend: mem} // Redis, which fails once down is set
 	c := gashe.New(redis, gashe.Options{})
 
 	policy := gashe.Policy[string]{
-		TTL:    time.Hour,
+		TTL:    gashe.TTL{For: time.Hour},
 		Prefix: "user:",
 	}
 
@@ -47,12 +47,13 @@ func main() {
 	for range 100 {
 		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
 	}
-	fmt.Println("Redis up, 100 requests, database queries:", queries)
+	// Redis up: queries is 1
 
 	redis.down = true
 	queries = 0
 	for range 100 {
 		gashe.GetOrLoad(ctx, c, "42", policy, loadUser)
 	}
-	fmt.Println("Redis down, 100 requests, database queries:", queries)
+	// Redis down: queries is 100, every request reaches the database
+	// --8<-- [end:api]
 }

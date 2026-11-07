@@ -75,11 +75,10 @@ func TestGetOrLoadOverRedis(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	users := gashe.Policy[string]{
-		TTL:                  time.Hour,
-		StaleWhileRevalidate: time.Hour,
-		StaleIfError:         time.Hour,
-		LockOnMiss:           time.Second,
-		Tags:                 []string{"users"},
+		TTL:      gashe.TTL{For: time.Hour},
+		Stampede: gashe.Stampede{LockFor: time.Second},
+		Tags:     []string{"users"},
+		Stale:    gashe.Stale{WhileRevalidate: time.Hour, IfError: gashe.StaleIfError{For: time.Hour}},
 	}
 	calls := 0
 	load := func(context.Context) (string, error) {
@@ -104,7 +103,7 @@ func TestGetOrLoadOverRedis(t *testing.T) {
 func TestGetOrLoadManyOverRedis(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	users := gashe.Policy[string]{TTL: time.Hour, Prefix: "user:", Tags: []string{"users"}}
+	users := gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}, Prefix: "user:", Tags: []string{"users"}}
 	var asked [][]string
 	load := func(_ context.Context, missing []string) (map[string]string, error) {
 		asked = append(asked, missing)
@@ -158,7 +157,7 @@ func TestLocksAndLimitsOverRedis(t *testing.T) {
 		}
 	}
 
-	db := gashe.CircuitBreakerOptions{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
+	db := gashe.CircuitBreaker{FailurePercent: 50, Window: time.Minute, OpenFor: time.Minute, HalfOpenCalls: 1}
 	done, err := c.CircuitBreaker("db", db)
 	if err != nil {
 		t.Fatal(err)

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -17,13 +16,16 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 
+	// --8<-- [start:api]
 	results := map[gashe.Result]int{}
 	var loadTime time.Duration
 	c := gashe.New(mem, gashe.Options{
-		OnError: func(_ context.Context, err error) { log.Println("cache degraded:", err) },
-		OnResult: func(_ context.Context, o gashe.Outcome) {
-			results[o.Result]++ // in production: a Prometheus counter by o.Result.String()
-			loadTime += o.Load  // and a histogram of o.Load
+		Hooks: gashe.Hooks{
+			OnResult: func(_ context.Context, o gashe.Outcome) {
+				results[o.Result]++ // in production: a counter by o.Result
+				loadTime += o.Load  // and a histogram of o.Load
+			},
+			OnError: func(_ context.Context, err error) { log.Println("cache:", err) },
 		},
 	})
 
@@ -32,10 +34,8 @@ func main() {
 		return 1, nil
 	}
 	for _, key := range []string{"a", "a", "a", "b", "b", "c"} {
-		gashe.GetOrLoad(ctx, c, key, gashe.Policy[int]{TTL: time.Minute}, load)
+		gashe.GetOrLoad(ctx, c, key, gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}}, load)
 	}
-
-	hits, misses := results[gashe.ResultHit], results[gashe.ResultMiss]
-	fmt.Printf("hits %d, misses %d, hit ratio %d%%\n", hits, misses, 100*hits/(hits+misses))   // hits 3, misses 3, hit ratio 50%
-	fmt.Println("three loads, 150ms or more in the loader:", loadTime >= 150*time.Millisecond) // true
+	// results: 3 hits and 3 misses, a hit ratio of 50%; loadTime: 150ms or more
+	// --8<-- [end:api]
 }

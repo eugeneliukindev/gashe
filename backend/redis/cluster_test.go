@@ -59,9 +59,9 @@ func TestClusterGetOrLoad(t *testing.T) {
 	c := gashe.New(gasheredis.New(client), gashe.Options{Prefix: "cluster:"})
 	loads := 0
 	users := gashe.For(c, gashe.Policy[string]{
-		TTL:        time.Hour,
-		LockOnMiss: 5 * time.Second,
-		Tags:       []string{"user:42"},
+		TTL:      gashe.TTL{For: time.Hour},
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second},
+		Tags:     []string{"user:42"},
 	})
 	load := func(context.Context) (string, error) { loads++; return "Ann", nil }
 	for range 3 {

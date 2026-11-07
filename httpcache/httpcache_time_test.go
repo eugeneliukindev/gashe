@@ -12,6 +12,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/httpcache"
 )
 
@@ -51,7 +52,12 @@ func concurrently(t *testing.T, h http.Handler, p *slowPage, n int) []*httptest.
 func TestConcurrentRequestsShareOneRender(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		p := &slowPage{release: make(chan struct{})}
-		h := serve(t, newCache(t), &httpcache.Options{}, p)
+		h := serve(
+			t,
+			newCache(t),
+			&httpcache.Options{Policy: gashe.Policy[httpcache.Response]{Stampede: gashe.Stampede{SingleFlight: true}}},
+			p,
+		)
 
 		for _, w := range concurrently(t, h, p, 5) {
 			if w.Body.String() != "page" {

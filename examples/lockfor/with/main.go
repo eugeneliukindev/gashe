@@ -1,11 +1,9 @@
-// Command lockonmiss, with LockOnMiss: one process of a service that caches in Redis. Run it
+// Command lockfor, with Stampede.LockFor: one process of a service that caches in Redis. Run it
 // three times at once: the processes share nothing but Redis.
 package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -25,10 +23,11 @@ func main() {
 	defer client.Close()
 	c := gashe.New(gasheredis.New(client), gashe.Options{})
 
+	// --8<-- [start:api]
 	users := gashe.For(c, gashe.Policy[User]{
-		TTL:        time.Hour,
-		LockOnMiss: 5 * time.Second, // one load for all processes
-		Prefix:     "user:",
+		TTL:      gashe.TTL{For: time.Hour},
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second}, // one load for all processes
+		Prefix:   "user:",
 	})
 
 	queries := 0
@@ -38,9 +37,6 @@ func main() {
 		return User{ID: "42", Name: "Ann"}, nil
 	}
 
-	u, err := users.GetOrLoad(ctx, "42", loadUser)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("got", u.Name+", database queries:", queries)
+	users.GetOrLoad(ctx, "42", loadUser) // Ann: one process queries
+	// --8<-- [end:api]
 }

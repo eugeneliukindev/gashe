@@ -26,7 +26,13 @@ func slowly(delay time.Duration) (calls *atomic.Int32, load func(context.Context
 	}
 }
 
-var slowPolicy = gashe.Policy[int]{TTL: time.Minute, StaleIfError: time.Hour, StaleIfSlow: 100 * time.Millisecond}
+var slowPolicy = gashe.Policy[int]{
+	TTL: gashe.TTL{For: time.Minute},
+	Stale: gashe.Stale{
+		IfError: gashe.StaleIfError{For: time.Hour},
+		IfSlow:  gashe.StaleIfSlow{For: time.Hour, After: 100 * time.Millisecond},
+	},
+}
 
 func TestStaleIfSlowAnswersWithTheOldResult(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -34,9 +40,11 @@ func TestStaleIfSlowAnswersWithTheOldResult(t *testing.T) {
 		mem := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = mem.Close() })
 		var results []gashe.Result
-		c := gashe.New(mem, gashe.Options{OnResult: func(_ context.Context, o gashe.Outcome) {
-			results = append(results, o.Result)
-		}})
+		c := gashe.New(mem, gashe.Options{
+			Hooks: gashe.Hooks{OnResult: func(_ context.Context, o gashe.Outcome) {
+				results = append(results, o.Result)
+			}},
+		})
 		calls, load := slowly(5 * time.Second)
 
 		_, _ = gashe.GetOrLoad(ctx, c, "k", slowPolicy, load)
@@ -90,7 +98,9 @@ func TestStaleIfSlowReportsALateFailure(t *testing.T) {
 		var reported []error
 		c := gashe.New(
 			mem,
-			gashe.Options{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
+			gashe.Options{
+				Hooks: gashe.Hooks{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
+			},
 		)
 		var calls atomic.Int32
 		load := func(context.Context) (int, error) {
@@ -108,6 +118,34 @@ func TestStaleIfSlowReportsALateFailure(t *testing.T) {
 		synctest.Wait()
 		if len(reported) != 1 || !errors.Is(reported[0], errAPI) {
 			t.Fatalf("reported %v; the failure of the background load must reach OnError", reported)
+		}
+	})
+}
+
+// Stale.IfSlow has a window of its own: it answers a slow loader without IfError, and only within
+// its For.
+func TestStaleIfSlowHasItsOwnWindow(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		p := gashe.Policy[int]{
+			TTL:   gashe.TTL{For: time.Minute},
+			Stale: gashe.Stale{IfSlow: gashe.StaleIfSlow{For: 10 * time.Minute, After: 100 * time.Millisecond}},
+		}
+		_, load := slowly(5 * time.Second)
+		_, _ = gashe.GetOrLoad(ctx, c, "k", p, load)
+
+		time.Sleep(5 * time.Minute) // within IfSlow.For
+		start := time.Now()
+		if got, _ := gashe.GetOrLoad(ctx, c, "k", p, load); got != 1 || time.Since(start) > time.Second {
+			t.Fatalf("within IfSlow.For: got %d after %v, want the stale 1 at once", got, time.Since(start))
+		}
+		time.Sleep(time.Minute) // the background load stored 2 meanwhile
+
+		time.Sleep(20 * time.Minute) // past TTL + IfSlow.For: nothing stale is left
+		start = time.Now()
+		if got, _ := gashe.GetOrLoad(ctx, c, "k", p, load); got != 3 || time.Since(start) < 5*time.Second {
+			t.Fatalf("past IfSlow.For: got %d after %v, want the call to wait for 3", got, time.Since(start))
 		}
 	})
 }

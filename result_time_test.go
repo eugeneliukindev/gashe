@@ -18,9 +18,14 @@ func TestOutcomeTimesTheLoader(t *testing.T) {
 		mem := memory.New(memory.Options{PurgeInterval: -1})
 		t.Cleanup(func() { _ = mem.Close() })
 		var got []gashe.Outcome
-		c := gashe.New(mem, gashe.Options{OnResult: func(_ context.Context, o gashe.Outcome) { got = append(got, o) }})
+		c := gashe.New(
+			mem,
+			gashe.Options{
+				Hooks: gashe.Hooks{OnResult: func(_ context.Context, o gashe.Outcome) { got = append(got, o) }},
+			},
+		)
 		slow := func(context.Context) (int, error) { time.Sleep(time.Second); return 1, nil }
-		o := gashe.Policy[int]{TTL: time.Hour, Prefix: "n:"}
+		o := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Prefix: "n:"}
 
 		_, _ = gashe.GetOrLoad(ctx, c, "1", o, slow)
 		_, _ = gashe.GetOrLoad(ctx, c, "1", o, slow)

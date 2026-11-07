@@ -24,7 +24,7 @@ func TestGetOrLoadRoundTrip(t *testing.T) {
 	t.Cleanup(func() { _ = mem.Close() })
 	c := gashe.New(mem, gashe.Options{Compressor: zstd.New()})
 	want := page{Title: "products", Body: strings.Repeat("<li>a product</li>", 10_000)}
-	o := gashe.Policy[page]{TTL: time.Minute, Tags: []string{"pages"}}
+	o := gashe.Policy[page]{TTL: gashe.TTL{For: time.Minute}, Tags: []string{"pages"}}
 
 	for range 2 { // a miss, then a hit decoded from the compressed entry
 		got, err := gashe.GetOrLoad(ctx, c, "p", o, func(context.Context) (page, error) { return want, nil })

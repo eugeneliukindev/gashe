@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -18,29 +17,23 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	login := gashe.FixedWindow{
 		Calls:  5,
 		Per:    time.Minute,
 		BanFor: 15 * time.Minute,
 	}
-	for attempt := 1; attempt <= 7; attempt++ {
-		err := c.RateLimit(ctx, "login:1.2.3.4", login)
-		var limited *gashe.RateLimitError // errors.Is(err, gashe.ErrRateLimited) holds too
-		if errors.As(err, &limited) {
-			// attempts 6-7: banned for 15 minutes
-			fmt.Printf("login attempt %d: 429, retry after %v\n", attempt, limited.RetryAfter.Round(time.Second))
-			continue
-		}
-		fmt.Printf("login attempt %d: allowed\n", attempt)
+	for range 5 {
+		c.RateLimit(ctx, "login:1.2.3.4", login) // attempts 1-5: nil, allowed
 	}
+	err := c.RateLimit(ctx, "login:1.2.3.4", login) // attempt 6: banned for 15m
 
-	for call := 1; call <= 4; call++ {
-		err := c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // a sliding window of a second
-		var limited *gashe.RateLimitError
-		if errors.As(err, &limited) {
-			fmt.Printf("api call %d: 429, RetryAfter set for the Retry-After header: %v\n", call, limited.RetryAfter > 0)
-			continue
-		}
-		fmt.Printf("api call %d: allowed\n", call)
+	var limited *gashe.RateLimitError // errors.Is(err, gashe.ErrRateLimited) holds too
+	errors.As(err, &limited)          // limited.RetryAfter is 15m
+
+	for range 3 {
+		c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // calls 1-3: allowed
 	}
+	c.RateLimit(ctx, "api-key:k1", gashe.PerSecond(3)) // call 4: refused
+	// --8<-- [end:api]
 }

@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -16,7 +15,8 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
-	payments := gashe.CircuitBreakerOptions{
+	// --8<-- [start:api]
+	payments := gashe.CircuitBreaker{
 		FailurePercent: 50,
 		MinCalls:       3,
 		Window:         time.Minute,
@@ -24,26 +24,18 @@ func main() {
 		HalfOpenCalls:  1,
 	}
 
-	apiDown := true
-	for n := 1; n <= 7; n++ {
-		if n == 6 {
-			fmt.Println("the API recovers; wait for OpenFor")
-			apiDown = false
-			time.Sleep(350 * time.Millisecond)
-		}
-
-		done, err := c.CircuitBreaker("payments-api", payments)
-		if err != nil {
-			fmt.Printf("call %d: %v, answered at once\n", n, err) // calls 4-5: gashe: circuit open
-			continue
-		}
-		// Here the program calls the payment API, then tells the breaker how it went.
-		if apiDown {
-			done(errors.New("payment API timeout"))
-			fmt.Printf("call %d: payment API timeout\n", n) // calls 1-3
-			continue
-		}
-		done(nil)
-		fmt.Printf("call %d: ok\n", n) // call 6 is the test call: it closes the breaker
+	// Calls 1-3: the payment API times out, and each call tells the breaker.
+	for range 3 {
+		done, _ := c.CircuitBreaker("payments-api", payments)
+		done(errors.New("payment API timeout"))
 	}
+
+	// 3 of 3 calls failed: the breaker is open, and a call is refused at once.
+	c.CircuitBreaker("payments-api", payments) // gashe.ErrCircuitOpen
+
+	time.Sleep(350 * time.Millisecond) // past OpenFor, the API has recovered
+
+	done, _ := c.CircuitBreaker("payments-api", payments) // a test call
+	done(nil)                                             // it succeeds: closed
+	// --8<-- [end:api]
 }

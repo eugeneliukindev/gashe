@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -17,16 +16,15 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	// Worker 1 comes first and takes the lock for a minute.
-	lease, ok, _ := c.TryLock(ctx, "job:daily-report", time.Minute)
-	fmt.Println("worker 1 took the lock:", ok) // true: it runs the report
+	lease, _, _ := c.TryLock(ctx, "job:daily-report", time.Minute) // ok: it runs
 
 	// Workers 2 and 3 come while worker 1 still runs the report.
-	_, ok, _ = c.TryLock(ctx, "job:daily-report", time.Minute)
-	fmt.Println("worker 2 took the lock:", ok) // false: it skips
-	_, ok, _ = c.TryLock(ctx, "job:daily-report", time.Minute)
-	fmt.Println("worker 3 took the lock:", ok) // false: it skips
+	c.TryLock(ctx, "job:daily-report", time.Minute) // not ok: it skips
+	c.TryLock(ctx, "job:daily-report", time.Minute) // not ok: it skips
 
 	lease.Extend(ctx, time.Minute) // long work keeps the lock
 	lease.Unlock(ctx)              // the report is done: the next run may take the lock
+	// --8<-- [end:api]
 }

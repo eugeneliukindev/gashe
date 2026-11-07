@@ -54,7 +54,7 @@ func counter(v user) (calls *int, load func(context.Context) (user, error)) {
 
 func TestGetOrLoadAnswersFromCache(t *testing.T) {
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
+	s := newCached(newCache(t), gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}})
 	calls, load := counter(user{Name: "Ann"})
 
 	for range 3 {
@@ -70,7 +70,7 @@ func TestGetOrLoadAnswersFromCache(t *testing.T) {
 
 func TestGetOrLoadDoesNotStoreErrors(t *testing.T) {
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
+	s := newCached(newCache(t), gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}})
 	errBoom := errors.New("boom")
 	calls := 0
 	load := func(context.Context) (user, error) {
@@ -90,7 +90,7 @@ func TestGetOrLoadDoesNotStoreErrors(t *testing.T) {
 
 func TestGetOrLoadCondition(t *testing.T) {
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[*user]{TTL: time.Hour, CacheIf: gashe.NotNil[*user]})
+	s := newCached(newCache(t), gashe.Policy[*user]{TTL: gashe.TTL{For: time.Hour}, CacheIf: gashe.NotNil[*user]})
 	calls := 0
 	load := func(context.Context) (*user, error) {
 		calls++
@@ -107,7 +107,7 @@ func TestGetOrLoadCondition(t *testing.T) {
 func TestGetOrLoadPrefix(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	s := newCached(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "v2:"})
+	s := newCached(c, gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "v2:"})
 	_, load := counter(user{Name: "Ann"})
 
 	_, _ = s.Do(ctx, "user:1", load)
@@ -122,7 +122,7 @@ func TestGetOrLoadReturnsStoredShape(t *testing.T) {
 		hidden int
 	}
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[withHidden]{TTL: time.Hour})
+	s := newCached(newCache(t), gashe.Policy[withHidden]{TTL: gashe.TTL{For: time.Hour}})
 	load := func(context.Context) (withHidden, error) { return withHidden{Name: "Ann", hidden: 7}, nil }
 
 	miss, _ := s.Do(ctx, "k", load)
@@ -137,7 +137,10 @@ func TestGetOrLoadSurvivesBackendFailure(t *testing.T) {
 	down := &downBackend{Backend: newCache(t).Backend()}
 	var reported []error
 	onError := func(_ context.Context, err error) { reported = append(reported, err) }
-	s := newCached(gashe.New(down, gashe.Options{OnError: onError}), gashe.Policy[user]{TTL: time.Hour})
+	s := newCached(
+		gashe.New(down, gashe.Options{Hooks: gashe.Hooks{OnError: onError}}),
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}},
+	)
 
 	got, err := s.Do(ctx, "user:1", func(context.Context) (user, error) { return user{Name: "Ann"}, nil })
 	if err != nil || got.Name != "Ann" {
@@ -154,12 +157,12 @@ func TestGetOrLoadSurvivesBackendFailure(t *testing.T) {
 func TestGetOrLoadTTLOfNegativeSkipsStore(t *testing.T) {
 	ctx := context.Background()
 	s := newCached(newCache(t), gashe.Policy[user]{
-		TTL: func(u user) time.Duration {
+		TTL: gashe.TTL{For: func(u user) time.Duration {
 			if u.Name == "" {
 				return -1
 			}
 			return time.Hour
-		},
+		}},
 	})
 	calls, load := counter(user{})
 	_, _ = s.Do(ctx, "k", load)
@@ -171,7 +174,7 @@ func TestGetOrLoadTTLOfNegativeSkipsStore(t *testing.T) {
 
 func TestGetOrLoadRefresh(t *testing.T) {
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[int]{TTL: time.Hour})
+	s := newCached(newCache(t), gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}})
 	_, load := versions()
 
 	_, _ = s.Do(ctx, "k", load)
@@ -193,10 +196,10 @@ func TestGetOrLoadFailoverMode(t *testing.T) {
 	ctx := context.Background()
 	var reported []error
 	c := gashe.New(newCache(t).Backend(), gashe.Options{
-		OnError: func(_ context.Context, err error) { reported = append(reported, err) },
+		Hooks: gashe.Hooks{OnError: func(_ context.Context, err error) { reported = append(reported, err) }},
 	})
 	// TTL 0: never fresh, the loader runs on every call; the copy answers its errors.
-	s := newCached(c, gashe.Policy[int]{StaleIfError: time.Hour})
+	s := newCached(c, gashe.Policy[int]{Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}})
 	calls, load := versions()
 
 	_, _ = s.Do(ctx, "k", load)
@@ -213,8 +216,12 @@ func TestGetOrLoadFailoverMode(t *testing.T) {
 	}
 	errOther := errors.New("bad request")
 	only := newCached(c, gashe.Policy[int]{
-		StaleIfError: time.Hour,
-		StaleIf:      func(err error) bool { return errors.Is(err, errAPI) },
+		Stale: gashe.Stale{
+			IfError: gashe.StaleIfError{
+				For:       time.Hour,
+				IsFailure: func(err error) bool { return errors.Is(err, errAPI) },
+			},
+		},
 	})
 	_, _ = only.Do(ctx, "m", load)
 	if _, err := only.Do(
@@ -232,8 +239,8 @@ func TestGetOrLoadFailoverMode(t *testing.T) {
 func TestGetOrLoadSharesOnlySameType(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	ints := gashe.Policy[int]{TTL: time.Hour}
-	strs := gashe.Policy[string]{TTL: time.Hour}
+	ints := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{SingleFlight: true}}
+	strs := gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{SingleFlight: true}}
 	if _, err := gashe.GetOrLoad(ctx, c, "k", ints, func(context.Context) (int, error) { return 1, nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +264,7 @@ func TestSharedLoadOutlivesTheCallerThatStartedIt(t *testing.T) {
 			return "", ctx.Err()
 		}
 	}
-	policy := gashe.Policy[string]{TTL: time.Minute}
+	policy := gashe.Policy[string]{TTL: gashe.TTL{For: time.Minute}, Stampede: gashe.Stampede{SingleFlight: true}}
 
 	first, cancel := context.WithCancel(context.Background())
 	firstDone := make(chan error, 1)
@@ -295,12 +302,11 @@ func TestLockOnMissSharesANegativeAnswer(t *testing.T) {
 	procB := gashe.New(mem, gashe.Options{LockPollInterval: time.Millisecond})
 	errMissing := errors.New("missing")
 	p := gashe.Policy[string]{
-		TTL:        time.Minute,
-		LockOnMiss: 5 * time.Second,
+		TTL:      gashe.TTL{For: time.Minute},
+		Stampede: gashe.Stampede{SingleFlight: true, LockFor: 5 * time.Second},
 		Negative: gashe.Negative{
-			If:  func(err error) bool { return errors.Is(err, errMissing) },
-			Err: errMissing,
-			TTL: time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
+			TTL:        time.Minute,
 		},
 	}
 	var loads atomic.Int32
@@ -319,10 +325,10 @@ func TestLockOnMissSharesANegativeAnswer(t *testing.T) {
 	go func() { _, err := gashe.GetOrLoad(ctx, procB, "k", p, slow); waited <- err }()
 	time.Sleep(20 * time.Millisecond) // process B waits for the lock
 	close(release)
-	if err := <-done; !errors.Is(err, errMissing) {
-		t.Fatalf("process A got %v", err)
+	if err := <-done; !errors.Is(err, gashe.ErrNotFound) || !errors.Is(err, errMissing) {
+		t.Fatalf("process A got %v, want ErrNotFound wrapping the loader error", err)
 	}
-	if err := <-waited; !errors.Is(err, errMissing) {
+	if err := <-waited; !errors.Is(err, gashe.ErrNotFound) {
 		t.Fatalf("process B got %v", err)
 	}
 	if n := loads.Load(); n != 1 {
@@ -336,11 +342,10 @@ func TestReloadErrorKeepsTheStoredResult(t *testing.T) {
 	c := newCache(t)
 	errMissing := errors.New("missing")
 	p := gashe.Policy[string]{
-		TTL: time.Hour,
+		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			If:  func(err error) bool { return errors.Is(err, errMissing) },
-			Err: errMissing,
-			TTL: time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
+			TTL:        time.Minute,
 		},
 	}
 	_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (string, error) { return "kept", nil })

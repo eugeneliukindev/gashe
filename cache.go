@@ -13,32 +13,38 @@ type Options struct {
 	// Prefix is put in front of every key the cache stores, its own keys included, so several
 	// services can share one Redis: "orders:" stores "orders:user:42".
 	// Keys and All yield keys without it, and DeleteMatch never reaches past it. "" means none.
-	// The cache keeps its own keys, tag counters, the locks of LockOnMiss and StaleWhileRevalidate
-	// and rate counters, under Prefix too, each starting with "__": keys of yours must not start
-	// with "__". Locks of Lock, TryLock and WithLock use the key you give them.
+	// The cache keeps its own keys, tag counters, the locks of Stampede.LockFor and
+	// Stale.WhileRevalidate and rate counters, under Prefix too, each starting with "__": keys of
+	// yours must not start with "__". Locks of Lock, TryLock and WithLock use the key you give them.
 	Prefix string
+	// Hooks receive what the cache does: how calls were answered, and the errors it works around.
+	Hooks Hooks
+	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
+	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
+	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
+	// the loader. The breaker lives in the memory of this process; misses are not failures, see
+	// CircuitBreaker.IsFailure. Ping is not guarded, so health checks see the backend itself. The
+	// zero value, with no FailurePercent, means no breaker.
+	CircuitBreaker CircuitBreaker
 	// Codec turns values into bytes: the format of what is stored. nil means JSON.
 	Codec Codec
 	// Compressor shrinks what Codec produced, such as compress/zstd for large values. nil means
 	// none. Compressed values are binary: IncrBy cannot read them, so keep counters under keys
 	// that only IncrBy touches.
 	Compressor Compressor
-	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
-	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
-	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
-	// the loader. The breaker lives in the memory of this process; misses are not failures, see
-	// CircuitBreakerOptions.IsFailure. Ping is not guarded, so health checks see the backend
-	// itself. nil means no breaker.
-	CircuitBreaker *CircuitBreakerOptions
-	// OnError receives errors the cache works around instead of returning them, such as a
-	// failing backend during GetOrLoad; each error names the operation and key. nil drops them.
-	OnError func(ctx context.Context, err error)
-	// OnResult receives how every GetOrLoad call, and every key of GetOrLoadMany, was answered:
-	// use it to count hits and misses and to time the loader. nil drops them.
-	OnResult func(ctx context.Context, o Outcome)
-	// LockPollInterval is how often Lock and LockOnMiss check whether a busy lock is free.
+	// LockPollInterval is how often Lock and Stampede.LockFor check whether a busy lock is free.
 	// 0 means 100ms.
 	LockPollInterval time.Duration
+}
+
+// Hooks are called by the cache, for metrics and logs. A nil hook is not called.
+type Hooks struct {
+	// OnResult receives how every GetOrLoad call, and every key of GetOrLoadMany, was answered:
+	// use it to count hits and misses and to time the loader.
+	OnResult func(ctx context.Context, o Outcome)
+	// OnError receives errors the cache works around instead of returning them, such as a
+	// failing backend during GetOrLoad; each error names the operation and key.
+	OnError func(ctx context.Context, err error)
 }
 
 // Cache turns values into bytes, stores them in a Backend and runs caching, locks, rate limits
@@ -67,8 +73,8 @@ func New(b Backend, o Options) *Cache {
 	if o.LockPollInterval < 0 {
 		panic("gashe: negative LockPollInterval")
 	}
-	if o.CircuitBreaker != nil {
-		b = withBreaker(b, *o.CircuitBreaker)
+	if o.CircuitBreaker.FailurePercent != 0 {
+		b = withBreaker(b, o.CircuitBreaker)
 	}
 	if o.Prefix != "" {
 		b = withPrefix(b, o.Prefix)
@@ -79,17 +85,17 @@ func New(b Backend, o Options) *Cache {
 	if o.Compressor == nil {
 		o.Compressor = noCompression{}
 	}
-	if o.OnError == nil {
-		o.OnError = func(context.Context, error) {}
+	if o.Hooks.OnError == nil {
+		o.Hooks.OnError = func(context.Context, error) {}
 	}
-	if o.OnResult == nil {
-		o.OnResult = func(context.Context, Outcome) {}
+	if o.Hooks.OnResult == nil {
+		o.Hooks.OnResult = func(context.Context, Outcome) {}
 	}
 	return &Cache{
 		backend:  b,
 		codec:    compressed{codec: o.Codec, compressor: o.Compressor},
-		onError:  o.OnError,
-		onResult: o.OnResult,
+		onError:  o.Hooks.OnError,
+		onResult: o.Hooks.OnResult,
 		lockPoll: cmp.Or(o.LockPollInterval, defaultLockPoll),
 	}
 }

@@ -7,7 +7,7 @@ import (
 
 // Shutdown stops starting background reloads and waits for the running ones to finish. If ctx is
 // done first, it returns ctx.Err() without waiting longer. Call it before closing the backend,
-// so no reload writes to a closed one. The Cache keeps working afterwards: StaleWhileRevalidate
+// so no reload writes to a closed one. The Cache keeps working afterwards: Stale.WhileRevalidate
 // answers stale results without reloading them.
 func (c *Cache) Shutdown(ctx context.Context) error {
 	c.bg.mu.Lock()

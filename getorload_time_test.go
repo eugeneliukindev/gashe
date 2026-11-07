@@ -17,7 +17,7 @@ import (
 func TestGetOrLoadReloadsAfterTTL(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Minute})
+		s := newCached(newCache(t), gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}})
 		calls, load := counter(user{Name: "Ann"})
 
 		_, _ = s.Do(ctx, "user:1", load)
@@ -39,12 +39,12 @@ func TestGetOrLoadTTLOf(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
 		s := newCached(c, gashe.Policy[user]{
-			TTL: func(u user) time.Duration {
+			TTL: gashe.TTL{For: func(u user) time.Duration {
 				if u.Name == "admin" {
 					return time.Minute
 				}
 				return time.Hour
-			},
+			}},
 		})
 		_, load := counter(user{Name: "admin"})
 
@@ -58,7 +58,10 @@ func TestGetOrLoadTTLOf(t *testing.T) {
 func TestGetOrLoadSharesConcurrentLoads(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
-		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
+		s := newCached(
+			newCache(t),
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{SingleFlight: true}},
+		)
 		var calls atomic.Int32
 		load := func(context.Context) (user, error) {
 			calls.Add(1)
@@ -81,9 +84,38 @@ func TestGetOrLoadSharesConcurrentLoads(t *testing.T) {
 	})
 }
 
+func TestWithoutSingleFlightEveryCallLoads(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s := newCached(newCache(t), gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}})
+		var calls atomic.Int32
+		load := func(context.Context) (user, error) {
+			calls.Add(1)
+			time.Sleep(time.Second)
+			return user{Name: "Ann"}, nil
+		}
+
+		var wg sync.WaitGroup
+		for range 10 {
+			wg.Go(func() {
+				if got, err := s.Do(ctx, "user:1", load); err != nil || got.Name != "Ann" {
+					t.Errorf("Do: %+v %v", got, err)
+				}
+			})
+		}
+		wg.Wait()
+		if n := calls.Load(); n != 10 {
+			t.Fatalf("loader ran %d times for 10 concurrent calls, want 10", n)
+		}
+	})
+}
+
 func TestGetOrLoadWaiterStopsOnItsContext(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newCached(newCache(t), gashe.Policy[user]{TTL: time.Hour})
+		s := newCached(
+			newCache(t),
+			gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Stampede: gashe.Stampede{SingleFlight: true}},
+		)
 		release := make(chan struct{})
 		var calls atomic.Int32
 		load := func(ctx context.Context) (user, error) {

@@ -1,10 +1,9 @@
 // Command stampede sends a thousand concurrent requests for one cold key: they share one load.
-// With Redis and LockOnMiss, the key loads once for all processes, not once per process.
+// With Redis and Stampede.LockFor, the key loads once for all processes, not once per process.
 package main
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,9 +18,10 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	policy := gashe.Policy[string]{
-		TTL:        time.Minute,
-		LockOnMiss: 10 * time.Second, // over Redis: one load for all processes
+		TTL:      gashe.TTL{For: time.Minute},
+		Stampede: gashe.Stampede{SingleFlight: true}, // concurrent calls share one load
 	}
 	var loads atomic.Int32 // the requests run at once
 	loadReport := func(context.Context) (string, error) {
@@ -38,6 +38,6 @@ func main() {
 			gashe.GetOrLoad(ctx, c, "report:today", policy, loadReport)
 		}()
 	}
-	wg.Wait()
-	fmt.Println("1000 requests, loads:", loads.Load()) // 1000 requests, loads: 1
+	wg.Wait() // loads is 1: a thousand calls share one load
+	// --8<-- [end:api]
 }

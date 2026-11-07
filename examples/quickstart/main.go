@@ -1,9 +1,8 @@
-// Command quickstart is the program of the quickstart: the loader runs once, then the cache answers.
+// Command quickstart: the loader runs once, then the cache answers.
 package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -19,25 +18,17 @@ func main() {
 	ctx := context.Background()
 	mem := memory.New(memory.Options{}) // the backend: where entries live
 	defer mem.Close()
-	c := gashe.New(mem, gashe.Options{
-		// print how each call was answered
-		OnResult: func(_ context.Context, o gashe.Outcome) { fmt.Printf("%s: %s\n", o.Key, o.Result) },
-	})
+	c := gashe.New(mem, gashe.Options{})
 
 	users := gashe.For(c, gashe.Policy[User]{
-		TTL:    time.Hour,
+		TTL:    gashe.TTL{For: time.Hour},
 		Prefix: "user:",
 	})
 
-	queries := 0
 	loadUser := func(context.Context) (User, error) {
-		queries++ // SELECT * FROM users WHERE id = 42
-		return User{ID: "42", Name: "Ann"}, nil
+		return User{ID: "42", Name: "Ann"}, nil // SELECT * FROM users WHERE id = 42
 	}
 
-	for range 3 {
-		u, _ := users.GetOrLoad(ctx, "42", loadUser)
-		fmt.Println("  got", u.Name)
-	}
-	fmt.Println("database queries:", queries)
+	users.GetOrLoad(ctx, "42", loadUser) // Ann, miss: loaded and stored
+	users.GetOrLoad(ctx, "42", loadUser) // Ann, hit: from the cache
 }

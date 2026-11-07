@@ -3,8 +3,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -17,25 +15,18 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:api]
 	c.Set(ctx, "greeting", "hello", time.Minute)
+
 	var s string
-	c.Get(ctx, "greeting", &s)
-	fmt.Println("Get greeting:", s) // Get greeting: hello
+	c.Get(ctx, "greeting", &s) // s is "hello"
+	c.Get(ctx, "missing", &s)  // gashe.ErrNotFound
 
-	err := c.Get(ctx, "missing", &s)
-	if errors.Is(err, gashe.ErrNotFound) {
-		fmt.Println("Get missing: gashe.ErrNotFound")
-	}
+	c.GetMany(ctx, "greeting", "missing") // greeting found, missing not found
 
-	values, _ := c.GetMany(ctx, "greeting", "missing")
-	for _, v := range values {
-		fmt.Printf("GetMany %s: found=%v\n", v.Key(), v.Found()) // greeting: found=true, missing: found=false
-	}
+	c.IncrBy(ctx, "visits", 1, time.Hour) // 1
+	c.IncrBy(ctx, "visits", 1, time.Hour) // 2
 
-	c.IncrBy(ctx, "visits", 1, time.Hour)
-	visits, _ := c.IncrBy(ctx, "visits", 1, time.Hour)
-	fmt.Println("visits:", visits) // visits: 2
-
-	left, _ := c.TTL(ctx, "greeting")
-	fmt.Println("greeting expires in", left.Round(time.Second)) // greeting expires in 1m0s
+	c.TTL(ctx, "greeting") // about a minute
+	// --8<-- [end:api]
 }

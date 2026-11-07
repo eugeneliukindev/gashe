@@ -11,8 +11,8 @@ import (
 func TestInvalidateTags(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	tagged := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"users"}}
-	other := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"orders"}}
+	tagged := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Tags: []string{"users"}}
+	other := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Tags: []string{"orders"}}
 	calls, load := versions()
 
 	_, _ = gashe.GetOrLoad(ctx, c, "a", tagged, load)
@@ -40,7 +40,7 @@ func TestInvalidateTags(t *testing.T) {
 func TestEvictedTagCounterDoesNotRevalidateEntries(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"users"}}
+	o := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Tags: []string{"users"}}
 	calls, load := versions()
 
 	_, _ = gashe.GetOrLoad(ctx, c, "u", o, load)
@@ -62,7 +62,7 @@ func TestInvalidateTagsAfterTheCounterWasEvicted(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
 	loads := 0
-	p := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"t"}}
+	p := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Tags: []string{"t"}}
 	load := func(context.Context) (int, error) { loads++; return loads, nil }
 
 	if err := c.InvalidateTags(ctx, "t"); err != nil { // creates the counter

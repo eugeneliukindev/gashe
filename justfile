@@ -17,10 +17,11 @@ oldest_go := "1.23.12"
 # has no tags, so gorelease is pinned to a commit.
 govulncheck := "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 gorelease := "go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261014143641-f0251eb4aa3e"
+gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0"
 
 # The documentation site is built by Zensical, installed by uv from docs/pyproject.toml and
 # docs/uv.lock.
-zensical := "uv run --project docs --locked python docs/build.py"
+zensical := "uv run --project docs --locked zensical"
 
 [default]
 [private]
@@ -111,7 +112,7 @@ integration-all: (integration "redis:7.0.0") (integration "valkey/valkey:8")
 [group('test')]
 [working-directory('examples')]
 examples: work
-    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi|lockonmiss/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
+    for e in $(find . -name main.go | sed 's|^\./||; s|/main.go$||' | sort); do case "$e" in nearcache|httpapi|lockfor/*) continue;; esac; echo "== example $e"; go run "./$e" > /dev/null; done
 
 # Run the benchmarks; flags go to go test, such as `just bench -count=5`. docs/en/internals/benchmarks.md has the results.
 [group('test')]
@@ -120,31 +121,27 @@ examples: work
 bench *flags: work
     go test -run '^$' -bench . -benchtime 300ms "$@" .
 
-# Build the documentation site in every language into site/; a broken link fails the build.
+# Build the documentation site into site/; a broken link fails the build.
 [group('docs')]
 docs:
-    {{ zensical }} build
+    {{ zensical }} build --strict
 
-# Preview the documentation of one language at http://localhost:8000/gashe/.
+# Preview the documentation at http://localhost:8000/gashe/.
 [group('docs')]
-docs-serve lang="en":
-    {{ zensical }} serve {{ lang }}
+docs-serve:
+    {{ zensical }} serve
 
-# Run the examples and curl against examples/httpapi, and write their outputs into docs/snippets/.
+# Write the API reference, docs/en/reference/, from the doc comments with gomarkdoc; run it after an
+# API change, as `just docs` does not.
 [group('docs')]
-docs-output: work
-    uv run --project docs --locked python docs/outputs.py
+docs-reference: work
+    for p in . backend/memory backend/nearcache httpcache backendtest codec/raw compress/gzip; do n=$(basename "$p"); [ "$n" = . ] && n=gashe; {{ gomarkdoc }} --output "docs/en/reference/$n.md" "./$p"; done
+    for m in backend/redis codec/msgpack compress/zstd; do (cd "$m" && {{ gomarkdoc }} --output "{{ justfile_directory() }}/docs/en/reference/$(basename "$m").md" .); done
 
 # Check the external links of the documentation with lychee, in Docker.
 [group('docs')]
 docs-links:
     docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2 --config lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
-
-# List translated pages whose English page changed since they were translated, and highlighted
-# lines of program variants that no longer match the programs.
-[group('docs')]
-docs-check:
-    {{ zensical }} check
 
 # Report known vulnerabilities in the code and dependencies the released modules call.
 [env('GOWORK', 'off')]

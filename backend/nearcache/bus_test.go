@@ -85,7 +85,7 @@ func TestBusMakesTagInvalidationInstant(t *testing.T) {
 	ctx := context.Background()
 	shared, bus := newMemory(t), newBus()
 	ca, cb := gashe.New(process(t, shared, bus), gashe.Options{}), gashe.New(process(t, shared, bus), gashe.Options{})
-	users := gashe.Policy[int]{TTL: time.Hour, Tags: []string{"users"}}
+	users := gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}, Tags: []string{"users"}}
 	calls, load := versions()
 	if err := cb.InvalidateTags(ctx, "users"); err != nil { // the counter exists, so a can copy it
 		t.Fatal(err)

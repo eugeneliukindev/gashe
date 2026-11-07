@@ -31,7 +31,7 @@ type call struct {
 	panic   any                // what fn panicked with, raised again in the caller that started it
 	waiters int                // callers still waiting, guarded by group.mu
 	cancel  context.CancelFunc // ends the run once no caller waits
-	queued  atomic.Bool        // the run waits for a slot of MaxConcurrentLoads
+	queued  atomic.Bool        // the run waits for a slot of Stampede.MaxLoads
 }
 
 // queuedKey is the context key of the call whose run is the context.

@@ -2,7 +2,7 @@
 // curl to see every header. ADDR sets the address, localhost:8080 by default.
 //
 //	/products  a page cached per Accept-Language and the page parameter
-//	/report    a page whose handler fails after the first render: StaleIfError answers
+//	/report    a page whose handler fails after the first render: Stale.IfError answers
 //	/export    a slow page with at most one render at a time: a second request gets 503
 //	/login     two calls a minute per client, then 429 with Retry-After for 15 minutes
 package main
@@ -34,7 +34,7 @@ func main() {
 
 	products := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{
-			TTL:    time.Minute,
+			TTL:    gashe.TTL{For: time.Minute},
 			Prefix: "products:",
 		},
 		Vary: httpcache.Vary{
@@ -44,16 +44,16 @@ func main() {
 	})
 	report := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{
-			TTL:          time.Second,
-			StaleIfError: time.Hour, // a 5xx gets the last good page
-			Prefix:       "report:",
+			TTL:    gashe.TTL{For: time.Second},
+			Prefix: "report:",
+			Stale:  gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}, // a 5xx gets the last good page
 		},
 	})
 	export := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{
-			TTL:                time.Minute,
-			MaxConcurrentLoads: 1, // one render at a time in this process
-			Prefix:             "export:",
+			TTL:      gashe.TTL{For: time.Minute},
+			Stampede: gashe.Stampede{MaxLoads: 1}, // one render at a time in this process
+			Prefix:   "export:",
 		},
 	})
 
@@ -83,9 +83,9 @@ func main() {
 		fmt.Fprintln(w, "export done")
 	}))
 	mux.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
-		// Half a second to get the render slot: a request over MaxConcurrentLoads gets 503
-		// instead of piling up.
-		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		// 2.5 seconds for the whole request, the render included: a request that waits for the
+		// render slot past it gets 503 instead of piling up.
+		ctx, cancel := context.WithTimeout(r.Context(), 2500*time.Millisecond)
 		defer cancel()
 		exportPage.ServeHTTP(w, r.WithContext(ctx))
 	})

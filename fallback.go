@@ -10,10 +10,11 @@ import (
 // defaultFallbackTTL is the MaxTTL of a fallback that sets none.
 const defaultFallbackTTL = 30 * time.Second
 
-// FallbackOptions configures Policy.Fallback: where loads keep their results while the backend of
+// Fallback configures Policy.Fallback: where loads keep their results while the backend of
 // the cache fails, so the source gets one load per key and process, not one per call.
-type FallbackOptions struct {
-	// Backend keeps the results, usually a memory.Backend of its own; required. Policies of one
+type Fallback struct {
+	// Backend keeps the results, usually a memory.Backend of its own; without it there is no
+	// fallback. Policies of one
 	// Cache may share it; a near cache or another Cache may not.
 	Backend Backend
 	// MaxTTL is the longest a result stays in Backend: the TTL of its policy, but never longer, since
@@ -30,8 +31,8 @@ type spare struct {
 }
 
 // spareOf returns the spare of a policy with fallback f, already checked by Policy.check.
-func (c *Cache) spareOf(f *FallbackOptions) spare {
-	if f == nil {
+func (c *Cache) spareOf(f Fallback) spare {
+	if f.Backend == nil {
 		return spare{}
 	}
 	return spare{backend: f.Backend, maxTTL: cmp.Or(f.MaxTTL, defaultFallbackTTL), onError: c.onError}
@@ -64,7 +65,7 @@ func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
 	if e, ok := l.sparedEntry(ctx, l.key); ok {
 		if e.Neg {
 			var zero V
-			return zero, ResultNegativeHit, l.o.Negative.Err
+			return zero, ResultNegativeHit, ErrNotFound
 		}
 		return e.V, ResultFallback, nil
 	}
@@ -74,6 +75,7 @@ func (l *loading[V]) withoutBackend(ctx context.Context) (V, Result, error) {
 		l.spareResult(ctx, l.key, v)
 	case l.notFound(err):
 		l.spareNegative(ctx)
+		err = notFoundError(err)
 	}
 	return v, ResultMiss, err
 }
@@ -110,7 +112,7 @@ func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
 	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
 		return
 	}
-	fresh, ok := l.freshFor(v)
+	fresh, ok := l.freshFor(ctx, v)
 	if !ok {
 		return
 	}

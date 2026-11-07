@@ -12,7 +12,7 @@ import (
 func TestCachedSetIsReadByGet(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "users:", Tags: []string{"users"}})
+	users := gashe.For(c, gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "users:", Tags: []string{"users"}})
 	calls, load := counter(user{Name: "loaded"})
 
 	if err := users.Set(ctx, "42", user{Name: "Ann"}); err != nil {
@@ -32,7 +32,7 @@ func TestCachedSetIsReadByGet(t *testing.T) {
 func TestCachedDeleteAppliesPrefix(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, Prefix: "users:v2:"})
+	users := gashe.For(c, gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Prefix: "users:v2:"})
 	calls, load := counter(user{Name: "Ann"})
 
 	_, _ = users.GetOrLoad(ctx, "42", load)
@@ -48,7 +48,10 @@ func TestCachedDeleteAppliesPrefix(t *testing.T) {
 func TestCachedSetDeletesWhatThePolicyDoesNotStore(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	users := gashe.For(c, gashe.Policy[user]{TTL: time.Hour, CacheIf: func(u user) bool { return u.Name != "" }})
+	users := gashe.For(
+		c,
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, CacheIf: func(u user) bool { return u.Name != "" }},
+	)
 	_, load := counter(user{Name: "Ann"})
 
 	_, _ = users.GetOrLoad(ctx, "42", load)
@@ -63,7 +66,7 @@ func TestCachedSetDeletesWhatThePolicyDoesNotStore(t *testing.T) {
 func TestCachedManyAndReload(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	n := gashe.For(c, gashe.Policy[int]{TTL: time.Hour})
+	n := gashe.For(c, gashe.Policy[int]{TTL: gashe.TTL{For: time.Hour}})
 	got, err := n.GetOrLoadMany(ctx, []string{"a", "b"}, func(context.Context, []string) (map[string]int, error) {
 		return map[string]int{"a": 1, "b": 2}, nil
 	})
@@ -84,5 +87,5 @@ func TestForPanicsOnInvalidPolicy(t *testing.T) {
 			t.Fatalf("recovered %v, want ErrInvalidOptions", err)
 		}
 	}()
-	gashe.For(newCache(t), gashe.Policy[user]{TTL: "1hr"})
+	gashe.For(newCache(t), gashe.Policy[user]{TTL: gashe.TTL{For: "1hr"}})
 }

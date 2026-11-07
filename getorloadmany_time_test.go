@@ -15,7 +15,7 @@ func TestGetOrLoadManyExpires(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		c := newCache(t)
-		o := gashe.Policy[user]{TTL: time.Minute, Jitter: 0.1}
+		o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute, Jitter: 0.1}}
 		var asked [][]string
 		load := byName(&asked)
 
