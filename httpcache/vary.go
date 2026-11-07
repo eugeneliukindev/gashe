@@ -13,15 +13,15 @@ import (
 // headers, cookies or query parameters get the same page. Every part of a request the handler
 // builds the page from must be in it, or one request's page is served to another.
 type Vary struct {
+	// Query lists the query parameters that are part of the key; the others, such as utm_source or
+	// a random one, do not make new entries. nil means the whole query as sent; an empty list means
+	// none.
+	Query []string
 	// Headers are request headers whose values are part of the key: Accept-Language for pages in
 	// the language of the request, X-Forwarded-Host behind a proxy that rewrites Host. A response
 	// whose Vary names only these headers is stored; any other Vary keeps it out.
 	// nil means none.
 	Headers []string
-	// Query lists the query parameters that are part of the key; the others, such as utm_source or
-	// a random one, do not make new entries. nil means the whole query as sent; an empty list means
-	// none.
-	Query []string
 	// Cookies lists the cookies the page depends on, such as a currency; their values are part of
 	// the key, and requests with other cookies are cached too. nil means a request with a Cookie
 	// header goes past the cache, unless User is set: its page may belong to who sent it.

@@ -19,14 +19,14 @@ type CircuitBreaker struct {
 	// FailurePercent opens the breaker once this share of calls, from 1 to 99, failed.
 	// Required; 0 in Options.CircuitBreaker means no breaker.
 	FailurePercent int
+	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
+	MinCalls int
 	// Window is the span of recent time calls and failures are counted over.
 	// Required.
 	Window time.Duration
 	// OpenFor is how long the open breaker refuses calls.
 	// Required.
 	OpenFor time.Duration
-	// MinCalls is how many calls the window needs before the breaker may open. 0 means 1.
-	MinCalls int
 	// HalfOpenCalls is how many test calls are let through after OpenFor: the first one that
 	// succeeds closes the breaker, one that fails opens it again. 0 means the breaker just
 	// closes after OpenFor.

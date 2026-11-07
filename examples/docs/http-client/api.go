@@ -20,7 +20,8 @@ func NewWeatherAPI(c *gashe.Cache, baseURL string, ttl time.Duration) *WeatherAP
 		http:    &http.Client{Timeout: 2 * time.Second}, // (1)!
 		baseURL: baseURL,
 		cache: gashe.For(c, gashe.Policy[Weather]{
-			TTL: gashe.TTL{For: ttl},
+			TTL:    gashe.TTL{For: ttl},
+			Prefix: "weather:",
 			Stale: gashe.Stale{
 				IfError: gashe.StaleIfError{ // (2)!
 					For:       6 * time.Hour,
@@ -28,10 +29,9 @@ func NewWeatherAPI(c *gashe.Cache, baseURL string, ttl time.Duration) *WeatherAP
 				},
 			},
 			Negative: gashe.Negative{ // (3)!
-				IsNotFound: func(err error) bool { return errors.Is(err, ErrNoCity) },
 				TTL:        10 * time.Minute,
+				IsNotFound: func(err error) bool { return errors.Is(err, ErrNoCity) },
 			},
-			Prefix: "weather:",
 		}),
 	}
 }

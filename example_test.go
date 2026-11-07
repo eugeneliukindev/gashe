@@ -308,8 +308,8 @@ func ExamplePolicy_negative() {
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
 			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
 		},
 	})
 	load := func(context.Context) (User, error) {

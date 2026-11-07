@@ -305,8 +305,8 @@ func TestLockOnMissSharesANegativeAnswer(t *testing.T) {
 		TTL:      gashe.TTL{For: time.Minute},
 		Stampede: gashe.Stampede{SingleFlight: true, LockFor: 5 * time.Second},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 		},
 	}
 	var loads atomic.Int32
@@ -344,8 +344,8 @@ func TestReloadErrorKeepsTheStoredResult(t *testing.T) {
 	p := gashe.Policy[string]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 		},
 	}
 	_, _ = gashe.GetOrLoad(ctx, c, "k", p, func(context.Context) (string, error) { return "kept", nil })

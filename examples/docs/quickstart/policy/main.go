@@ -17,9 +17,9 @@ func main() {
 
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:      gashe.TTL{For: time.Hour},                      // (1)!
-		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute}, // (2)!
-		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // (3)!
-		Prefix:   "user:",                                        // (4)!
+		Prefix:   "user:",                                        // (2)!
+		Stale:    gashe.Stale{WhileRevalidate: 10 * time.Minute}, // (3)!
+		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // (4)!
 	})
 	_ = users
 }

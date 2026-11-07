@@ -76,8 +76,8 @@ func TestGetOrLoadNegative(t *testing.T) {
 	users := gashe.Policy[user]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			IsNotFound: func(err error) bool { return errors.Is(err, errNoRows) },
 			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errNoRows) },
 		},
 	}
 	calls := 0

@@ -14,9 +14,9 @@ backend and share it; each option has a card below.
 ```
 
 1. Goes before every key, the own keys of the cache included. `""` means none.
-2. Gets how each [`GetOrLoad`](../reference/gashe.md#GetOrLoad) was answered. nil drops them.
-3. Gets the errors the cache works around instead of returning them. nil drops them.
-4. How often [`Lock`](../reference/gashe.md#Cache.Lock) and [`Stampede.LockFor`](../reference/gashe.md#Stampede) check a busy lock. 0 means 100ms.
+2. How often [`Lock`](../reference/gashe.md#Cache.Lock) and [`Stampede.LockFor`](../reference/gashe.md#Stampede) check a busy lock. 0 means 100ms.
+3. Gets how each [`GetOrLoad`](../reference/gashe.md#GetOrLoad) was answered. nil drops them.
+4. Gets the errors the cache works around instead of returning them. nil drops them.
 
 - `New` panics on a nil backend, a negative [`LockPollInterval`](../reference/gashe.md#Options) or invalid [`Options.CircuitBreaker`](../reference/gashe.md#Options).
 - The cache does not close the backend: you close it yourself, after [`Cache.Shutdown`](#cshutdown).

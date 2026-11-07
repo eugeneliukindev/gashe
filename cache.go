@@ -17,9 +17,12 @@ type Options struct {
 	// Stale.WhileRevalidate and rate counters, under Prefix too, each starting with "__": keys of
 	// yours must not start with "__". Locks of Lock, TryLock and WithLock use the key you give them.
 	Prefix string
-	// Hooks receive what the cache does: how calls were answered, and the errors it works around.
-	// The zero value calls nothing.
-	Hooks Hooks
+	// Codec turns values into bytes: the format of what is stored. nil means JSON.
+	Codec Codec
+	// Compressor shrinks what Codec produced, such as compress/zstd for large values. nil means
+	// none. Compressed values are binary: IncrBy cannot read them, so keep counters under keys
+	// that only IncrBy touches.
+	Compressor Compressor
 	// CircuitBreaker stops calling the backend for a while once too many calls to it fail, as
 	// Cache.CircuitBreaker does for a dependency. While it is open every call of the backend returns
 	// ErrCircuitOpen at once, so a cache that is down costs no timeout: GetOrLoad goes straight to
@@ -27,15 +30,12 @@ type Options struct {
 	// CircuitBreaker.IsFailure. Ping is not guarded, so health checks see the backend itself. The
 	// zero value, with no FailurePercent, means no breaker.
 	CircuitBreaker CircuitBreaker
-	// Codec turns values into bytes: the format of what is stored. nil means JSON.
-	Codec Codec
-	// Compressor shrinks what Codec produced, such as compress/zstd for large values. nil means
-	// none. Compressed values are binary: IncrBy cannot read them, so keep counters under keys
-	// that only IncrBy touches.
-	Compressor Compressor
 	// LockPollInterval is how often Lock and Stampede.LockFor check whether a busy lock is free.
 	// 0 means 100ms.
 	LockPollInterval time.Duration
+	// Hooks receive what the cache does: how calls were answered, and the errors it works around.
+	// The zero value calls nothing.
+	Hooks Hooks
 }
 
 // Hooks are called by the cache, for metrics and logs. A nil hook is not called.

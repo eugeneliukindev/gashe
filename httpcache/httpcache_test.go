@@ -584,7 +584,7 @@ func TestNegativeIsRejected(t *testing.T) {
 	}()
 	httpcache.New(newCache(t), httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
 		TTL:      gashe.TTL{For: time.Minute},
-		Negative: gashe.Negative{IsNotFound: func(error) bool { return true }, TTL: time.Minute},
+		Negative: gashe.Negative{TTL: time.Minute, IsNotFound: func(error) bool { return true }},
 	}})
 }
 

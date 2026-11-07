@@ -30,8 +30,8 @@ func main() {
 			Prefix: "products:",
 		},
 		Vary: httpcache.Vary{
-			Headers: []string{"Accept-Language"}, // the page is translated
 			Query:   []string{"page"},            // utm_source and others make no new entry
+			Headers: []string{"Accept-Language"}, // the page is translated
 		},
 	})
 	http.Handle("/products", cached(http.HandlerFunc(listProducts)))

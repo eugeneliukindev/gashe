@@ -20,9 +20,9 @@ func main() {
 	policy := gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
+			TTL: 30 * time.Second,
 			// cache "not found" for 30 seconds
 			IsNotFound: func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
-			TTL:        30 * time.Second,
 		},
 	}
 	queries := 0
