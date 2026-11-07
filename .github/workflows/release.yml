@@ -1,0 +1,30 @@
+# Makes the GitHub release of every tag, with the section of CHANGELOG.md that names the tag.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]*", "backend/redis/v*", "codec/msgpack/v*", "compress/zstd/v*"]
+
+permissions:
+  contents: write # gh release create
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Release the tag with its changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag##*v}"
+          # A root tag has a section of its own; a module tag is named in the section it came with.
+          notes=$(awk -v v="$version" -v tag="$tag" '
+            BEGIN { root = tag ~ /^v/ }
+            /^## \[/ { if (found) { printf "%s", sec; done = 1; exit }
+                       insec = 1; sec = ""; found = root && index($0, "[" v "]"); next }
+            insec { sec = sec $0 "\n"; if (!root && index($0, "`" tag "`")) found = 1 }
+            END { if (found && !done) printf "%s", sec }
+          ' CHANGELOG.md)
+          gh release create "$tag" --verify-tag --title "$tag" --notes "${notes:-See CHANGELOG.md.}"

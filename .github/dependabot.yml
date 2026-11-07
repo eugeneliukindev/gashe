@@ -1,0 +1,18 @@
+# Weekly pull requests for new versions of the dependencies; CI checks each of them.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories: ["/", "/backend/redis", "/codec/msgpack", "/compress/zstd", "/examples", "/benchmarks"]
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /docs
+    schedule:
+      interval: weekly
