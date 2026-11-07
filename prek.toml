@@ -1,0 +1,25 @@
+# Git hooks run by prek before a commit: `just hooks` installs them, `just hooks-all` runs them on every file.
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-merge-conflict" },
+  { id = "check-added-large-files" },
+  { id = "check-case-conflict" },
+  { id = "check-yaml" },
+  { id = "detect-private-key" },
+  { id = "end-of-file-fixer", exclude = "^docs/en/reference/" },
+  { id = "trailing-whitespace", exclude = "^docs/en/reference/" },
+  { id = "mixed-line-ending" },
+]
+
+# Every tool runs through its just recipe, as in CI; each hook only when files it checks changed.
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "typos", name = "typos", language = "system", entry = "just typos", pass_filenames = false },
+  { id = "golangci-lint", name = "golangci-lint", language = "system", entry = "just lint", files = "(\\.go|go\\.mod|\\.golangci\\.yml)$", pass_filenames = false },
+  { id = "toml-lint", name = "tombi", language = "system", entry = "just toml-lint", files = "\\.toml$", pass_filenames = false },
+  { id = "docs-lint", name = "rumdl", language = "system", entry = "just docs-lint", files = "^docs/(en/.*\\.md|pyproject\\.toml)$", pass_filenames = false },
+  { id = "actionlint", name = "actionlint", language = "system", entry = "just actionlint", files = "^\\.github/workflows/", pass_filenames = false },
+]

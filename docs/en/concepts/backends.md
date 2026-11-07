@@ -165,6 +165,7 @@ sequenceDiagram
 ### Invalidation reported by Redis { #newtrackingbus }
 
 !!! version "Added in v0.5"
+
 A key changed by `redis-cli` or another service stays stale in the copies of [`NewBus`](../reference/redis.md#NewBus). With
 [`NewTrackingBus`](../reference/redis.md#NewTrackingBus), Redis itself reports every change under the prefix, `FLUSHDB` included.
 

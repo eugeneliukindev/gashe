@@ -109,6 +109,7 @@ One process of a service, run three times at once; each has its own memory, only
 ## A limit on loads at once { #maxconcurrentloads }
 
 !!! version "Added in v0.5"
+
 A thousand cold keys after a deploy, or with the cache down, send a thousand queries at once;
 sharing a load and [`Fallback`](../reference/gashe.md#Fallback) only help with one key. With [`Stampede.MaxLoads`](../reference/gashe.md#Stampede), at most this many
 loads of one kind of data, its type and `Prefix`, run at once in one [`*gashe.Cache`](../reference/gashe.md#Cache).

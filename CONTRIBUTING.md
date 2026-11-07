@@ -12,28 +12,30 @@ The repository holds six modules. Run every command in each of them.
 | `benchmarks/` | benchmarks, `just bench`, never released | the gashe modules |
 
 The tests of `backend/redis` against a real server read its address from `GASHE_REDIS_ADDR` and are
-skipped without it, so `go test` needs no Docker. `just redis test` starts a server of
+skipped without it, so `go test` needs no Docker. `just redis-test` starts a server of
 `backend/redis/compose.yaml` in Docker and runs them against the local code of the repository
-through `go.work`; `just redis all` runs them on Redis 7.0 and Valkey 8, and `just redis cluster`
+through `go.work`; `just redis-all` runs them on Redis 7.0 and Valkey 8, and `just redis-cluster`
 on a Redis Cluster of three masters, where keys of one call land on different nodes.
-`just redis down` stops the servers.
+`just redis-down` stops the servers.
 
 The modules support Go 1.25 and newer: the two releases Go supports, and the one before them.
 
 Tasks run with [just](https://just.systems) and go through every module; `just` lists them:
 
 ```bash
-just check          # before a commit: golangci-lint, tests with -race, govulncheck
+just check          # before a commit: golangci-lint, typos, actionlint, tombi, rumdl, tests with -race, govulncheck
 just release-check  # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, gorelease
 just fmt            # format with the formatters of .golangci.yml
+just hooks          # install the git hooks of prek.toml, which run the linters on the changed files
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
-just redis all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
-just redis cluster  # the Cluster tests on three masters, in Docker
-REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just redis test redis -v  # any other server
+just redis-all      # the Redis tests on Redis 7.0 and Valkey 8, in Docker
+just redis-cluster  # the Cluster tests on three masters, in Docker
+REDIS_IMAGE=docker.dragonflydb.io/dragonflydb/dragonfly just redis-test redis -v  # any other server
 ```
 
-`govulncheck` and `gorelease` run through `go run` at the versions pinned in the `justfile`, so
-nothing has to be installed but Go, golangci-lint and just. `govulncheck` also reports the standard
+`govulncheck` and `gorelease` run through `go run`, golangci-lint and actionlint in Docker, and
+typos, tombi and prek through uv, all at the versions pinned in the `justfile` and `docs/uv.lock`, so
+nothing has to be installed but Go, Docker, uv and just. `govulncheck` also reports the standard
 library of the Go that runs it: keep the local Go on its latest patch release. `just api` compares
 the API with the last tag and needs a clean working tree.
 
@@ -51,9 +53,8 @@ that changed with their directory in front (`backend/redis/v0.4.0`). The latest 
 `backend/redis/v0.4.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. A tag gets its GitHub
 release from CI.
 
-Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request adds an
-entry under `Unreleased` in `CHANGELOG.md`, or has the `skip-changelog` label when users see no
-change.
+Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
+see adds an entry under `Unreleased` in `CHANGELOG.md`.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
@@ -64,11 +65,13 @@ published to GitHub Pages on every push to `main`. Its tools are Python packages
 and the recipes run them through `uv run --project docs`:
 
 ```bash
-uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
-just docs build      # build the site into docs/site/; a broken link or anchor fails it
-just docs serve      # preview it at http://localhost:8000/gashe/
-just docs reference  # write the API reference from the doc comments, after an API change
-just docs links      # external links, with lychee in Docker; CI checks them weekly
+uv sync --project docs    # install the tools into docs/.venv; the recipes also do it on their own
+just docs-lint            # lint the Markdown of the pages with rumdl; `just docs-fmt` fixes it
+just docs-build           # build the site into docs/site/; a broken link or anchor fails it
+just docs-serve           # preview it at http://localhost:8000/gashe/
+just docs-reference       # write the API reference from the doc comments, after an API change
+just docs-reference-check # fail when the API reference is out of date; CI runs it
+just docs-links           # external links, with lychee in Docker; CI checks them weekly
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between

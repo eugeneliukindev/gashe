@@ -1,9 +1,9 @@
 # External links only: zensical --strict checks the links inside the site.
 exclude_loopback = true
 exclude = [
-  '^https://eugeneliukindev\.github\.io/gashe',                  # the site itself, before it is published
-  '^https://pkg\.go\.dev/github\.com/eugeneliukindev/gashe',     # pkg.go.dev lists a module after its first fetch
-  'llms(-full)?\.txt$',                                          # written by the build, not in docs/
+  '^https://eugeneliukindev\.github\.io/gashe',  # the site itself, before it is published
+  '^https://pkg\.go\.dev/github\.com/eugeneliukindev/gashe',  # pkg.go.dev lists a module after its first fetch
+  'llms(-full)?\.txt$',  # written by the build, not in docs/
 ]
 max_retries = 3
-accept = ["200..=299", "429"] # 429: a site that rate limits the check is up
+accept = ["200..=299", "429"]  # 429: a site that rate limits the check is up

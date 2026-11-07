@@ -4,3 +4,4 @@ go.work.sum
 site/
 __pycache__/
 .venv/
+.rumdl_cache/

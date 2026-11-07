@@ -36,7 +36,6 @@ What a request gets; its key is the host, the path and what [`Vary`](../referenc
   `503 Service Unavailable`.
 - Another method, `Range`, `Authorization` without [`Vary.User`](../reference/httpcache.md#Vary), or `Cookie` without [`Vary.Cookies`](../reference/httpcache.md#Vary)
   or [`Vary.User`](../reference/httpcache.md#Vary): the request goes past the cache.
-
 - By default, `GET` and `HEAD` requests without `Authorization`, `Cookie` and `Range` are cached
   under their host, path and query. A `200` of at most 1 MB, without `Set-Cookie`, a [`Vary`](../reference/httpcache.md#Vary) header
   and `Cache-Control` `no-store`, `private` or `no-cache`, is stored for [`Policy.TTL.For`](../reference/gashe.md#Policy).
@@ -130,6 +129,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 ### A query parameter outside `Vary.Query` changes nothing { #a-query-parameter-outside-varyquery-changes-nothing }
 
 !!! version "Added in v0.5"
+
 [`Vary.Query`](../reference/httpcache.md#Vary) lists `page` only, so `utm_source` is not in the key and the same entry answers.
 
 ```bash title="Request"
@@ -147,6 +147,7 @@ The handler does not run. `Age` is how long ago the page was stored.
 ### A header in `Vary.Headers` makes another entry { #a-header-in-varyheaders-makes-another-entry }
 
 !!! version "Added in v0.5"
+
 `Accept-Language` is in [`Vary.Headers`](../reference/httpcache.md#Vary), so the Russian page is an entry of its own.
 
 ```bash title="Request"
@@ -243,6 +244,7 @@ sequenceDiagram
 ### Over `Stampede.MaxLoads`, a request gets 503 { #over-maxconcurrentloads-a-request-gets-503 }
 
 !!! version "Added in v0.5"
+
 `/export` renders for two seconds with `Stampede.MaxLoads: 1`, and each request has 2.5 seconds,
 the render included:
 
@@ -280,6 +282,7 @@ sequenceDiagram
 ## How the key is made { #how-the-key-is-made }
 
 !!! version "Added in v0.5"
+
 Requests that differ only in a tracking parameter or in a cookie the page ignores should get the
 same page. The host and the path are always part of the key; of the rest, only what [`Vary`](../reference/httpcache.md#Vary) names.
 

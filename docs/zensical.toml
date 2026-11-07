@@ -179,8 +179,8 @@ pymdownx.snippets.check_paths = true
 pymdownx.snippets.dedent_subsections = true
 # Tooltips for terms on every page.
 pymdownx.snippets.auto_append = ["docs/snippets/abbreviations.md"]
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
 abbr = {}
 # A preview on hover for every link inside the site.
 zensical.extensions.preview.targets.include = ["*"]
-pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
-pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"

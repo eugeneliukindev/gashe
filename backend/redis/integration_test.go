@@ -17,13 +17,13 @@ import (
 )
 
 // redisAddr returns the address of the Redis these tests run against, from GASHE_REDIS_ADDR.
-// `just redis test` starts one in Docker and sets it; without it the tests are skipped, so
+// `just redis-test` starts one in Docker and sets it; without it the tests are skipped, so
 // go test needs no Docker.
 func redisAddr(t *testing.T) string {
 	t.Helper()
 	addr := os.Getenv("GASHE_REDIS_ADDR")
 	if addr == "" {
-		t.Skip("no Redis: GASHE_REDIS_ADDR is not set; run `just redis test`")
+		t.Skip("no Redis: GASHE_REDIS_ADDR is not set; run `just redis-test`")
 	}
 	return addr
 }
