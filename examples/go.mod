@@ -2,10 +2,10 @@
 // module; the replace lines keep them on the code of this repository.
 module github.com/eugeneliukindev/gashe/examples
 
-go 1.23.0
+go 1.25.0
 
 require (
-	github.com/eugeneliukindev/gashe v0.4.0
+	github.com/eugeneliukindev/gashe v0.5.0
 	github.com/eugeneliukindev/gashe/backend/redis v0.2.0
 	github.com/eugeneliukindev/gashe/codec/msgpack v0.1.0
 	github.com/eugeneliukindev/gashe/compress/zstd v0.1.0
@@ -32,10 +32,10 @@ require (
 	github.com/vmihailenco/tagparser v0.1.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 )
 
