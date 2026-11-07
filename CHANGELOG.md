@@ -9,6 +9,11 @@ module it is about.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-07
+
+Released as `v0.6.0`, `backend/redis/v0.5.0`, `codec/msgpack/v0.4.0` and `compress/zstd/v0.2.0`:
+every module needs the newer Go.
+
 ### Changed
 
 - The modules need Go 1.25 or newer; before, Go 1.23. Go supports 1.26 and 1.27, and the fix
@@ -269,7 +274,8 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.3.0
