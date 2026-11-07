@@ -47,22 +47,21 @@ The examples and benchmarks modules are never published, so their `go.mod` repla
 modules with the local copies and always builds against the code of the repository.
 
 To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
-date and merge it. Then, on `main`, run `just check-all`, see the next tag of each module that
-changed with `just commitizen-next` and `just commitizen-next backend/redis`, and publish a GitHub
-release of each; GitHub creates the tag:
+date and merge it. Then, on `main`, run `just check-all` and publish a GitHub release of each
+module that changed; GitHub creates the tag:
 
 ```bash
 just release-notes 0.7.0 | gh release create v0.7.0 --target main --notes-file -
 gh release create backend/redis/v0.5.1 --target main --generate-notes
 ```
 
-The root goes first when another module needs its new version. commitizen counts the commits of
-the whole repository, so check what it proposes; `just commitizen-next compress/zstd PATCH` takes a
-chosen increment. A published release of the root deploys the site; a docs fix between releases
-deploys it with the release workflow run by hand.
+The root goes first when another module needs its new version. A published release of the root
+deploys the site; a docs fix between releases deploys it with the release workflow run by hand.
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
-`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just prek-install` installs checks them.
+Commit messages and pull request titles follow [Conventional Commits](https://www.conventionalcommits.org)
+(`fix:`, `feat:`, `docs:`, `build!:`): a pull request is squash-merged, so its title is the commit
+on `main`. The `commit-msg` hook that `just prek-install` installs checks the commits, and CI checks
+the title.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
 see adds an entry under `Unreleased` in `CHANGELOG.md`.

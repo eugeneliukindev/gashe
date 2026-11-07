@@ -17,7 +17,7 @@ rumdl := "uv run --project docs --locked rumdl"
 tombi := "uv run --project docs --locked tombi"
 typos := "uv run --project docs --locked typos"
 prek := "uv run --project docs --locked prek"
-commitizen := "uv run --project " + justfile_directory() + "/docs --locked cz"
+commitizen := "uv run --project docs --locked cz"
 
 needs_service := 'redis/go-redis|jackc/pgx|ListenAndServe|signal\.Notify'
 
@@ -153,11 +153,6 @@ lychee:
 [doc("Tidy go.mod of every module")]
 [group('deps')]
 tidy: (_each modules "env" "GOWORK=off" "go" "mod" "tidy")
-
-[doc("Print the next tag of a module: just commitizen-next backend/redis")]
-[group('release')]
-commitizen-next module="." increment="USE_GIT_COMMITS":
-    cd "$1" && {{ commitizen }} version --project --tag --next "$2"
 
 [doc("Ask the Go proxy for a released tag, so pkg.go.dev lists it: just version-fetch v0.7.0")]
 [group('release')]
