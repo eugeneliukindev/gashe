@@ -61,7 +61,7 @@ and the recipes run them through `uv run --project docs`:
 
 ```bash
 uv sync --project docs # install the tools into docs/.venv; the recipes also do it on their own
-just docs build      # build the site into site/; a broken link or anchor fails it
+just docs build      # build the site into docs/site/; a broken link or anchor fails it
 just docs serve      # preview it at http://localhost:8000/gashe/
 just docs reference  # write the API reference from the doc comments, after an API change
 just docs links      # external links, with lychee in Docker; CI checks them weekly

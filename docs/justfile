@@ -6,13 +6,13 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 zensical := "uv run --project docs --locked zensical"
 gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0"
 
-# Build the site into site/; a broken link fails the build.
+# Build the site into docs/site/; a broken link fails the build.
 build:
-    {{ zensical }} build --strict
+    {{ zensical }} build --strict -f docs/zensical.toml
 
 # Preview the site at http://localhost:8000/gashe/.
 serve:
-    {{ zensical }} serve
+    {{ zensical }} serve -f docs/zensical.toml
 
 # Write the API reference, docs/en/reference/, from the doc comments; run it after an API change.
 reference:

@@ -5,7 +5,7 @@ site_url = "https://eugeneliukindev.github.io/gashe/"
 repo_url = "https://github.com/eugeneliukindev/gashe"
 repo_name = "eugeneliukindev/gashe"
 edit_uri = "edit/main/docs/en/"
-docs_dir = "docs/en"
+docs_dir = "en"
 site_dir = "site"
 copyright = "MIT license"
 extra_css = ["assets/stylesheets/extra.css"]
@@ -74,7 +74,7 @@ variant = "classic"
 language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
-custom_dir = "docs/overrides"
+custom_dir = "overrides"
 features = [
   "content.action.edit",
   "content.action.view",
