@@ -159,10 +159,20 @@ tidy: (_each modules "env" "GOWORK=off" "go" "mod" "tidy")
 version-fetch tag:
     m=github.com/eugeneliukindev/gashe; [[ "$1" == v* ]] || m="$m/${1%/v*}"; cd "$(mktemp -d)" && GOPROXY=https://proxy.golang.org go list -m "$m@${1##*/}"
 
-[doc("Print the CHANGELOG.md section of a version: just release-notes 0.7.0")]
+[doc("Draft a GitHub release on main; publishing it creates the tag: just gh-release v0.7.0")]
 [group('release')]
-release-notes version:
-    awk -v h="## [$1]" 'index($0, h) == 1 { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md
+gh-release tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch -q --tags origin
+    if [[ "$1" == v* ]]; then
+        notes=$(awk -v h="## [${1#v}]" 'index($0, h) == 1 { f = 1; next } /^## \[/ { f = 0 } f' CHANGELOG.md)
+        [ -n "$notes" ] || { echo "gh-release: CHANGELOG.md has no section ${1#v}" >&2; exit 1; }
+        printf '%s\n' "$notes" | gh release create "$1" --draft --target main --title "$1" --notes-file -
+    else
+        last=$(git tag -l "${1%/v*}/v*" --sort=-v:refname | head -1)
+        gh release create "$1" --draft --target main --title "$1" --generate-notes ${last:+--notes-start-tag "$last"}
+    fi
 
 [doc("Install the git hooks of prek.toml")]
 [group('hooks')]
