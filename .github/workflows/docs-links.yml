@@ -17,11 +17,9 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: lycheeverse/lychee-action@v2.9.0
+      - uses: extractions/setup-just@v4.0.0
         with:
-          args: >-
-            --config docs/lychee.toml --no-progress
-            README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
-          fail: true
+          just-version: 1.59.0
+      - run: just lychee
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub rate limits links checked without one
