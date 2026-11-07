@@ -12,11 +12,12 @@ gomarkdoc := "go run github.com/princjef/gomarkdoc/cmd/gomarkdoc@v1.1.0 --reposi
 
 golangci := 'docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e GOPATH=/tmp/go -e GOMODCACHE=/go/pkg/mod -v "$PWD":/src -w /src -v "$(go env GOMODCACHE)":/go/pkg/mod -v "$(go env GOCACHE)":/cache/go -e GOCACHE=/cache/go -v "$HOME/.cache/golangci-lint":/cache/lint -e GOLANGCI_LINT_CACHE=/cache/lint golangci/golangci-lint:v2.15.0'
 actionlint := 'docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12'
-lychee := 'docker run --rm -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2'
+lychee := 'docker run --rm -e GITHUB_TOKEN -v "$PWD":/repo -w /repo lycheeverse/lychee:0.24.2'
 
 zensical := "uv run --project docs --locked zensical"
 rumdl := "uv run --project docs --locked rumdl"
 tombi := "uv run --project docs --locked tombi"
+commitizen := "uv run --project " + justfile_directory() + "/docs --locked cz"
 
 needs_service := 'redis/go-redis|jackc/pgx|ListenAndServe|signal\.Notify'
 
@@ -171,3 +172,20 @@ gomarkdoc: work
 [group('docs')]
 lychee:
     {{ lychee }} --config docs/lychee.toml --no-progress README.md CHANGELOG.md CONTRIBUTING.md examples/README.md 'docs/*/**/*.md'
+
+# Check a commit message: the commit-msg hook
+[group('lint')]
+commitizen-check file:
+    {{ commitizen }} check --commit-msg-file "$1"
+
+# Tag the next version of a module, from its cz.toml and the commits since its last tag: just commitizen-bump backend/redis
+[group('deploy')]
+commitizen-bump module="." increment="USE_GIT_COMMITS":
+    cd "$1" && t=$({{ commitizen }} version --project --tag --next "$2") && git tag -a "$t" -m "$t" && echo "$t"
+
+# Tag the modules on origin/main and push the tags: just release . backend/redis
+[group('deploy')]
+release +modules: release-check
+    git fetch -q origin main && test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+    for m in "$@"; do {{ just_executable() }} commitizen-bump "$m"; done
+    git push --atomic origin $(git tag --points-at HEAD)

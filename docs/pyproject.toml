@@ -1,9 +1,10 @@
 [project]
 name = "gashe-docs"
 version = "0"
-description = "The Python tools of gashe: the documentation site, rumdl, typos, tombi and prek"
+description = "The Python tools of gashe: the documentation site, rumdl, typos, tombi, prek and commitizen"
 requires-python = ">=3.11"
 dependencies = [
+  "commitizen==4.19.3",
   "prek==0.5.10",
   "rumdl==0.3.2",
   "tombi==1.10.0",

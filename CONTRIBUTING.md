@@ -47,11 +47,16 @@ committed, and `govulncheck`, `gorelease` and `go mod tidy` run without it, on t
 The examples and benchmarks modules are never published, so their `go.mod` replaces the gashe
 modules with the local copies and always builds against the code of the repository.
 
-To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the date, then
-tag the root first (`v0.5.0`), raise the version the other modules require, and tag the modules
-that changed with their directory in front (`backend/redis/v0.4.0`). The latest tags are `v0.5.0`,
-`backend/redis/v0.4.0`, `codec/msgpack/v0.3.0` and `compress/zstd/v0.1.0`. A tag gets its GitHub
-release from CI.
+To release, replace `Unreleased` in the top section of `CHANGELOG.md` with the version and the
+date, merge it, and run `just release` on `main` with the modules to release: `just release .
+backend/redis` checks everything with `release-check`, tags each module with the next version
+commitizen reads from its `cz.toml` and the commits since its last tag, and pushes the tags. The
+root goes first when another module needs its new version. `just commitizen-bump compress/zstd
+PATCH` tags one module with a chosen increment; commitizen counts the commits of the whole
+repository, so check what it proposes. A tag gets its GitHub release from CI.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org) (`fix:`,
+`feat:`, `docs:`, `build!:`); the `commit-msg` hook that `just hooks` installs checks them.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
 see adds an entry under `Unreleased` in `CHANGELOG.md`.
