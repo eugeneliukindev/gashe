@@ -55,7 +55,8 @@ on `main`. The `commit-msg` hook that `just prek-install` installs checks the co
 the title.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
-see adds an entry under `Unreleased` in `CHANGELOG.md`.
+see adds an entry under `Unreleased` in `CHANGELOG.md`; CI, recipes and docs for contributors
+get none.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.

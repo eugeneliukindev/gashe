@@ -2,7 +2,7 @@
 
 Every field you can set, nested ones included, as you write them in code: each line says what
 the field does and what leaving it out means. Every field may be left out unless it says
-required. The programs compile in CI, so a renamed field breaks the build, not this page.
+required.
 
 ## Options { #options }
 
