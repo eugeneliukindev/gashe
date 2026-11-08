@@ -29,7 +29,7 @@ func NewWeatherAPI(c *gashe.Cache, baseURL string, ttl time.Duration) *WeatherAP
 				},
 			},
 			Negative: gashe.Negative{ // (3)!
-				TTL:        10 * time.Minute,
+				For:        10 * time.Minute,
 				IsNotFound: func(err error) bool { return errors.Is(err, ErrNoCity) },
 			},
 		}),

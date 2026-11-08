@@ -40,7 +40,7 @@ The loader turns every answer of the API into a result or an error; the policy d
 | The API answers | The loader returns | The cache |
 |---|---|---|
 | `200` | the `Weather` | stores it for `TTL` |
-| `404` | `ErrNoCity` | caches it for [`Negative.TTL`](../reference/gashe.md#Negative): no call meanwhile; [not found](../concepts/negative.md#negative-cache-not-found) |
+| `404` | `ErrNoCity` | caches it for [`Negative.For`](../reference/gashe.md#Negative): no call meanwhile; [not found](../concepts/negative.md#negative-cache-not-found) |
 | `5xx`, `429`, a timeout, no connection | `errAPIDown` | the stale answer, up to `TTL + Stale.IfError.For` old, the error to [`OnError`](../reference/gashe.md#Hooks); [stale data](../concepts/stale.md#staleiferror-staleifslow) |
 | anything else | another error | returns it, stores nothing |
 

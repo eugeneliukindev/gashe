@@ -51,7 +51,7 @@ func main() {
 		},
 		Tags: []string{"users"}, // InvalidateTags of any of them drops the result; nil means none
 		Negative: gashe.Negative{ // caches "not found" too; the zero value turns it off
-			TTL: time.Minute, // how long the "not found" is kept
+			For: time.Minute, // how long the "not found" is kept
 			IsNotFound: func(err error) bool { // which loader errors mean "not found"
 				return errors.Is(err, errNoUser)
 			},

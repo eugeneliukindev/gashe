@@ -294,9 +294,9 @@ func (l *loading[V]) freshFor(ctx context.Context, v V) (time.Duration, bool) {
 	return l.o.spread(fresh), true
 }
 
-// storeNegative stores a negative answer for Negative.TTL.
+// storeNegative stores a negative answer for Negative.For.
 func (l *loading[V]) storeNegative(ctx context.Context) {
-	ttl := l.o.spread(l.o.Negative.TTL)
+	ttl := l.o.spread(l.o.Negative.For)
 	store(ctx, l.c, l.spare, l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, G: l.gens, T: l.shape}, ttl)
 }
 

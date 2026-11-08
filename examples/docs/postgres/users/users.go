@@ -26,7 +26,7 @@ func NewUsers(db *sql.DB, c *gashe.Cache) *Users {
 		Stale:    gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}}, // (1)!
 		Stampede: gashe.Stampede{LockFor: 5 * time.Second},                 // a cold key loads once for all processes
 		Negative: gashe.Negative{
-			TTL:        30 * time.Second,
+			For:        30 * time.Second,
 			IsNotFound: func(err error) bool { return errors.Is(err, sql.ErrNoRows) }, // (2)!
 		},
 	})}
