@@ -29,8 +29,8 @@ once is in [Settings](settings.md).
 | A call waits for the reload once the TTL is over | `Policy.Stale.WhileRevalidate` | [Refresh in the background](concepts/stale.md#stalewhilerevalidate) |
 | The source fails and calls get its error | `Policy.Stale.IfError` | [Answer instead of an error](concepts/stale.md#staleiferror-staleifslow) |
 | The source hangs and every call waits for it | `Policy.Stale.IfSlow` | [Answer instead of a slow loader](concepts/stale.md#stale-ifslow) |
-| Redis is down and every call waits for its timeout | `Options.CircuitBreaker` | [Stop calling a backend that is down](concepts/outages.md#circuitbreaker) |
-| Redis is down and the database gets every call | `Policy.Fallback` | [Answer from the memory of the process](concepts/outages.md#fallback) |
+| The backend is down and every call waits for its timeout | `Options.CircuitBreaker` | [Stop calling a backend that is down](concepts/outages.md#circuitbreaker) |
+| The backend is down and the database gets every call | `Policy.Fallback` | [Answer from the memory of the process](concepts/outages.md#fallback) |
 | A dependency fails and you keep calling it | `gashe.Guard` with a `CircuitBreaker` | [Guarding a call](concepts/breakers.md#gasheguard) |
 
 ## Changes to the data { #changes-to-the-data }
@@ -46,11 +46,11 @@ once is in [Settings](settings.md).
 
 | Problem | Setting | Where |
 | --- | --- | --- |
-| Several services share one Redis | `Options.Prefix` | [Key prefix](concepts/setup.md#prefix) |
+| Several services share one backend | `Options.Prefix` | [Key prefix](concepts/setup.md#prefix) |
 | Values are stored in another format than JSON | `Options.Codec` | [Value format](concepts/setup.md#codec) |
 | Values are large | `Options.Compressor` | [Compression](concepts/setup.md#compressor) |
 | You need metrics and logs of hits, loads and errors | `Options.Hooks` | [Metrics and logs](concepts/setup.md#onresult-onerror) |
-| Hot keys cost a round trip to Redis | `nearcache.New` | [A near cache in front of Redis](concepts/backends.md#backendnearcache) |
+| Hot keys cost a round trip to a shared backend | `nearcache.New` | [A near cache in front of a shared backend](concepts/backends.md#backendnearcache) |
 | Large values take too much memory of the process | `memory.Options.MaxBytes` | [Memory of the process](concepts/backends.md#backendmemory) |
 
 ## Beyond caching { #beyond-caching }

@@ -80,7 +80,7 @@ More: [tags](concepts/invalidation.md#tags),
 
 ---
 
-## Requests hang or are slow while Redis is down { #requests-hang-while-redis-is-down }
+## Requests hang or are slow while the backend is down { #requests-hang-while-redis-is-down }
 
 | Cause | How to tell | Fix |
 |---|---|---|
@@ -212,7 +212,7 @@ More: [backend/nearcache](concepts/backends.md#backendnearcache),
 | [`Cache.Keys`](reference/gashe.md#Cache.Keys) or [`Cache.DeleteMatch`](reference/gashe.md#Cache.DeleteMatch) with `*`: they meet the own keys too, and [`DeleteMatch`](reference/gashe.md#Cache.DeleteMatch) deletes them | `__` keys in what [`Cache.Keys`](reference/gashe.md#Cache.Keys) yields; locks lost, rate counters reset, entries with tags all miss once | patterns of your keys, such as `user:*` |
 | A lock key equals a value key: [`Lock`](reference/gashe.md#Cache.Lock), [`TryLock`](reference/gashe.md#Cache.TryLock) and [`WithLock`](reference/gashe.md#Cache.WithLock) use the key you give them | [`TryLock`](reference/gashe.md#Cache.TryLock) is never ok while the value exists; [`Cache.Set`](reference/gashe.md#Cache.Set) over a held lock gives [`ErrLockLost`](reference/gashe.md#variables) | lock keys of their own, such as `lock:reindex` |
 | The basic API and [`GetOrLoad`](reference/gashe.md#GetOrLoad) share a key: [`Cache.Get`](reference/gashe.md#Cache.Get) cannot read a [`GetOrLoad`](reference/gashe.md#GetOrLoad) entry | [`GetOrLoad`](reference/gashe.md#GetOrLoad) misses after [`Cache.Set`](reference/gashe.md#Cache.Set), [`Cache.Get`](reference/gashe.md#Cache.Get) reads empty or wrong fields | a [`Policy.Prefix`](reference/gashe.md#Policy) for [`GetOrLoad`](reference/gashe.md#GetOrLoad) data |
-| Two services use one Redis with the same keys | each reads what the other stored | an [`Options.Prefix`](reference/gashe.md#Options) per service |
+| Two services use one backend with the same keys | each reads what the other stored | an [`Options.Prefix`](reference/gashe.md#Options) per service |
 
 More: [keys](internals/storage.md#keys),
 [Prefix](concepts/setup.md#prefix).

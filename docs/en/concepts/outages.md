@@ -1,4 +1,4 @@
-# When Redis is down { #outages }
+# When the backend is down { #outages }
 
 This page shows how to keep answering while the cache backend is down. In this section, we will go
 through [`CircuitBreaker`](#circuitbreaker) and
@@ -24,8 +24,8 @@ with [`ErrCircuitOpen`](../reference/gashe.md#variables), and [`GetOrLoad`](../r
     --8<-- "examples/docs/outages/circuit-breaker/main.go"
     ```
 
-With the options above, Redis stops at t = 0: until the breaker opens, every call waits for the
-go-redis timeout; while it is open, calls fail at once.
+With the options above, the backend stops at t = 0: until the breaker opens, every call waits for
+its timeout, for Redis the go-redis `ReadTimeout`; while it is open, calls fail at once.
 
 ```mermaid
 sequenceDiagram
@@ -115,11 +115,11 @@ flowchart LR
 - The basic API and locks do not use it: they return the error, so a lock is never taken in the
   memory of one process.
 - It covers [`GetOrLoad`](../reference/gashe.md#GetOrLoad), [`GetOrLoadMany`](../reference/gashe.md#GetOrLoadMany), [`Reload`](../reference/gashe.md#Reload) and `httpcache`; the [`Result`](../reference/gashe.md#Result) is `fallback`.
-- While Redis works, the fallback is not read. Once the backend answers again, the fallback is no
+- While the backend works, the fallback is not read. Once the backend answers again, the fallback is no
   longer read, and its entries expire.
-- While Redis fails and the breaker is closed, each call still waits for the Redis timeout, then
+- While the backend fails and the breaker is closed, each call still waits for its timeout, then
   reads the fallback; the loader runs when the fallback has nothing.
-- While the breaker is open, neither the near cache nor Redis is called: the fallback is read, and
+- While the breaker is open, neither the near cache nor the backend is called: the fallback is read, and
   the loader runs once per key and process per `min(TTL, MaxTTL)`.
 
 !!! tip

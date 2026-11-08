@@ -142,7 +142,7 @@ one that takes the refresh lock reloads.
 |---|---|---|
 | up to 5 minutes | the entry, fresh | `hit` |
 | 5 to 35 minutes | the same entry, stale; `__refresh:<key>` while one process reloads | the stale result at once, `stale-while-revalidate`; the reload stores a new entry, fresh for 5 minutes again |
-| past 35 minutes | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
+| past 35 minutes | nothing: the backend dropped the entry | `miss`: the call waits for the loader |
 
 ```mermaid
 sequenceDiagram
@@ -201,7 +201,7 @@ With the policy above:
 |---|---|---|
 | up to 1 minute | the entry, fresh | `hit` |
 | 1 minute to 6 hours 1 minute | the same entry, stale | the loader runs and is waited for: its result, `miss`, stored as a new entry; a failure, the stale result, `stale-if-error`, and the entry stays as it is |
-| past 6 hours 1 minute | nothing: Redis dropped the entry | `miss`: the loader runs, and its error is returned |
+| past 6 hours 1 minute | nothing: the backend dropped the entry | `miss`: the loader runs, and its error is returned |
 
 - A failure is answered by the stale result, and the error goes to [`OnError`](../reference/gashe.md#Hooks).
 - A "not found", an error [`Negative.IsNotFound`](../reference/gashe.md#Negative) accepts, is never a failure: it is returned as
@@ -244,7 +244,7 @@ With the policy above:
 |---|---|---|
 | up to 1 minute | the entry, fresh | `hit` |
 | 1 minute to 1 hour 1 minute | the same entry, stale; `__refresh:<key>` while a slow load goes on | a loader within 200ms: its result, `miss`, or its error; a slower one: the stale result, `stale-if-slow`, and the load stores its result in the background |
-| past 1 hour 1 minute | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
+| past 1 hour 1 minute | nothing: the backend dropped the entry | `miss`: the call waits for the loader |
 
 - Set both or neither: one without the other returns [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - It needs no [`IfError`](../reference/gashe.md#Stale), but answers only slowness: a loader that fails within [`After`](../reference/gashe.md#StaleIfSlow) gets its error

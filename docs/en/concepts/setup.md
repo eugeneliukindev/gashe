@@ -114,7 +114,7 @@ the bytes of any codec before they are stored.
 ### A breaker for the backend { #circuitbreaker }
 
 A backend that is down makes every call wait for its timeout. With [`CircuitBreaker`](../reference/gashe.md#CircuitBreaker), the cache stops
-calling a failing backend for a while: see [When Redis is down](outages.md#circuitbreaker).
+calling a failing backend for a while: see [When the backend is down](outages.md#circuitbreaker).
 
 ---
 

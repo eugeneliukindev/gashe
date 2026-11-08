@@ -19,8 +19,8 @@ hide:
 
 Caching for Go services that run as many processes. One [`*gashe.Cache`](reference/gashe.md#Cache) stores the results of
 expensive calls, keeps answering while a dependency is slow or down, and guards dependencies with
-locks, rate limits and circuit breakers. Each process has its own memory; over Redis, entries,
-tags, locks and limits are shared by every process.
+locks, rate limits and circuit breakers. Each process has its own memory; over a shared backend
+such as Redis, entries, tags, locks and limits are shared by every process.
 
 ## Why gashe { #why-gashe }
 
@@ -30,7 +30,7 @@ tags, locks and limits are shared by every process.
 
     ---
 
-    Hits come from Redis, or from the memory of the process with a near cache: a hot key costs no
+    Hits come from the backend, or from the memory of the process with a near cache: a hot key costs no
     round trip.
 
 -   :lucide-shield-check: **Protects your database**
@@ -44,7 +44,7 @@ tags, locks and limits are shared by every process.
 
     ---
 
-    The database is slow or down: the last result answers. Redis is down: the memory of the
+    The database is slow or down: the last result answers. The backend is down: the memory of the
     process does.
 
 -   :lucide-refresh-cw: **Invalidation that works**
@@ -116,7 +116,7 @@ stale result answers at once while one process reloads it.
 - A cold key sends a thousand identical queries (cache stampede): [Many loads at once](concepts/stampedes.md)
 - Keys stored together expire together (thundering herd): [Many loads at once](concepts/stampedes.md#jitter)
 - Lookups of missing ids always reach the database (cache penetration): [Cache "not found"](concepts/negative.md)
-- The cache backend is down: [When Redis is down](concepts/outages.md)
+- The cache backend is down: [When the backend is down](concepts/outages.md)
 
 **Protection**
 

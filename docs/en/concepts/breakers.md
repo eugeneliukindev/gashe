@@ -5,7 +5,7 @@ through [`gashe.Guard`](#gasheguard) and [`Cache.CircuitBreaker`](#ccircuitbreak
 
 !!! note
     These breakers guard your calls. The breaker that guards the cache from its own backend is
-    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [When Redis is down](outages.md#circuitbreaker).
+    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [When the backend is down](outages.md#circuitbreaker).
 
 ## Guarding a call { #gasheguard }
 

@@ -37,7 +37,7 @@ types, nested types included. An entry of another form is a miss, never a value 
 
 ## During a rolling deploy { #during-a-rolling-deploy }
 
-Old and new processes run side by side for the length of the rollout, over the same Redis.
+Old and new processes run side by side for the length of the rollout, over the same backend.
 
 | | The same `Prefix` | A new one, `users:v2:` |
 |---|---|---|

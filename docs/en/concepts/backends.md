@@ -82,9 +82,9 @@ Several processes must see the same entries. With [`backend/redis`](../reference
 
 ---
 
-## A near cache in front of Redis { #backendnearcache }
+## A near cache in front of a shared backend { #backendnearcache }
 
-A hot key costs a round trip to Redis on every read. With [`backend/nearcache`](../reference/nearcache.md), each process keeps a
+A hot key costs a round trip to a shared backend, such as Redis, on every read. With [`backend/nearcache`](../reference/nearcache.md), each process keeps a
 copy of what it reads from the shared backend in its own memory, and answers the next read from it.
 
 ```go hl_lines="4-11"

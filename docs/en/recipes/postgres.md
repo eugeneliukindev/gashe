@@ -84,4 +84,4 @@ The calls, `main.go`:
 | `pgxpool` instead of `database/sql` | call `pool.QueryRow(ctx, ...).Scan(...)` in the loader: gashe sees only the function |
 | a page of users by ids | one query for the missing ones: [`GetOrLoadMany`](../concepts/loading.md#getorloadmany) with `WHERE id = ANY($1)` |
 | values over about 1 KB, such as pages or long lists | add `Compressor: zstd.New()` from `gashe/compress/zstd`, in a cache of their own; [compressor](../concepts/setup.md#compressor) |
-| to keep answering while Redis is down | [`Policy.Fallback`](../concepts/outages.md#fallback) <span class="version-badge">Added in v0.5</span> |
+| to keep answering while the backend is down | [`Policy.Fallback`](../concepts/outages.md#fallback) <span class="version-badge">Added in v0.5</span> |
