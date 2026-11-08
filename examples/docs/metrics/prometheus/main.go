@@ -15,6 +15,7 @@ import (
 func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
+	// --8<-- [start:example]
 	c := gashe.New(mem, gashe.Options{Hooks: hooks})
 
 	users := gashe.For(c, gashe.Policy[string]{TTL: gashe.TTL{For: time.Minute}})
@@ -27,4 +28,5 @@ func main() {
 
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe("localhost:2112", nil))
+	// --8<-- [end:example]
 }

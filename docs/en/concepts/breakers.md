@@ -1,11 +1,11 @@
-# Circuit breakers { #breakers }
+# Protect a dependency { #breakers }
 
 This page shows how you stop calling a failing dependency for a while. In this section, we will go
 through [`gashe.Guard`](#gasheguard) and [`Cache.CircuitBreaker`](#ccircuitbreaker).
 
 !!! note
     These breakers guard your calls. The breaker that guards the cache from its own backend is
-    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [Outages](outages.md#circuitbreaker).
+    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [When the backend is down](outages.md#circuitbreaker).
 
 ## Guarding a call { #gasheguard }
 
@@ -13,9 +13,17 @@ A payment provider is down, and every call waits for its timeout and fails. With
 run each call through the circuit breaker of a key: once too many calls fail, the dependency is not
 called for a while.
 
-```go hl_lines="27-35"
---8<-- "examples/docs/breakers/guard/main.go"
+```go hl_lines="3-11"
+--8<-- "examples/docs/breakers/guard/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/breakers/guard/main.go"
+    ```
+
+**Signature:** `func Guard[T any](c *Cache, key string, o CircuitBreaker, call func() (T, error)) (T, error)` · Every field: [`CircuitBreaker`](../reference/gashe.md#CircuitBreaker)
 
 With the options above, the provider fails, the breaker opens for 15 seconds, and then lets calls
 through again:
@@ -55,9 +63,15 @@ sequenceDiagram
     - [`Window`](../reference/gashe.md#CircuitBreaker) is counted in 10 parts and slides by one part at a time; opening clears the counts.
     - In Redis: nothing; checking the breaker costs no round trip.
 
-```go hl_lines="28-29 33"
---8<-- "examples/breaker/main.go"
+```go hl_lines="11-12 16"
+--8<-- "examples/breaker/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/breaker/main.go"
+    ```
 
 ---
 
@@ -71,6 +85,8 @@ the call and report its result yourself; otherwise use [`Guard`](../reference/ga
 ```
 
 1. Call `done` once, with nil or the error of the call.
+
+**Signature:** `func (c *Cache) CircuitBreaker(key string, o CircuitBreaker) (DoneFunc, error)`
 
 - It returns a [`DoneFunc`](../reference/gashe.md#DoneFunc): call it once with the result of the call.
 - Its errors are those of [`gashe.Guard`](../reference/gashe.md#Guard).

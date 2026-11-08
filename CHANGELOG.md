@@ -9,6 +9,17 @@ module it is about.
 
 ## [Unreleased]
 
+### Added
+
+- `Policy.Store.SlowerThan`: only results whose load took at least this long are stored, so a
+  source that answers fast is called every time; `GetOrLoadMany` compares the time of the whole
+  batch. `Cached.Set` is not a load and ignores it.
+
+### Changed
+
+- `Policy.CacheIf` moves into `Policy.Store`, the options that decide which results are stored:
+  `CacheIf: f` becomes `Store: gashe.Store[V]{If: f}`. See the migration.
+
 ## [0.6.0] - 2026-11-07
 
 Released as `v0.6.0`, `backend/redis/v0.5.0`, `codec/msgpack/v0.4.0` and `compress/zstd/v0.2.0`:

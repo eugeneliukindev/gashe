@@ -16,6 +16,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	db := map[string]string{"1": "Mug", "2": "Kettle", "3": "Spoon"}
 
 	policy := gashe.Policy[string]{
@@ -36,4 +37,5 @@ func main() {
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "2"}, policy, loadProducts)      // loads 1, 2
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "2", "3"}, policy, loadProducts) // loads 3
 	gashe.GetOrLoadMany(ctx, c, []string{"1", "99"}, policy, loadProducts)     // loads 99: absent
+	// --8<-- [end:example]
 }

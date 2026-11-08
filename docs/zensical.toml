@@ -12,27 +12,25 @@ extra_css = ["assets/stylesheets/extra.css"]
 extra_javascript = ["assets/javascripts/mermaid-zoom.js", "assets/javascripts/go-roles.js"]
 nav = [
   { "Home" = "index.md" },
-  { "Learn" = [
-    "quickstart.md",
-    { "Basics" = [
-      "concepts/setup.md",
-      "concepts/backends.md",
-      "concepts/loading.md",
-      "concepts/invalidation.md",
-      "concepts/values.md",
-    ] },
-    { "Resilience" = [
-      "concepts/stale.md",
-      "concepts/stampedes.md",
-      "concepts/negative.md",
-      "concepts/outages.md",
-    ] },
-    { "Protection" = [
-      "concepts/locks.md",
-      "concepts/rate-limits.md",
-      "concepts/breakers.md",
-    ] },
-    { "HTTP" = ["concepts/httpcache.md"] },
+  { "Getting started" = ["install.md", "quickstart.md", "choose.md", "about/alternatives.md"] },
+  { "Guides" = [
+    "concepts/setup.md",
+    "concepts/loading.md",
+    "concepts/invalidation.md",
+    "concepts/values.md",
+    "concepts/backends.md",
+    "concepts/stale.md",
+    "concepts/stampedes.md",
+    "concepts/negative.md",
+    "concepts/outages.md",
+    "concepts/breakers.md",
+    "concepts/locks.md",
+    "concepts/rate-limits.md",
+    "concepts/httpcache.md",
+    "troubleshooting.md",
+    "internals/flow.md",
+    "internals/storage.md",
+    "internals/benchmarks.md",
   ] },
   { "Recipes" = [
     "recipes/index.md",
@@ -43,30 +41,23 @@ nav = [
     "recipes/changing-types.md",
     "recipes/warm-up.md",
   ] },
-  { "Errors" = ["errors.md", "troubleshooting.md"] },
   { "Reference" = [
     "reference.md",
-    { "Packages" = [
-      { "gashe" = "reference/gashe.md" },
-      { "memory" = "reference/memory.md" },
-      { "redis" = "reference/redis.md" },
-      { "nearcache" = "reference/nearcache.md" },
-      { "httpcache" = "reference/httpcache.md" },
-      { "backendtest" = "reference/backendtest.md" },
-      { "msgpack" = "reference/msgpack.md" },
-      { "raw" = "reference/raw.md" },
-      { "gzip" = "reference/gzip.md" },
-      { "zstd" = "reference/zstd.md" },
-    ] },
-    { "Internals" = ["internals/storage.md", "internals/benchmarks.md"] },
+    "settings.md",
+    { "gashe" = "reference/gashe.md" },
+    { "memory" = "reference/memory.md" },
+    { "redis" = "reference/redis.md" },
+    { "nearcache" = "reference/nearcache.md" },
+    { "httpcache" = "reference/httpcache.md" },
+    { "backendtest" = "reference/backendtest.md" },
+    { "msgpack" = "reference/msgpack.md" },
+    { "raw" = "reference/raw.md" },
+    { "gzip" = "reference/gzip.md" },
+    { "zstd" = "reference/zstd.md" },
+    "errors.md",
+    "glossary.md",
   ] },
-  { "Resources" = ["help.md", "glossary.md"] },
-  { "About" = [
-    "about/alternatives.md",
-    "about/version-policy.md",
-    "about/migration.md",
-  ] },
-  { "Release notes" = "changelog.md" },
+  { "Release notes" = ["changelog.md", "about/version-policy.md", "about/migration.md"] },
 ]
 
 [project.theme]
@@ -76,10 +67,12 @@ logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
 custom_dir = "overrides"
 features = [
+  "content.action.copy",
   "content.action.edit",
-  "content.action.view",
   "content.code.annotate",
   "content.code.copy",
+  "content.code.select",
+  "content.footnote.tooltips",
   "content.tabs.link",
   "content.tooltips",
   "announce.dismiss",
@@ -128,6 +121,8 @@ markdown_description = "gashe is a caching library for Go services that run as m
 [project.plugins.llmstxt.sections]
 "Start" = [{ "index.md" = "what gashe is, a full example, the problems it solves" }]
 "Quickstart" = [{ "quickstart.md" = "a first cache, Redis, a policy to start with" }]
+"Install" = [{ "install.md" = "the modules, their dependencies and the Go version" }]
+"Which setting" = [{ "choose.md" = "a problem, the setting that solves it, and where it is shown" }]
 "Concepts" = ["concepts/*.md"]
 "Recipes" = ["recipes/*.md"]
 "Errors" = [
@@ -136,6 +131,7 @@ markdown_description = "gashe is a caching library for Go services that run as m
 ]
 "Reference" = [
   { "reference.md" = "the packages, with links to pkg.go.dev" },
+  { "settings.md" = "every field of the options and the policy, as written in code" },
   "internals/*.md",
   { "changelog.md" = "notable changes of every release" },
   { "glossary.md" = "the terms of the domain" },
@@ -143,6 +139,9 @@ markdown_description = "gashe is a caching library for Go services that run as m
 "About" = ["about/*.md"]
 
 [project.plugins.social]
+
+[project.plugins.redirects.redirect_maps]
+"help.md" = "troubleshooting.md#still-stuck"
 
 [project.plugins.privacy]
 # Scripts of theme features the site does not use.
@@ -158,6 +157,7 @@ assets_exclude = [
 ]
 
 [project.markdown_extensions]
+footnotes = {}
 admonition = {}
 attr_list = {}
 md_in_html = {}

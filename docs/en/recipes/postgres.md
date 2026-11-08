@@ -28,11 +28,17 @@ The read and the write, `load.go`:
 The setup, `main.go`:
 
 ```go
---8<-- "examples/docs/postgres/users/main.go"
+--8<-- "examples/docs/postgres/users/main.go:example"
 ```
 
 1. A slow cache must not slow the service down.
 2. Binary: smaller and faster to decode than JSON.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/postgres/users/main.go"
+    ```
 
 ## How it works { #how-it-works }
 
@@ -56,8 +62,14 @@ When one write changes many entries, tag them and bump the tag after the write, 
 The calls, `main.go`:
 
 ```go
---8<-- "examples/docs/postgres/tags/main.go"
+--8<-- "examples/docs/postgres/tags/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/postgres/tags/main.go"
+    ```
 
 | Part | What it does |
 |---|---|
@@ -72,4 +84,4 @@ The calls, `main.go`:
 | `pgxpool` instead of `database/sql` | call `pool.QueryRow(ctx, ...).Scan(...)` in the loader: gashe sees only the function |
 | a page of users by ids | one query for the missing ones: [`GetOrLoadMany`](../concepts/loading.md#getorloadmany) with `WHERE id = ANY($1)` |
 | values over about 1 KB, such as pages or long lists | add `Compressor: zstd.New()` from `gashe/compress/zstd`, in a cache of their own; [compressor](../concepts/setup.md#compressor) |
-| to keep answering while Redis is down | [`Policy.Fallback`](../concepts/outages.md#fallback) <span class="version-badge">Added in v0.5</span> |
+| to keep answering while the backend is down | [`Policy.Fallback`](../concepts/outages.md#fallback) <span class="version-badge">Added in v0.5</span> |

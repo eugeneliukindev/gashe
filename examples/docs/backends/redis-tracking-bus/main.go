@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	local := memory.New(memory.Options{MaxBytes: 64 << 20})
 	defer local.Close()
 
@@ -26,4 +27,5 @@ func main() {
 	defer backend.Close()
 
 	_ = gashe.New(backend, gashe.Options{})
+	// --8<-- [end:example]
 }

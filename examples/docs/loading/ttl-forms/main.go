@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	cfg := struct{ UserTTL string }{UserTTL: "10m"}
 	loadToken := func(context.Context) (Token, error) {
 		return Token{ExpiresAt: time.Now().Add(time.Hour)}, nil
@@ -33,4 +34,5 @@ func main() {
 	for _, p := range policies {
 		gashe.GetOrLoad(ctx, c, "token", p, loadToken)
 	}
+	// --8<-- [end:example]
 }

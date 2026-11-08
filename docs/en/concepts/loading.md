@@ -1,9 +1,9 @@
-# Loading { #loading }
+# Load and cache data { #loading }
 
 This page shows how [`GetOrLoad`](../reference/gashe.md#GetOrLoad) answers, how a list loads with one query, how long results stay fresh and what gets stored. In this
 section, we will go through [the policy](#policy), [`gashe.For`](#gashefor), [`GetOrLoad`](#getorload),
 [`GetOrLoadMany`](#getorloadmany), [`TTL`](#ttl),
-[`CacheIf` and `Prefix`](#cacheif-prefix) and
+[`Store` and `Prefix`](#cacheif-prefix) and
 [type shapes](#type-shapes).
 
 ## The policy { #policy }
@@ -12,9 +12,17 @@ Each kind of data has its own rules: how long it is fresh, when an old result st
 loads are shared. A [`gashe.Policy`](../reference/gashe.md#Policy) holds them for one kind of data: you set it once and pass it to
 [`gashe.For`](../reference/gashe.md#For), or to every [`gashe.GetOrLoad`](../reference/gashe.md#GetOrLoad).
 
-```go hl_lines="19-25"
---8<-- "examples/docs/loading/policy/main.go"
+```go hl_lines="4-10"
+--8<-- "examples/docs/loading/policy/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/policy/main.go"
+    ```
+
+Every field: [`Policy`](../reference/gashe.md#Policy)
 
 - The zero value of each field is off: a policy with only `TTL` caches results for that long.
 - An invalid policy returns [`ErrInvalidOptions`](../reference/gashe.md#variables) from every call, and makes [`gashe.For`](../reference/gashe.md#For) panic.
@@ -27,9 +35,17 @@ loads are shared. A [`gashe.Policy`](../reference/gashe.md#Policy) holds them fo
 Passing the same policy to every call is easy to get wrong. With [`gashe.For`](../reference/gashe.md#For), you bind a [`Policy`](../reference/gashe.md#Policy) to
 the cache once, and it is checked once; keep one per kind of data.
 
-```go hl_lines="20-23"
---8<-- "examples/docs/loading/for/main.go"
+```go hl_lines="1-4"
+--8<-- "examples/docs/loading/for/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/for/main.go"
+    ```
+
+**Signature:** `func For[V any](c *Cache, o Policy[V]) Cached[V]`
 
 - `For` panics on an invalid policy, such as `TTL: "1hr"`.
 - It returns a `gashe.Cached[User]`: the functions of the same name, with the policy. Its `Set` and
@@ -46,9 +62,17 @@ the cache once, and it is checked once; keep one per kind of data.
 Every request that reads the database costs you time and load. With [`GetOrLoad`](../reference/gashe.md#GetOrLoad), you get the stored
 result while the policy allows it; otherwise the loader runs, and its result is stored and returned.
 
-```go hl_lines="25-27"
---8<-- "examples/docs/loading/getorload/main.go"
+```go hl_lines="6-8"
+--8<-- "examples/docs/loading/getorload/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/getorload/main.go"
+    ```
+
+**Signature:** `func (p Cached[V]) GetOrLoad(ctx context.Context, key string, load func(context.Context) (V, error)) (V, error)`
 
 The fields of the policy are in [The policy](#policy).
 
@@ -90,9 +114,15 @@ The fields of the policy are in [The policy](#policy).
     store. [`Stampede.LockFor`](../reference/gashe.md#Stampede) adds `SET __load:<key> NX EX or PX`, [`Stale.WhileRevalidate`](../reference/gashe.md#Stale) and
     [`Stale.IfSlow`](../reference/gashe.md#Stale) add `SET __refresh:<key> NX EX or PX`.
 
-```go hl_lines="24-27 32"
---8<-- "examples/cacheaside/main.go"
+```go hl_lines="1-4 9"
+--8<-- "examples/cacheaside/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/cacheaside/main.go"
+    ```
 
 ## Many keys in one query { #getorloadmany }
 
@@ -100,9 +130,17 @@ A page shows 50 products, and loading them one by one costs 50 round trips and 5
 [`GetOrLoadMany`](../reference/gashe.md#GetOrLoadMany), you read all keys at once and call the loader once with the missing ones: one
 round trip and at most one query.
 
-```go hl_lines="35-38"
---8<-- "examples/docs/loading/getorloadmany/main.go"
+```go hl_lines="8-11"
+--8<-- "examples/docs/loading/getorloadmany/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/getorloadmany/main.go"
+    ```
+
+**Signature:** `func (p Cached[V]) GetOrLoadMany(ctx context.Context, keys []string, load func(ctx context.Context, missing []string) (map[string]V, error)) (map[string]V, error)`
 
 Four keys, two of them stored: one read for all four, and one query for the two missing:
 
@@ -120,7 +158,7 @@ sequenceDiagram
 
 - It returns a map of every key that was found or loaded.
 - Concurrent calls do not share a load.
-- It supports the policy fields `TTL`, [`TTL.Jitter`](../reference/gashe.md#TTL), [`Tags`](../reference/gashe.md#Policy), [`CacheIf`](../reference/gashe.md#Policy), `Prefix`,
+- It supports the policy fields `TTL`, [`TTL.Jitter`](../reference/gashe.md#TTL), [`Tags`](../reference/gashe.md#Policy), [`Store`](../reference/gashe.md#Store), `Prefix`,
   [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) and [`Fallback`](../reference/gashe.md#Fallback). With [`Stale`](../reference/gashe.md#Stale), [`Stampede.LockFor`](../reference/gashe.md#Stampede) or
   [`Negative`](../reference/gashe.md#Negative) set, it returns [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - It returns the loader error, or [`ErrOverloaded`](../reference/gashe.md#variables) when every slot of [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) stayed
@@ -138,9 +176,15 @@ sequenceDiagram
     - In Redis: `GET` per key and per tag in one pipeline; `SET ... EX or PX` per loaded key in one
       pipeline.
 
-```go hl_lines="36"
---8<-- "examples/batch/main.go"
+```go hl_lines="18"
+--8<-- "examples/batch/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/batch/main.go"
+    ```
 
 ---
 
@@ -152,17 +196,23 @@ that gashe calls after a load.
 
 --8<-- "docs/snippets/lifecycle.html"
 
-```go hl_lines="26-31"
---8<-- "examples/docs/loading/ttl-forms/main.go"
+```go hl_lines="7-12"
+--8<-- "examples/docs/loading/ttl-forms/main.go:example"
 ```
 
 1. A string from the configuration, such as `"10m"`.
 2. Each TTL varies by up to 10%, so entries stored together do not expire together.
 3. An int, not a `time.Duration`: [`ErrInvalidOptions`](../reference/gashe.md#variables).
 
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/ttl-forms/main.go"
+    ```
+
 - Any type but these three, a string `time.ParseDuration` rejects, a negative duration, or neither
   [`TTL.For`](../reference/gashe.md#TTL) nor a stale window is [`ErrInvalidOptions`](../reference/gashe.md#variables).
-- To leave a result out, use [`CacheIf`](#cacheif-prefix): a negative TTL from the function is not
+- To leave a result out, use [`Store.If`](#cacheif-prefix): a negative TTL from the function is not
   stored, and goes to [`OnError`](../reference/gashe.md#Hooks) as [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - The entry lives `TTL` plus the longest of [`Stale.WhileRevalidate`](../reference/gashe.md#Stale), [`Stale.IfError.For`](../reference/gashe.md#Stale) and
   [`Stale.IfSlow.For`](../reference/gashe.md#Stale).
@@ -178,15 +228,24 @@ that gashe calls after a load.
 
 ## What is stored, and under which key { #cacheif-prefix }
 
-Not every result is worth storing, and two kinds of data may share a key. [`CacheIf`](../reference/gashe.md#Policy) decides which
-results are stored; `Prefix` goes before every key of the policy.
+Not every result is worth storing, and two kinds of data may share a key. [`Store`](../reference/gashe.md#Store) decides which
+results are stored: `If` looks at the result, `SlowerThan` at how long its load took. `Prefix`
+goes before every key of the policy.
 
-```go hl_lines="26 32"
---8<-- "examples/docs/loading/cacheif-prefix/main.go"
+```go hl_lines="4 10"
+--8<-- "examples/docs/loading/cacheif-prefix/main.go:example"
 ```
 
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/cacheif-prefix/main.go"
+    ```
+
 - Changing `Prefix` makes every entry of that kind a miss at once.
-- When [`CacheIf`](../reference/gashe.md#Policy) returns false, the result is returned and not stored.
+- When `Store.If` returns false, the result is returned and not stored.
+- With `Store.SlowerThan`, a load faster than it is returned and not stored: a source that answers
+  fast is called every time, and only the slow ones are cached.
 
 !!! tip
     After a change in what a result means, change its `Prefix`, such as `users:v2:` to `users:v3:`:
@@ -199,9 +258,15 @@ results are stored; `Prefix` goes before every key of the policy.
 After a deploy renames a field, old entries would read as empty values. gashe does this for you: an
 entry of another type shape is a miss that loads again.
 
-```go hl_lines="19 24"
---8<-- "examples/docs/loading/type-shapes/main.go"
+```go hl_lines="2 7"
+--8<-- "examples/docs/loading/type-shapes/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/loading/type-shapes/main.go"
+    ```
 
 - The shape is the exported field names, `json` and `msgpack` tags and field types, nested types
   included.

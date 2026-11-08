@@ -16,7 +16,8 @@
 
 One `*gashe.Cache` stores results of expensive calls, keeps answering when a dependency is slow or
 down, and guards dependencies with locks, rate limits and circuit breakers. Each process has its
-own memory; over Redis, entries, tags, locks and limits are shared by every process.
+own memory; over a shared backend such as Redis, entries, tags, locks and limits are shared by
+every process.
 
 **[Documentation](https://eugeneliukindev.github.io/gashe/)**
 

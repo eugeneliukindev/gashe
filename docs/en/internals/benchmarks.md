@@ -4,7 +4,7 @@ How fast and how small every codec and compressor is, to choose [`Codec`](../ref
 
 | What | How |
 |---|---|
-| Runs | the median of 5 runs of `just bench -count=5` on an Intel Core i9-9900KF, Go 1.26, linux/amd64 |
+| Runs | the median of 5 runs of `go test -run '^$' -bench . -benchtime 300ms -count=5` in `benchmarks/` on an Intel Core i9-9900KF, Go 1.26, linux/amd64 |
 | Code | [benchmarks](https://github.com/eugeneliukindev/gashe/tree/main/benchmarks/) |
 | Data | generated from 12 words, so it compresses better than real text does |
 

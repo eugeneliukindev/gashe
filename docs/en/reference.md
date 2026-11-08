@@ -1,7 +1,6 @@
 # API reference { #api-reference }
 
-Every type, field and function, from the doc comments of the code: every build of the site writes
-these pages with [gomarkdoc](https://github.com/princjef/gomarkdoc). The same is on
+Every type, field and function, from the doc comments of the code. The same is on
 [pkg.go.dev](https://pkg.go.dev/github.com/eugeneliukindev/gashe).
 
 | Package | What it is |

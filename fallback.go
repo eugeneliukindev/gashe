@@ -110,7 +110,7 @@ func (l *loading[V]) spareNegative(ctx context.Context) {
 
 // spareResult keeps v in Policy.Fallback for its TTL, if the policy stores it.
 func (l *loading[V]) spareResult(ctx context.Context, key string, v V) {
-	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
+	if !l.o.Store.stores(v, l.took) {
 		return
 	}
 	fresh, ok := l.freshFor(ctx, v)

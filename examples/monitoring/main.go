@@ -16,6 +16,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 
+	// --8<-- [start:example]
 	results := map[gashe.Result]int{}
 	var loadTime time.Duration
 	c := gashe.New(mem, gashe.Options{
@@ -36,4 +37,5 @@ func main() {
 		gashe.GetOrLoad(ctx, c, key, gashe.Policy[int]{TTL: gashe.TTL{For: time.Minute}}, load)
 	}
 	// results: 3 hits and 3 misses, a hit ratio of 50%; loadTime: 150ms or more
+	// --8<-- [end:example]
 }

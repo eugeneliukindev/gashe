@@ -15,6 +15,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	{
 		type User struct{ Name string } // before the deploy
 		users := gashe.For(c, gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}, Prefix: "user:"})
@@ -25,4 +26,5 @@ func main() {
 		users := gashe.For(c, gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}, Prefix: "user:"})
 		users.GetOrLoad(ctx, "42", func(context.Context) (User, error) { return User{FullName: "Ann Lee"}, nil }) // miss: loads again
 	}
+	// --8<-- [end:example]
 }

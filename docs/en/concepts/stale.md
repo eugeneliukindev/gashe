@@ -13,9 +13,15 @@ instead of a failing loader, or instead of a slow one. Each has its own window a
 
 --8<-- "docs/snippets/lifecycle.html"
 
-```go hl_lines="24-35"
---8<-- "examples/docs/stale/policy/main.go"
+```go hl_lines="4-15"
+--8<-- "examples/docs/stale/policy/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stale/policy/main.go"
+    ```
 
 With the policy above, a call to a key goes through these windows, counted from when it was stored:
 
@@ -41,9 +47,15 @@ call returns; the versions differ in the lines highlighted.
 
 === "WhileRevalidate"
 
-    ```go hl_lines="25"
-    --8<-- "examples/stale/while-revalidate/main.go"
+    ```go hl_lines="12"
+    --8<-- "examples/stale/while-revalidate/main.go:example"
     ```
+
+    ??? example "Full program"
+
+        ```go
+        --8<-- "examples/stale/while-revalidate/main.go"
+        ```
 
     Past the TTL the stale result answers at once, also while the database is slow or down; the reload runs in the background.
 
@@ -53,9 +65,15 @@ call returns; the versions differ in the lines highlighted.
 
 === "IfError"
 
-    ```go hl_lines="25"
-    --8<-- "examples/stale/if-error/main.go"
+    ```go hl_lines="12"
+    --8<-- "examples/stale/if-error/main.go:example"
     ```
+
+    ??? example "Full program"
+
+        ```go
+        --8<-- "examples/stale/if-error/main.go"
+        ```
 
     Past the TTL a call waits for the slow loader, and the stale result answers its error.
 
@@ -65,9 +83,15 @@ call returns; the versions differ in the lines highlighted.
 
 === "IfSlow"
 
-    ```go hl_lines="25-28"
-    --8<-- "examples/stale/if-slow/main.go"
+    ```go hl_lines="12-15"
+    --8<-- "examples/stale/if-slow/main.go:example"
     ```
+
+    ??? example "Full program"
+
+        ```go
+        --8<-- "examples/stale/if-slow/main.go"
+        ```
 
     Past the TTL the stale result answers a loader slower than 100ms, which goes on in the background, and a loader error.
 
@@ -78,8 +102,14 @@ call returns; the versions differ in the lines highlighted.
 === "TTL only"
 
     ```go
-    --8<-- "examples/stale/ttl-only/main.go"
+    --8<-- "examples/stale/ttl-only/main.go:example"
     ```
+
+    ??? example "Full program"
+
+        ```go
+        --8<-- "examples/stale/ttl-only/main.go"
+        ```
 
     Past the TTL every call waits for the loader, and fails with it.
 
@@ -95,9 +125,15 @@ A popular key expires, and every request waits for the loader. With [`Stale.Whil
 answer the stale result at once while one process reloads it in the background
 ([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-3)).
 
-```go hl_lines="24"
---8<-- "examples/docs/stale/while-revalidate/main.go"
+```go hl_lines="3"
+--8<-- "examples/docs/stale/while-revalidate/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stale/while-revalidate/main.go"
+    ```
 
 With the policy above, past 5 minutes every process answers the stale result at once, and only the
 one that takes the refresh lock reloads.
@@ -106,7 +142,7 @@ one that takes the refresh lock reloads.
 |---|---|---|
 | up to 5 minutes | the entry, fresh | `hit` |
 | 5 to 35 minutes | the same entry, stale; `__refresh:<key>` while one process reloads | the stale result at once, `stale-while-revalidate`; the reload stores a new entry, fresh for 5 minutes again |
-| past 35 minutes | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
+| past 35 minutes | nothing: the backend dropped the entry | `miss`: the call waits for the loader |
 
 ```mermaid
 sequenceDiagram
@@ -149,9 +185,15 @@ The source fails, and your users get errors. With [`Stale.IfError`](../reference
 failing loader for `For` after `TTL`
 ([RFC 5861](https://www.rfc-editor.org/rfc/rfc5861#section-4)).
 
-```go hl_lines="25-30"
---8<-- "examples/docs/stale/if-error/main.go"
+```go hl_lines="3-8"
+--8<-- "examples/docs/stale/if-error/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stale/if-error/main.go"
+    ```
 
 With the policy above:
 
@@ -159,7 +201,7 @@ With the policy above:
 |---|---|---|
 | up to 1 minute | the entry, fresh | `hit` |
 | 1 minute to 6 hours 1 minute | the same entry, stale | the loader runs and is waited for: its result, `miss`, stored as a new entry; a failure, the stale result, `stale-if-error`, and the entry stays as it is |
-| past 6 hours 1 minute | nothing: Redis dropped the entry | `miss`: the loader runs, and its error is returned |
+| past 6 hours 1 minute | nothing: the backend dropped the entry | `miss`: the loader runs, and its error is returned |
 
 - A failure is answered by the stale result, and the error goes to [`OnError`](../reference/gashe.md#Hooks).
 - A "not found", an error [`Negative.IsNotFound`](../reference/gashe.md#Negative) accepts, is never a failure: it is returned as
@@ -176,23 +218,7 @@ With the policy above:
     late: permissions, balances, prices at checkout.
 
 `IsFailure` picks which errors the stale result answers. Without it, every error does, so a row that
-was deleted keeps showing until `TTL + IfError.For`:
-
-=== "With IsFailure"
-
-    ```go hl_lines="23-26"
-    --8<-- "examples/staleif/with/main.go"
-    ```
-
-    The stale result answers the outage, and the deleted page gets its error.
-
-=== "Without IsFailure"
-
-    ```go
-    --8<-- "examples/staleif/without/main.go"
-    ```
-
-    The stale result answers both, so the deleted page is still shown.
+was deleted keeps showing until `TTL + IfError.For`.
 
 ---
 
@@ -202,9 +228,15 @@ The source hangs, and every call waits for it. With [`Stale.IfSlow`](../referenc
 most [`After`](../reference/gashe.md#StaleIfSlow), then gets the stale result, for `For` after `TTL`; the load goes on in the background
 and stores what it gets.
 
-```go hl_lines="23-26"
---8<-- "examples/docs/stale/if-slow/main.go"
+```go hl_lines="3-6"
+--8<-- "examples/docs/stale/if-slow/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stale/if-slow/main.go"
+    ```
 
 With the policy above:
 
@@ -212,7 +244,7 @@ With the policy above:
 |---|---|---|
 | up to 1 minute | the entry, fresh | `hit` |
 | 1 minute to 1 hour 1 minute | the same entry, stale; `__refresh:<key>` while a slow load goes on | a loader within 200ms: its result, `miss`, or its error; a slower one: the stale result, `stale-if-slow`, and the load stores its result in the background |
-| past 1 hour 1 minute | nothing: Redis dropped the entry | `miss`: the call waits for the loader |
+| past 1 hour 1 minute | nothing: the backend dropped the entry | `miss`: the call waits for the loader |
 
 - Set both or neither: one without the other returns [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - It needs no [`IfError`](../reference/gashe.md#Stale), but answers only slowness: a loader that fails within [`After`](../reference/gashe.md#StaleIfSlow) gets its error

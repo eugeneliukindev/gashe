@@ -90,7 +90,10 @@ func TestGetOrLoadDoesNotStoreErrors(t *testing.T) {
 
 func TestGetOrLoadCondition(t *testing.T) {
 	ctx := context.Background()
-	s := newCached(newCache(t), gashe.Policy[*user]{TTL: gashe.TTL{For: time.Hour}, CacheIf: gashe.NotNil[*user]})
+	s := newCached(newCache(t), gashe.Policy[*user]{
+		TTL:   gashe.TTL{For: time.Hour},
+		Store: gashe.Store[*user]{If: gashe.NotNil[*user]},
+	})
 	calls := 0
 	load := func(context.Context) (*user, error) {
 		calls++

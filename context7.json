@@ -1,0 +1,14 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "gashe",
+  "description": "Caching for Go services that run as many processes: GetOrLoad with stale data, locks, tags, rate limits, circuit breakers and an HTTP middleware, over memory or Redis.",
+  "folders": ["docs/en", "examples"],
+  "excludeFolders": ["docs/en/reference"],
+  "rules": [
+    "Create one *gashe.Cache per backend with gashe.New, share it, and call Shutdown before closing the backend.",
+    "Load data through gashe.For with a Policy and Cached.GetOrLoad; Policy.TTL.For is required unless a window of Policy.Stale is set.",
+    "Keys of the application must not start with \"__\": the cache keeps its own keys there.",
+    "Use Policy.Stampede.LockFor when many processes load the same cold key, and Policy.Stale.IfError when a stale result is better than an error.",
+    "Check errors with errors.Is: ErrNotFound, ErrOverloaded, ErrCircuitOpen and ErrRateLimited."
+  ]
+}

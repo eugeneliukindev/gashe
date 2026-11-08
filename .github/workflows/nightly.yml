@@ -2,7 +2,7 @@ name: nightly
 
 on:
   schedule:
-    - cron: "0 3 * * *" # what breaks with no change here: new vulnerabilities, dead links
+    - cron: "0 3 * * *" # what breaks with no change here: new vulnerabilities, dead links, fuzzing
   workflow_dispatch:
 
 permissions:
@@ -35,3 +35,17 @@ jobs:
       - run: just lychee
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub rate limits links checked without one
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: stable
+      - uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: 1.59.0
+      - run: just fuzz 1m

@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		ctx, ip, key := r.Context(), r.RemoteAddr, r.Header.Get("X-Api-Key")
 
@@ -37,4 +38,5 @@ func main() {
 		}
 	})
 	http.ListenAndServe("localhost:8080", nil)
+	// --8<-- [end:example]
 }

@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	fallback := gashe.Fallback{
 		Backend: memory.New(memory.Options{MaxBytes: 32 << 20}), // (1)!
 		MaxTTL:  30 * time.Second,
@@ -27,4 +28,5 @@ func main() {
 	})
 
 	userCache.GetOrLoad(ctx, "42", func(context.Context) (User, error) { return User{Name: "Ann"}, nil })
+	// --8<-- [end:example]
 }

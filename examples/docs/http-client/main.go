@@ -15,6 +15,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	var down atomic.Bool
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { // a stand-in for the real API
 		switch {
@@ -37,4 +38,5 @@ func main() {
 	down.Store(true)
 	time.Sleep(150 * time.Millisecond) // TTL passes while the API is down
 	weather.Get(ctx, "Paris")          // {Paris 18.5}: the API fails, the last answer; OnError logs it
+	// --8<-- [end:example]
 }

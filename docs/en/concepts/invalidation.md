@@ -1,4 +1,4 @@
-# Tags { #invalidation }
+# Update and remove data { #invalidation }
 
 This page shows how to make stored results go after the data changed. In this section, we will go
 through [`Tags`](#tags), [`Cached.Set`](#cachedset),
@@ -9,11 +9,19 @@ through [`Tags`](#tags), [`Cached.Set`](#cachedset),
 A user changes their name, and you must drop every entry that shows it. With [`Tags`](../reference/gashe.md#Policy), one call of
 [`Cache.InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags) makes every entry with the tag a miss; nothing is deleted, nothing is scanned.
 
-```go hl_lines="23 27 32"
---8<-- "examples/docs/invalidation/tags/main.go"
+```go hl_lines="5 9 14"
+--8<-- "examples/docs/invalidation/tags/main.go:example"
 ```
 
 1. Invalidate after the write, not before.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/invalidation/tags/main.go"
+    ```
+
+**Signature:** `func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error`
 
 Each entry remembers the counter of its tag when it was stored: after the counter moves,
 the next read sees an older number and is a miss.
@@ -49,9 +57,15 @@ sequenceDiagram
       [`InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags), so entries stored before an eviction stay invalid.
     - In Redis: per tag, `SET __tag:<tag> <random> NX`, then `INCRBY __tag:<tag> 1`.
 
-```go hl_lines="22 30"
---8<-- "examples/tags/main.go"
+```go hl_lines="4 12"
+--8<-- "examples/tags/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/tags/main.go"
+    ```
 
 ```text title="In the backend"
 --8<-- "docs/snippets/backend/tags.txt"
@@ -71,7 +85,9 @@ and shape of the policy.
 
 1. The next [`GetOrLoad`](../reference/gashe.md#GetOrLoad) is a hit with the new result.
 
-- A result the policy does not store, by [`CacheIf`](../reference/gashe.md#Policy), deletes the entry.
+**Signature:** `func (p Cached[V]) Set(ctx context.Context, key string, v V) error`
+
+- A result the policy does not store, by [`Store.If`](../reference/gashe.md#Store), deletes the entry.
 - It returns backend and codec errors.
 
 !!! warning
@@ -90,9 +106,17 @@ and shape of the policy.
 The data changed, but you do not have the new result. [`Reload`](../reference/gashe.md#Reload) calls the loader and stores its
 result, whatever is stored.
 
-```go hl_lines="23 25"
---8<-- "examples/docs/invalidation/reload/main.go"
+```go hl_lines="5 7"
+--8<-- "examples/docs/invalidation/reload/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/invalidation/reload/main.go"
+    ```
+
+**Signature:** `func (p Cached[V]) Reload(ctx context.Context, key string, load func(context.Context) (V, error)) (V, error)`
 
 - On a loader error, a "not found" too, the error is returned and the stored entry stays.
 - It returns the loaded result; [`ErrOverloaded`](../reference/gashe.md#variables) and [`ErrInvalidOptions`](../reference/gashe.md#variables) come as in [`GetOrLoad`](../reference/gashe.md#GetOrLoad).
@@ -108,9 +132,17 @@ result, whatever is stored.
 One entry is wrong and must go. [`Cached.Delete`](../reference/gashe.md#Cached[V].Delete) deletes it, with [`Policy.Prefix`](../reference/gashe.md#Policy), and the next
 [`GetOrLoad`](../reference/gashe.md#GetOrLoad) loads again.
 
-```go hl_lines="21"
---8<-- "examples/docs/invalidation/delete/main.go"
+```go hl_lines="3"
+--8<-- "examples/docs/invalidation/delete/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/invalidation/delete/main.go"
+    ```
+
+**Signature:** `func (p Cached[V]) Delete(ctx context.Context, key string) (existed bool, err error)`
 
 - It returns whether the entry existed, and backend errors.
 

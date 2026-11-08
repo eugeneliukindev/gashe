@@ -47,7 +47,7 @@ func (p Cached[V]) Reload(ctx context.Context, key string, load func(context.Con
 
 // Set stores v under key as GetOrLoad would store a loaded result, with the TTL, tags and shape
 // of the policy, for example right after writing v to the database. A v that the policy does not
-// store, by CacheIf or a negative TTL, deletes the old entry instead.
+// store, by Store.If or a negative TTL, deletes the old entry instead.
 func (p Cached[V]) Set(ctx context.Context, key string, v V) error {
 	l := newLoading(p.c, p.o, p.ttl, key, nil)
 	gens, err := l.readGens(ctx)
@@ -55,7 +55,7 @@ func (p Cached[V]) Set(ctx context.Context, key string, v V) error {
 		return err
 	}
 	fresh, ok := l.freshFor(ctx, v)
-	if !ok || (p.o.CacheIf != nil && !p.o.CacheIf(v)) {
+	if !ok || !p.o.Store.accepts(v) {
 		_, err = p.c.backend.Delete(ctx, l.key)
 		return err
 	}

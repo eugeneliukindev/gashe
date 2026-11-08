@@ -32,9 +32,11 @@ func cacheOptions() (gashe.Options, error) {
 }
 
 func main() {
+	// --8<-- [start:example]
 	o, err := cacheOptions()
 	if err != nil {
 		panic(err)
 	}
 	_ = gashe.New(memory.New(memory.Options{}), o)
+	// --8<-- [end:example]
 }

@@ -15,8 +15,10 @@ func main() {
 	defer backend.Close()
 	c := gashe.New(backend, gashe.Options{})
 
+	// --8<-- [start:example]
 	err := c.Ping(ctx)
 	if err != nil {
 		log.Fatal("cache is down: ", err)
 	}
+	// --8<-- [end:example]
 }

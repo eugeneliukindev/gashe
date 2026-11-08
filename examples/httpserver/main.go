@@ -16,6 +16,7 @@ func listProducts(w http.ResponseWriter, _ *http.Request) {
 }
 
 func main() {
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 	cached := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{TTL: gashe.TTL{For: time.Minute}},
@@ -31,4 +32,5 @@ func main() {
 	http.DefaultClient.Do(req) // 304, Cache-Status: gashe; hit, no body
 
 	http.Post(srv.URL, "", nil) // 200, Cache-Status: gashe; fwd=method: never cached
+	// --8<-- [end:example]
 }

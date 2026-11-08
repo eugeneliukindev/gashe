@@ -27,6 +27,7 @@ just check          # before a commit: golangci-lint, typos, tombi, actionlint, 
 just check-all      # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, the site
 just golangci-fmt   # format with the formatters of .golangci.yml
 just prek-install   # install the git hooks of prek.toml, which run the linters on the changed files
+just fuzz 1m        # search for inputs that break the fuzz tests; CI runs it every night
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
 just test-redis-all # the Redis tests on Redis 7.0 and Valkey 8, in Docker
 just test-cluster   # the Cluster tests on three masters, in Docker
@@ -54,7 +55,8 @@ on `main`. The `commit-msg` hook that `just prek-install` installs checks the co
 the title.
 
 Changes reach `main` only by a squash-merged pull request whose checks pass. A pull request that users
-see adds an entry under `Unreleased` in `CHANGELOG.md`.
+see adds an entry under `Unreleased` in `CHANGELOG.md`; CI, recipes and docs for contributors
+get none.
 
 Domain terms are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md). The API reference is the doc
 comments, shown on pkg.go.dev: every exported name needs one, and the linters check it.
@@ -75,7 +77,8 @@ just lychee            # external links, with lychee in Docker; CI checks them e
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between
-`// --8<-- [start:api]` and `// --8<-- [end:api]`, so a page shows the API, not the setup. An
+`// --8<-- [start:example]` and `// --8<-- [end:example]` (`"file.go:example"`), so a page shows
+the API, not the setup, and the whole program follows, folded, under "Full program". An
 example prints nothing: a comment at each call says what it returns, checked against a real run.
 Responses of curl and what the backend holds are in `docs/snippets/`. Headings carry fixed ids
 (`{ #id }`), so links keep working when a heading is reworded.

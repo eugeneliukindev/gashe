@@ -11,6 +11,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 	defer c.Shutdown(ctx) // waits for the background loads
 
@@ -37,4 +38,5 @@ func main() {
 
 	time.Sleep(1100 * time.Millisecond) // past the TTL, the database is down
 	pages.GetOrLoad(ctx, "home", down)  // "v2", stale-if-error
+	// --8<-- [end:example]
 }

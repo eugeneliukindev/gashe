@@ -10,13 +10,21 @@ This page shows where your entries live. In this section, we will go through
 One process, or a test, needs no server. With [`backend/memory`](../reference/memory.md), entries live in process memory, with
 a TTL each, and the least recently used ones go first; every process has its own.
 
-```go hl_lines="12-17"
---8<-- "examples/docs/backends/memory-options/main.go"
+```go hl_lines="1-6"
+--8<-- "examples/docs/backends/memory-options/main.go:example"
 ```
 
 1. Counted in entries, not bytes; the least recently used entry goes first. 0 means 1000.
 2. Bytes of keys and values, without the overhead of Go. 0 means no limit.
 3. How often expired entries are purged. 0 means every second, a negative value never.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/backends/memory-options/main.go"
+    ```
+
+**Signature:** `func New(o Options) *Backend` · Every field: [`memory.Options`](../reference/memory.md#Options)
 
 - `New` panics on a negative [`MaxEntries`](../reference/memory.md#Options) or [`MaxBytes`](../reference/memory.md#Options).
 - Values are copied in and out.
@@ -32,11 +40,19 @@ a TTL each, and the least recently used ones go first; every process has its own
 Several processes must see the same entries. With [`backend/redis`](../reference/redis.md), they share one Redis through
 [go-redis v9](https://github.com/redis/go-redis); it is a separate module.
 
-```go hl_lines="14-19"
---8<-- "examples/docs/backends/redis-client/main.go"
+```go hl_lines="1-6"
+--8<-- "examples/docs/backends/redis-client/main.go:example"
 ```
 
 1. A slow cache must not slow the service down.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/backends/redis-client/main.go"
+    ```
+
+**Signature:** `func New(client goredis.UniversalClient) *Backend`
 
 - A stopped Redis takes longer than `ReadTimeout` to fail a call: see
   [outages](outages.md#circuitbreaker).
@@ -66,14 +82,22 @@ Several processes must see the same entries. With [`backend/redis`](../reference
 
 ---
 
-## A near cache in front of Redis { #backendnearcache }
+## A near cache in front of a shared backend { #backendnearcache }
 
-A hot key costs a round trip to Redis on every read. With [`backend/nearcache`](../reference/nearcache.md), each process keeps a
+A hot key costs a round trip to a shared backend, such as Redis, on every read. With [`backend/nearcache`](../reference/nearcache.md), each process keeps a
 copy of what it reads from the shared backend in its own memory, and answers the next read from it.
 
-```go hl_lines="19-26"
---8<-- "examples/docs/backends/redis-nearcache/main.go"
+```go hl_lines="4-11"
+--8<-- "examples/docs/backends/redis-nearcache/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/backends/redis-nearcache/main.go"
+    ```
+
+**Signature:** `func New(local, shared gashe.Backend, o Options) *Backend` · Every field: [`nearcache.Options`](../reference/nearcache.md#Options)
 
 A keeps a copy of k for one minute: the bus makes it drop the copy at once; without a
 bus, A answers the old value until the copy ends.
@@ -169,12 +193,18 @@ sequenceDiagram
 A key changed by `redis-cli` or another service stays stale in the copies of [`NewBus`](../reference/redis.md#NewBus). With
 [`NewTrackingBus`](../reference/redis.md#NewTrackingBus), Redis itself reports every change under the prefix, `FLUSHDB` included.
 
-```go hl_lines="24"
---8<-- "examples/docs/backends/redis-tracking-bus/main.go"
+```go hl_lines="9"
+--8<-- "examples/docs/backends/redis-tracking-bus/main.go:example"
 ```
 
 1. A `*redis.Client`, not a Cluster: on a Cluster, use [`NewBus`](../reference/redis.md#NewBus).
 2. Redis reports every change of a key under `orders:`.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/backends/redis-tracking-bus/main.go"
+    ```
 
 Once A starts tracking, Redis reports every write under the prefix, whoever makes it.
 

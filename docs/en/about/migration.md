@@ -6,8 +6,9 @@ first. The full list of changes is the
 
 | From | Read |
 |---|---|
-| `0.5.x` | [Unreleased](#unreleased) |
-| `0.4.x` | [0.5.0](#050), then the section above it |
+| `0.6.x` | [Unreleased](#unreleased) |
+| `0.5.x` | [0.6.0](#060), then the section above it |
+| `0.4.x` | [0.5.0](#050), then the sections above it |
 | `0.3.x` | [0.4.0](#040), then the sections above it |
 | `0.2.x` or `0.1.x` | [0.3.0](#030), and from `0.1.x` also [0.2.0](#020), then the sections above them |
 
@@ -15,6 +16,12 @@ first. The full list of changes is the
 `v0.3.0` or later and apply both the 0.2.0 and the 0.3.0 changes.
 
 ## Unreleased { #unreleased }
+
+| Before | After |
+|---|---|
+| `CacheIf: f` | `Store: gashe.Store[V]{If: f}` |
+
+## 0.6.0 { #060 }
 
 | Before | After |
 |---|---|

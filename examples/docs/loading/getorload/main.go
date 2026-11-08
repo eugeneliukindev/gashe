@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	userPolicy := gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}}
 	loadUser := func(context.Context) (User, error) {
 		return User{Name: "Ann"}, nil // SELECT * FROM users WHERE id = 42
@@ -25,4 +26,5 @@ func main() {
 	userCache := gashe.For(c, gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}})
 	userCache.GetOrLoad(ctx, "42", loadUser)            // Ann, miss
 	gashe.GetOrLoad(ctx, c, "42", userPolicy, loadUser) // the same without For
+	// --8<-- [end:example]
 }

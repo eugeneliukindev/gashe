@@ -17,6 +17,7 @@ func main() {
 	backend := memory.New(memory.Options{})
 	defer backend.Close()
 
+	// --8<-- [start:example]
 	for _, compressor := range []gashe.Compressor{
 		zstd.New(), // compress/zstd: a separate module
 		gzip.New(), // compress/gzip: in the core module, the standard library only
@@ -24,4 +25,5 @@ func main() {
 		c := gashe.New(backend, gashe.Options{Compressor: compressor})
 		c.Set(ctx, "page:home", strings.Repeat("<p>hello</p>", 1000), time.Hour)
 	}
+	// --8<-- [end:example]
 }

@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	backend := memory.New(memory.Options{
 		MaxEntries:    10_000,      // (1)!
 		MaxBytes:      256 << 20,   // (2)!
@@ -17,4 +18,5 @@ func main() {
 	defer backend.Close() // stops the background purge
 
 	_ = gashe.New(backend, gashe.Options{})
+	// --8<-- [end:example]
 }

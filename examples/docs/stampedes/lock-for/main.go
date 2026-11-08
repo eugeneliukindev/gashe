@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	statsCache := gashe.For(c, gashe.Policy[Stats]{
 		TTL:      gashe.TTL{For: 10 * time.Minute},
 		Stampede: gashe.Stampede{LockFor: time.Minute},
@@ -25,4 +26,5 @@ func main() {
 	statsCache.GetOrLoad(ctx, "today", func(context.Context) (Stats, error) {
 		return Stats{Orders: 120}, nil // the one query
 	}) // {120}, miss
+	// --8<-- [end:example]
 }

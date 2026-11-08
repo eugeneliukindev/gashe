@@ -19,6 +19,7 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 	defer c.Shutdown(ctx)
 
+	// --8<-- [start:example]
 	feedCache := gashe.For(c, gashe.Policy[[]Item]{
 		TTL:   gashe.TTL{For: 5 * time.Minute},
 		Stale: gashe.Stale{WhileRevalidate: 30 * time.Minute},
@@ -27,4 +28,5 @@ func main() {
 	feedCache.GetOrLoad(ctx, "home", func(context.Context) ([]Item, error) {
 		return []Item{{Title: "Hello"}}, nil
 	}) // [Hello], miss
+	// --8<-- [end:example]
 }

@@ -64,7 +64,7 @@ The changes that broke an upgrade so far:
 
 Stored data counts: an upgrade can make old entries misses, so they load again, or reset counters.
 The changelog says what each release does to stored data. Whether `0.x` releases keep the stored
-format is not decided; read the changelog before you upgrade processes that share one Redis.
+format is not decided; read the changelog before you upgrade processes that share one backend.
 
 Not breaking, as the changelog of 0.2.0 says: results named in signatures, since calls do not
 change.

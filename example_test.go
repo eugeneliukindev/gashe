@@ -10,6 +10,7 @@ import (
 
 	"github.com/eugeneliukindev/gashe"
 	"github.com/eugeneliukindev/gashe/backend/memory"
+	"github.com/eugeneliukindev/gashe/compress/gzip"
 )
 
 type User struct {
@@ -516,4 +517,86 @@ func ExampleCache_Keys() {
 	// Unordered output:
 	// user:1 <nil>
 	// user:2 <nil>
+}
+
+// Every field of Options; each may be left out.
+func ExampleNew() {
+	ctx := context.Background()
+	mem := memory.New(memory.Options{})
+	defer mem.Close()
+
+	c := gashe.New(mem, gashe.Options{
+		Prefix:     "orders:",    // in front of every key; "" means none
+		Codec:      gashe.JSON{}, // the format of values; nil means JSON
+		Compressor: gzip.New(),   // shrinks what Codec produced; nil means none
+		CircuitBreaker: gashe.CircuitBreaker{ // stops calling a failing backend; the zero value means none
+			FailurePercent: 50,
+			MinCalls:       20,
+			Window:         10 * time.Second,
+			OpenFor:        5 * time.Second,
+			HalfOpenCalls:  1,
+			IsFailure:      nil, // nil means any error but a miss
+		},
+		LockPollInterval: 20 * time.Millisecond, // 0 means 100ms
+		Hooks: gashe.Hooks{
+			OnResult: func(_ context.Context, o gashe.Outcome) { fmt.Println(o.Key, o.Result) },
+			OnError:  func(_ context.Context, err error) { slog.Warn("cache", "err", err) },
+		},
+	})
+
+	users := gashe.For(c, gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}})
+	for range 2 {
+		u, err := users.GetOrLoad(ctx, "user:42", func(context.Context) (User, error) {
+			return User{ID: 42, Name: "Ann"}, nil
+		})
+		fmt.Println(u.Name, err)
+	}
+	// Output:
+	// user:42 miss
+	// Ann <nil>
+	// user:42 hit
+	// Ann <nil>
+}
+
+// Every field of Policy; only TTL.For is required, unless a window of Stale is set.
+func ExamplePolicy() {
+	ctx := context.Background()
+	mem := memory.New(memory.Options{})
+	defer mem.Close()
+	spare := memory.New(memory.Options{})
+	defer spare.Close()
+	c := gashe.New(mem, gashe.Options{})
+	errNoUser := errors.New("no such user")
+
+	users := gashe.For(c, gashe.Policy[User]{
+		TTL:    gashe.TTL{For: time.Hour, Jitter: 0.1}, // fresh for 54 to 66 minutes
+		Prefix: "user:",                                // in front of the keys of this policy
+		Stale: gashe.Stale{
+			WhileRevalidate: 10 * time.Minute,                                      // answer and reload in the background
+			IfError:         gashe.StaleIfError{For: time.Hour},                    // answer while the loader fails
+			IfSlow:          gashe.StaleIfSlow{For: time.Hour, After: time.Second}, // answer when it is slow
+		},
+		Stampede: gashe.Stampede{
+			SingleFlight: true,            // one load per key in this process
+			LockFor:      5 * time.Second, // one load per key for all processes
+			MaxLoads:     100,             // at most this many loads at once
+		},
+		Tags: []string{"users"}, // InvalidateTags(ctx, "users") drops every user
+		Negative: gashe.Negative{ // cache "not found" too
+			TTL:        time.Minute,
+			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
+		},
+		Fallback: gashe.Fallback{Backend: spare, MaxTTL: 30 * time.Second}, // answers while the backend fails
+		Store: gashe.Store[User]{
+			SlowerThan: 50 * time.Millisecond,                     // store only loads that took this long
+			If:         func(u User) bool { return u.Name != "" }, // store only users with a name
+		},
+	})
+
+	u, err := users.GetOrLoad(ctx, "42", func(context.Context) (User, error) {
+		return User{ID: 42, Name: "Ann"}, nil
+	})
+	fmt.Println(u.Name, err)
+	// Output:
+	// Ann <nil>
 }

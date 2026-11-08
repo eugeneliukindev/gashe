@@ -16,6 +16,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
+	// --8<-- [start:example]
 	userPolicy := gashe.Policy[User]{TTL: gashe.TTL{For: time.Hour}, Prefix: "users:v2:"}
 	userCache := gashe.For(c, userPolicy)
 	loadUser := func(context.Context) (User, error) { return User{Name: "Ann"}, nil }
@@ -24,4 +25,5 @@ func main() {
 	_, _ = u, err
 	u, err = gashe.Reload(ctx, c, "42", userPolicy, loadUser)
 	_, _ = u, err
+	// --8<-- [end:example]
 }

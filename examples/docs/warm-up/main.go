@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute) // a deadline for the waits
 	defer cancel()
 	mem := memory.New(memory.Options{MaxEntries: 100_000})
@@ -37,4 +38,5 @@ func main() {
 		return Product{Price: 120}, nil // SELECT ... WHERE id = $1
 	})
 	warmStale(ctx, c, hot[:100], query) // stale.go: a policy with Stale, warmed by a copy without it
+	// --8<-- [end:example]
 }

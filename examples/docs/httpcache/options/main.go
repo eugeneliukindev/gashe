@@ -18,6 +18,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
+	// --8<-- [start:example]
 	mux := http.NewServeMux()
 
 	cached := httpcache.New(c, httpcache.Options{
@@ -32,4 +33,5 @@ func main() {
 		},
 	})
 	mux.Handle("GET /products/", cached(http.HandlerFunc(listProducts)))
+	// --8<-- [end:example]
 }

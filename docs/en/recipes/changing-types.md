@@ -7,13 +7,19 @@ Deploy a new version of a cached type: what gashe does by itself, and when to ch
 `UserV1` stands for the type before the deploy, `UserV2` for it after; in your code both are [`User`](../reference/httpcache.md#Vary).
 
 ```go
---8<-- "examples/docs/changing-types/main.go"
+--8<-- "examples/docs/changing-types/main.go:example"
 ```
 
 1. `{FullName:Ann Lee}`, a miss: the stored `UserV1` has another shape, and is never read as an
    empty `FullName`.
 2. An old process during the rollout: a miss again, now the stored entry is a `UserV2`: each
    version overwrites the other.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/changing-types/main.go"
+    ```
 
 ## How it works { #how-it-works }
 
@@ -31,7 +37,7 @@ types, nested types included. An entry of another form is a miss, never a value 
 
 ## During a rolling deploy { #during-a-rolling-deploy }
 
-Old and new processes run side by side for the length of the rollout, over the same Redis.
+Old and new processes run side by side for the length of the rollout, over the same backend.
 
 | | The same `Prefix` | A new one, `users:v2:` |
 |---|---|---|

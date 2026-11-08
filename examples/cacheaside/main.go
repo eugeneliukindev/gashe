@@ -21,6 +21,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	policy := gashe.Policy[User]{
 		TTL:    gashe.TTL{For: time.Minute},
 		Prefix: "user:",
@@ -32,4 +33,5 @@ func main() {
 	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: the loader runs
 	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: from the cache
 	gashe.GetOrLoad(ctx, c, "42", policy, loadUser) // {42 Ann}: from the cache
+	// --8<-- [end:example]
 }

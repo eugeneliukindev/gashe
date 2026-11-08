@@ -1,4 +1,4 @@
-# Negative caching { #negative }
+# Cache "not found" { #negative }
 
 This page shows how you cache a "not found", so lookups of missing ids stop reaching the source.
 In this section, we will go through [`Negative`](#negative-cache-not-found).
@@ -9,9 +9,15 @@ Clients ask again and again for an id that does not exist, and every lookup reac
 With [`Negative`](../reference/gashe.md#Negative), you cache the "not found" for a short [`Negative.TTL`](../reference/gashe.md#Negative), and every call gets
 [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound) meanwhile, without a query.
 
-```go hl_lines="17-20"
---8<-- "examples/docs/negative/policy/main.go"
+```go hl_lines="3-6"
+--8<-- "examples/docs/negative/policy/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/negative/policy/main.go"
+    ```
 
 Here the first `GetOrLoad("999")` stores the "not found", lookups within 30 seconds get it without a
 query, and after that the loader runs again:
@@ -51,29 +57,3 @@ sequenceDiagram
 ??? note "Technical details"
     - The "not found" is an entry of its own with `neg` set, stored for [`Negative.TTL`](../reference/gashe.md#Negative), see
       [the GetOrLoad entry](../internals/storage.md#the-getorload-entry).
-
-Three lookups of a user that does not exist. The two versions differ in the highlighted lines.
-
-=== "With Negative"
-
-    ```go hl_lines="22-25"
-    --8<-- "examples/negative/with/main.go"
-    ```
-
-    The first lookup caches the "not found", the other two get it from the cache: 1 query.
-
-    ```text title="In the backend"
-    --8<-- "docs/snippets/backend/negative-with.txt"
-    ```
-
-=== "Without Negative"
-
-    ```go
-    --8<-- "examples/negative/without/main.go"
-    ```
-
-    Every lookup reaches the database, 3 queries.
-
-    ```text title="In the backend"
-    --8<-- "docs/snippets/backend/negative-without.txt"
-    ```

@@ -24,10 +24,16 @@ A refresh, for a job that renews hot entries before they expire:
 `main` runs both against a stand-in for the database:
 
 ```go
---8<-- "examples/docs/warm-up/main.go"
+--8<-- "examples/docs/warm-up/main.go:example"
 ```
 
 1. In production: `SELECT id FROM products ORDER BY views DESC LIMIT 2000`.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/warm-up/main.go"
+    ```
 
 ## How it works { #how-it-works }
 

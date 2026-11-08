@@ -16,6 +16,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	name := "Ann" // the users table
 	policy := gashe.Policy[string]{
 		TTL:  gashe.TTL{For: time.Hour},
@@ -29,4 +30,5 @@ func main() {
 	name = "Anna" // UPDATE users SET name = 'Anna' WHERE id = 42
 	c.InvalidateTags(ctx, "user:42")
 	gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile) // Anna: loaded again
+	// --8<-- [end:example]
 }

@@ -12,6 +12,7 @@ import (
 type User struct{ Name string }
 
 func main() {
+	// --8<-- [start:example]
 	_ = gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
@@ -19,4 +20,5 @@ func main() {
 			IsNotFound: func(err error) bool { return errors.Is(err, sql.ErrNoRows) },
 		},
 	}
+	// --8<-- [end:example]
 }

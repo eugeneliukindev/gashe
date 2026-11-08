@@ -19,7 +19,7 @@ More: [monitoring](concepts/setup.md#onresult-onerror), [every error](errors.md#
 |---|---|---|
 | The `TTL` function returns a negative duration, or 0 without a stale window: nothing is stored | `miss` on every call of one key; check what the function returns, such as `time.Until` of a time already past | return a positive duration for results to keep |
 | The `TTL` function returns 0 with a stale window | every call is past `TTL`: `stale-while-revalidate`, or `miss` within [`Stale.IfError.For`](reference/gashe.md#Stale) | return a positive duration |
-| [`CacheIf`](reference/gashe.md#Policy) returns false | `miss` on every call; the result is returned, not stored | let the results to keep pass [`CacheIf`](reference/gashe.md#Policy) |
+| [`Store.If`](reference/gashe.md#Store) returns false | `miss` on every call; the result is returned, not stored | let the results to keep pass [`Store.If`](reference/gashe.md#Store) |
 | The loader fails: its error is returned, not stored | the same error on every call, such as `sql.ErrNoRows` for an id that does not exist | [`Negative`](reference/gashe.md#Negative) for "not found"; [`Stale.IfError`](reference/gashe.md#Stale) for a failing source |
 | The backend fails, and the policy has no [`Fallback`](reference/gashe.md#Fallback) | [`OnError`](reference/gashe.md#Hooks) gets `gashe: get ...` or `gashe: set ...`; `miss` on every call | [`Policy.Fallback`](reference/gashe.md#Policy), and [`Options.CircuitBreaker`](reference/gashe.md#Options) so calls do not wait for the backend |
 | The key differs per call: a timestamp, a request id, a query in the order it was sent | every [`Outcome.Key`](reference/gashe.md#Outcome) is new | build the key from what the result depends on, nothing else |
@@ -31,7 +31,7 @@ More: [monitoring](concepts/setup.md#onresult-onerror), [every error](errors.md#
 | Redis evicts keys, with `maxmemory` | `evicted_keys` grows in `INFO stats` of Redis | more memory for Redis, or shorter TTLs |
 
 More: [TTL](concepts/loading.md#ttl),
-[CacheIf](concepts/loading.md#cacheif-prefix),
+[Store.If](concepts/loading.md#cacheif-prefix),
 [Fallback](concepts/outages.md#fallback),
 [type changes](recipes/changing-types.md#during-a-rolling-deploy),
 [backend/memory](concepts/backends.md#backendmemory),
@@ -80,7 +80,7 @@ More: [tags](concepts/invalidation.md#tags),
 
 ---
 
-## Requests hang or are slow while Redis is down { #requests-hang-while-redis-is-down }
+## Requests hang or are slow while the backend is down { #requests-hang-while-redis-is-down }
 
 | Cause | How to tell | Fix |
 |---|---|---|
@@ -156,7 +156,7 @@ More: [RateLimit](concepts/rate-limits.md#cratelimit).
 | The response has a [`Vary`](reference/httpcache.md#Vary) that [`Options.Vary`](reference/httpcache.md#Options) does not cover, such as `Vary: Accept-Encoding` of a compression middleware, or `Vary: *` | `gashe; fwd=uri-miss` | the header in [`Vary.Headers`](reference/httpcache.md#Vary); `Vary: *` is never stored |
 | The response has `Cache-Control` `no-store`, `private` or `no-cache` | `gashe; fwd=uri-miss` | drop the directive on pages to share |
 | The body is over [`MaxBodyBytes`](reference/httpcache.md#Options), 1 MB unless set | `gashe; fwd=uri-miss` | a larger [`MaxBodyBytes`](reference/httpcache.md#Options) |
-| The status is not `200` with a nil [`CacheIf`](reference/gashe.md#Policy), or [`CacheIf`](reference/gashe.md#Policy) returns false; a 5xx is never stored | `gashe; fwd=uri-miss`; within [`Stale.IfError.For`](reference/gashe.md#Stale) a 5xx gets the last page, `gashe; fwd=stale; fwd-status=500` | a [`CacheIf`](reference/gashe.md#Policy) that stores the statuses you want, such as `404` |
+| The status is not `200` with a nil [`Store.If`](reference/gashe.md#Store), or [`Store.If`](reference/gashe.md#Store) returns false; a 5xx is never stored | `gashe; fwd=uri-miss`; within [`Stale.IfError.For`](reference/gashe.md#Stale) a 5xx gets the last page, `gashe; fwd=stale; fwd-status=500` | a [`Store.If`](reference/gashe.md#Store) that stores the statuses you want, such as `404` |
 | The policy is invalid, such as no `TTL` and no stale window: every request runs the handler, and [`OnError`](reference/gashe.md#Hooks) gets nothing | `gashe; fwd=uri-miss` on every request | a valid [`Policy`](reference/gashe.md#Policy): check it with [`gashe.For`](reference/gashe.md#For) at startup, which panics on it |
 | The key differs per request: a random query parameter, with a nil [`Vary.Query`](reference/httpcache.md#Vary) | `gashe; fwd=uri-miss; stored` on every request, never `hit` | [`Vary.Query`](reference/httpcache.md#Vary) with the parameters the page depends on |
 | The backend fails: the page is rendered on every request | `gashe; fwd=uri-miss; stored` on every request; [`OnError`](reference/gashe.md#Hooks) gets `gashe: get ...` or `gashe: set ...` | as for a failing backend [above](#every-request-goes-to-the-database) |
@@ -212,7 +212,26 @@ More: [backend/nearcache](concepts/backends.md#backendnearcache),
 | [`Cache.Keys`](reference/gashe.md#Cache.Keys) or [`Cache.DeleteMatch`](reference/gashe.md#Cache.DeleteMatch) with `*`: they meet the own keys too, and [`DeleteMatch`](reference/gashe.md#Cache.DeleteMatch) deletes them | `__` keys in what [`Cache.Keys`](reference/gashe.md#Cache.Keys) yields; locks lost, rate counters reset, entries with tags all miss once | patterns of your keys, such as `user:*` |
 | A lock key equals a value key: [`Lock`](reference/gashe.md#Cache.Lock), [`TryLock`](reference/gashe.md#Cache.TryLock) and [`WithLock`](reference/gashe.md#Cache.WithLock) use the key you give them | [`TryLock`](reference/gashe.md#Cache.TryLock) is never ok while the value exists; [`Cache.Set`](reference/gashe.md#Cache.Set) over a held lock gives [`ErrLockLost`](reference/gashe.md#variables) | lock keys of their own, such as `lock:reindex` |
 | The basic API and [`GetOrLoad`](reference/gashe.md#GetOrLoad) share a key: [`Cache.Get`](reference/gashe.md#Cache.Get) cannot read a [`GetOrLoad`](reference/gashe.md#GetOrLoad) entry | [`GetOrLoad`](reference/gashe.md#GetOrLoad) misses after [`Cache.Set`](reference/gashe.md#Cache.Set), [`Cache.Get`](reference/gashe.md#Cache.Get) reads empty or wrong fields | a [`Policy.Prefix`](reference/gashe.md#Policy) for [`GetOrLoad`](reference/gashe.md#GetOrLoad) data |
-| Two services use one Redis with the same keys | each reads what the other stored | an [`Options.Prefix`](reference/gashe.md#Options) per service |
+| Two services use one backend with the same keys | each reads what the other stored | an [`Options.Prefix`](reference/gashe.md#Options) per service |
 
 More: [keys](internals/storage.md#keys),
 [Prefix](concepts/setup.md#prefix).
+
+---
+
+## Still stuck { #still-stuck }
+
+| You have | Go to |
+|---|---|
+| an error and want to know what returns it | [Errors](errors.md) |
+| a question about how something works | the [guides](concepts/setup.md) and the [API reference](reference.md) |
+| an AI assistant to ask about gashe | give it [llms.txt](llms.txt), the index of these pages, or [llms-full.txt](llms-full.txt), every page in one file |
+| a bug | [an issue on GitHub](https://github.com/eugeneliukindev/gashe/issues/new) |
+| a security problem | [a private report on GitHub](https://github.com/eugeneliukindev/gashe/security/advisories/new), not a public issue |
+
+An issue is fixed fastest when it holds:
+
+- the versions: gashe and its modules (`go list -m all | grep gashe`), Go, Redis or Valkey;
+- the backend and the policy you use, as Go code;
+- a short program that shows the problem, ideally on the memory backend;
+- what you expected, and what happened, with the error or the [`Result`](reference/gashe.md#Result) from [`Options.Hooks.OnResult`](reference/gashe.md#Options).
