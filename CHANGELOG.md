@@ -9,6 +9,11 @@ module it is about.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-08
+
+Released as `v0.8.0`. `backend/redis`, `codec/msgpack` and `compress/zstd` have no changes and stay
+at `v0.5.0`, `v0.4.0` and `v0.2.0`.
+
 ### Changed
 
 - `Negative.TTL` is now `Negative.For`, as `TTL.For`: both say how long an entry is kept.
@@ -294,7 +299,8 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.8.0
 [0.7.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.5.0
