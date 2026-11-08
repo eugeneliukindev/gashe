@@ -216,3 +216,22 @@ More: [backend/nearcache](concepts/backends.md#backendnearcache),
 
 More: [keys](internals/storage.md#keys),
 [Prefix](concepts/setup.md#prefix).
+
+---
+
+## Still stuck { #still-stuck }
+
+| You have | Go to |
+|---|---|
+| an error and want to know what returns it | [Errors](errors.md) |
+| a question about how something works | the [guides](concepts/setup.md) and the [API reference](reference.md) |
+| an AI assistant to ask about gashe | give it [llms.txt](llms.txt), the index of these pages, or [llms-full.txt](llms-full.txt), every page in one file |
+| a bug | [an issue on GitHub](https://github.com/eugeneliukindev/gashe/issues/new) |
+| a security problem | [a private report on GitHub](https://github.com/eugeneliukindev/gashe/security/advisories/new), not a public issue |
+
+An issue is fixed fastest when it holds:
+
+- the versions: gashe and its modules (`go list -m all | grep gashe`), Go, Redis or Valkey;
+- the backend and the policy you use, as Go code;
+- a short program that shows the problem, ideally on the memory backend;
+- what you expected, and what happened, with the error or the [`Result`](reference/gashe.md#Result) from [`Options.Hooks.OnResult`](reference/gashe.md#Options).

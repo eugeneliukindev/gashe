@@ -1,4 +1,4 @@
-# Negative caching { #negative }
+# Cache "not found" { #negative }
 
 This page shows how you cache a "not found", so lookups of missing ids stop reaching the source.
 In this section, we will go through [`Negative`](#negative-cache-not-found).

@@ -1,4 +1,4 @@
-# Rate limiting { #rate-limits }
+# Rate limits { #rate-limits }
 
 This page shows how you refuse calls over a limit, counted across all processes. In this section,
 we will go through [`Cache.RateLimit`](#cratelimit) and [its requests and responses](#try-it-with-curl).

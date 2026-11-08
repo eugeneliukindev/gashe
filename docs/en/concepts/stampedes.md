@@ -1,4 +1,4 @@
-# Stampedes { #stampedes }
+# Many loads at once { #stampedes }
 
 This page shows how to keep many calls for cold or expiring keys from reaching the source at once.
 In this section, we will go through the [`Stampede`](#stampede) field of [`Policy`](../reference/gashe.md#Policy) and its three

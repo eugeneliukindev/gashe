@@ -1,4 +1,4 @@
-# Outages { #outages }
+# When Redis is down { #outages }
 
 This page shows how to keep answering while the cache backend is down. In this section, we will go
 through [`CircuitBreaker`](#circuitbreaker) and
@@ -6,7 +6,7 @@ through [`CircuitBreaker`](#circuitbreaker) and
 
 !!! note
     These keep the cache answering when its own backend fails. To guard your calls of a failing
-    service, such as an external API, see [Circuit breakers](breakers.md).
+    service, such as an external API, see [Protect a dependency](breakers.md).
 
 ## Stop calling a backend that is down { #circuitbreaker }
 

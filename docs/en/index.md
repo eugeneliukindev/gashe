@@ -1,3 +1,9 @@
+---
+hide:
+  - navigation
+  - toc
+---
+
 # gashe { #gashe }
 
 <p align="center">
@@ -67,12 +73,7 @@ How gashe compares with other Go caches: [Alternatives](about/alternatives.md).
 
 ## Install { #install }
 
-```bash
-go get github.com/eugeneliukindev/gashe               # the core: memory backend, near cache, HTTP middleware
-go get github.com/eugeneliukindev/gashe/backend/redis # Redis and Valkey, on go-redis v9
-go get github.com/eugeneliukindev/gashe/codec/msgpack # values in MessagePack, on vmihailenco/msgpack
-go get github.com/eugeneliukindev/gashe/compress/zstd # values compressed with Zstandard, on klauspost/compress
-```
+--8<-- "docs/snippets/install.md"
 
 Only the core is needed; each other module is added for what you use, with its own dependency.
 
@@ -95,27 +96,27 @@ stale result answers at once while one process reloads it.
 
 **Basics**
 
-- The same expensive call again and again: [Loading](concepts/loading.md#getorload)
+- The same expensive call again and again: [Load and cache data](concepts/loading.md#getorload)
 - Each kind of data needs its own rules, set once: [The policy](concepts/loading.md#policy)
-- N+1 queries on a list page: [Loading](concepts/loading.md#getorloadmany)
-- One change makes many entries stale: [Tags](concepts/invalidation.md#tags)
+- N+1 queries on a list page: [Load and cache data](concepts/loading.md#getorloadmany)
+- One change makes many entries stale: [Update and remove data](concepts/invalidation.md#tags)
 - A hot key costs a round trip on every read: [Backends](concepts/backends.md#backendnearcache)
-- A deploy changed a cached type: [Loading](concepts/loading.md#type-shapes)
+- A deploy changed a cached type: [Load and cache data](concepts/loading.md#type-shapes)
 
 **Resilience**
 
 - Every request waits when a popular key expires: [Stale data](concepts/stale.md#stalewhilerevalidate)
 - The database is slow or down: [Stale data](concepts/stale.md#staleiferror-staleifslow)
-- A cold key sends a thousand identical queries (cache stampede): [Stampedes](concepts/stampedes.md)
-- Keys stored together expire together (thundering herd): [Stampedes](concepts/stampedes.md#jitter)
-- Lookups of missing ids always reach the database (cache penetration): [Negative caching](concepts/negative.md)
-- The cache backend is down: [Outages](concepts/outages.md)
+- A cold key sends a thousand identical queries (cache stampede): [Many loads at once](concepts/stampedes.md)
+- Keys stored together expire together (thundering herd): [Many loads at once](concepts/stampedes.md#jitter)
+- Lookups of missing ids always reach the database (cache penetration): [Cache "not found"](concepts/negative.md)
+- The cache backend is down: [When Redis is down](concepts/outages.md)
 
 **Protection**
 
 - A job must run once at a time across processes: [Locks](concepts/locks.md)
-- A client calls far too often: [Rate limiting](concepts/rate-limits.md)
-- A failing dependency drags the service down (cascading failure): [Circuit breakers](concepts/breakers.md)
+- A client calls far too often: [Rate limits](concepts/rate-limits.md)
+- A failing dependency drags the service down (cascading failure): [Protect a dependency](concepts/breakers.md)
 
 **HTTP**
 

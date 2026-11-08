@@ -1,4 +1,4 @@
-# Tags { #invalidation }
+# Update and remove data { #invalidation }
 
 This page shows how to make stored results go after the data changed. In this section, we will go
 through [`Tags`](#tags), [`Cached.Set`](#cachedset),

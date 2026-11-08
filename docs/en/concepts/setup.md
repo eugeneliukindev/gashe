@@ -1,4 +1,4 @@
-# Setup { #setup }
+# Create the cache { #setup }
 
 This page shows how to create the cache, watch how it answers and stop it. In this section, we will
 go through [`gashe.New`](#gashenew) and its options, [`Cache.Shutdown`](#cshutdown),
@@ -90,7 +90,7 @@ the bytes of any codec before they are stored.
 ### A breaker for the backend { #circuitbreaker }
 
 A backend that is down makes every call wait for its timeout. With [`CircuitBreaker`](../reference/gashe.md#CircuitBreaker), the cache stops
-calling a failing backend for a while: see [Outages](outages.md#circuitbreaker).
+calling a failing backend for a while: see [When Redis is down](outages.md#circuitbreaker).
 
 ---
 

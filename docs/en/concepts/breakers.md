@@ -1,11 +1,11 @@
-# Circuit breakers { #breakers }
+# Protect a dependency { #breakers }
 
 This page shows how you stop calling a failing dependency for a while. In this section, we will go
 through [`gashe.Guard`](#gasheguard) and [`Cache.CircuitBreaker`](#ccircuitbreaker).
 
 !!! note
     These breakers guard your calls. The breaker that guards the cache from its own backend is
-    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [Outages](outages.md#circuitbreaker).
+    [`Options.CircuitBreaker`](../reference/gashe.md#Options), on [When Redis is down](outages.md#circuitbreaker).
 
 ## Guarding a call { #gasheguard }
 

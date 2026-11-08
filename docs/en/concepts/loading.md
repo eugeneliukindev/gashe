@@ -1,4 +1,4 @@
-# Loading { #loading }
+# Load and cache data { #loading }
 
 This page shows how [`GetOrLoad`](../reference/gashe.md#GetOrLoad) answers, how a list loads with one query, how long results stay fresh and what gets stored. In this
 section, we will go through [the policy](#policy), [`gashe.For`](#gashefor), [`GetOrLoad`](#getorload),

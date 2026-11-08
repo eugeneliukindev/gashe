@@ -1,3 +1,7 @@
+---
+status: new
+---
+
 # Which setting { #which-setting }
 
 Find the problem, then the setting that solves it and the section that shows it.
@@ -35,7 +39,7 @@ Find the problem, then the setting that solves it and the section that shows it.
 
 | Problem | Setting | Where |
 | --- | --- | --- |
-| A change must remove every result it touches, across kinds of data | `Policy.Tags`, `InvalidateTags` | [Tags](concepts/invalidation.md#tags) |
+| A change must remove every result it touches, across kinds of data | `Policy.Tags`, `InvalidateTags` | [Update and remove data](concepts/invalidation.md#tags) |
 | You wrote the new value and the cache should have it at once | `Cached.Set` | [Writing a new result](concepts/invalidation.md#cachedset) |
 | The cache should load the new value now | `Cached.Reload` | [Reloading after a change](concepts/invalidation.md#reload) |
 | A result must go | `Cached.Delete` | [Deleting a result](concepts/invalidation.md#cacheddelete) |
