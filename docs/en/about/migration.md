@@ -6,7 +6,7 @@ first. The full list of changes is the
 
 | From | Read |
 |---|---|
-| `0.6.x` | [Unreleased](#unreleased) |
+| `0.6.x` | [0.7.0](#070) |
 | `0.5.x` | [0.6.0](#060), then the section above it |
 | `0.4.x` | [0.5.0](#050), then the sections above it |
 | `0.3.x` | [0.4.0](#040), then the sections above it |
@@ -15,7 +15,7 @@ first. The full list of changes is the
 `v0.1.0` and `v0.2.0` are retracted, so `go get` does not pick them: from `0.1.x` upgrade straight to
 `v0.3.0` or later and apply both the 0.2.0 and the 0.3.0 changes.
 
-## Unreleased { #unreleased }
+## 0.7.0 { #070 }
 
 | Before | After |
 |---|---|
