@@ -19,29 +19,29 @@ func main() {
 	defer c.Shutdown(context.Background())
 
 	cached := httpcache.New(c, httpcache.Options{
-		// As for GetOrLoad; every field of Policy applies but Negative.
+		// as for GetOrLoad; every field of Policy applies but Negative
 		Policy: gashe.Policy[httpcache.Response]{
 			TTL: gashe.TTL{For: time.Minute},
-			// Which statuses are stored; nil If stores 200 only.
+			// which statuses are stored; nil If stores 200 only
 			Store: gashe.Store[httpcache.Response]{
 				If: func(r httpcache.Response) bool {
 					return r.Status == 200 || r.Status == 404
 				},
 			},
 		},
-		// What a page depends on, besides its host and path.
+		// what a page depends on, besides its host and path
 		Vary: httpcache.Vary{
-			// Query parameters in the key; nil means the whole query.
+			// query parameters in the key; nil means the whole query
 			Query: []string{"page"},
-			// Request headers in the key; nil means none.
+			// request headers in the key; nil means none
 			Headers: []string{"Accept-Language"},
-			// Cookies in the key; nil sends requests with cookies past.
+			// cookies in the key; nil sends requests with cookies past
 			Cookies: []string{"currency"},
-			// Who the page is for; nil means pages are shared.
+			// who the page is for; nil means pages are shared
 			User: func(r *http.Request) string {
 				return r.Header.Get("X-User-ID")
 			},
-			// Anything else, at the end of the key; nil means none.
+			// anything else, at the end of the key; nil means none
 			Custom: func(r *http.Request) string {
 				return ""
 			},
