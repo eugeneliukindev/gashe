@@ -12,6 +12,8 @@ refuse the ones over the limit.
 --8<-- "examples/docs/rate-limits/login/main.go"
 ```
 
+**Signature:** `func (c *Cache) RateLimit(ctx context.Context, key string, limit Limit) error` · Every field: [`Limit`](../reference/gashe.md#Limit)
+
 The limit is a [`gashe.SlidingWindow`](../reference/gashe.md#SlidingWindow) or a
 [`gashe.FixedWindow`](../reference/gashe.md#FixedWindow); `PerSecond(n)`, `PerMinute(n)` and `PerHour(n)` make a
 [`SlidingWindow`](../reference/gashe.md#SlidingWindow).

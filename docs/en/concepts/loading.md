@@ -16,6 +16,8 @@ loads are shared. A [`gashe.Policy`](../reference/gashe.md#Policy) holds them fo
 --8<-- "examples/docs/loading/policy/main.go"
 ```
 
+Every field: [`Policy`](../reference/gashe.md#Policy)
+
 - The zero value of each field is off: a policy with only `TTL` caches results for that long.
 - An invalid policy returns [`ErrInvalidOptions`](../reference/gashe.md#variables) from every call, and makes [`gashe.For`](../reference/gashe.md#For) panic.
 - Use one policy per kind of data: [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) counts loads per type and `Prefix`.
@@ -30,6 +32,8 @@ the cache once, and it is checked once; keep one per kind of data.
 ```go hl_lines="20-23"
 --8<-- "examples/docs/loading/for/main.go"
 ```
+
+**Signature:** `func For[V any](c *Cache, o Policy[V]) Cached[V]`
 
 - `For` panics on an invalid policy, such as `TTL: "1hr"`.
 - It returns a `gashe.Cached[User]`: the functions of the same name, with the policy. Its `Set` and
@@ -49,6 +53,8 @@ result while the policy allows it; otherwise the loader runs, and its result is 
 ```go hl_lines="25-27"
 --8<-- "examples/docs/loading/getorload/main.go"
 ```
+
+**Signature:** `func (p Cached[V]) GetOrLoad(ctx context.Context, key string, load func(context.Context) (V, error)) (V, error)`
 
 The fields of the policy are in [The policy](#policy).
 
@@ -103,6 +109,8 @@ round trip and at most one query.
 ```go hl_lines="35-38"
 --8<-- "examples/docs/loading/getorloadmany/main.go"
 ```
+
+**Signature:** `func (p Cached[V]) GetOrLoadMany(ctx context.Context, keys []string, load func(ctx context.Context, missing []string) (map[string]V, error)) (map[string]V, error)`
 
 Four keys, two of them stored: one read for all four, and one query for the two missing:
 

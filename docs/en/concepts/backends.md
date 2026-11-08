@@ -18,6 +18,8 @@ a TTL each, and the least recently used ones go first; every process has its own
 2. Bytes of keys and values, without the overhead of Go. 0 means no limit.
 3. How often expired entries are purged. 0 means every second, a negative value never.
 
+**Signature:** `func New(o Options) *Backend` · Every field: [`memory.Options`](../reference/memory.md#Options)
+
 - `New` panics on a negative [`MaxEntries`](../reference/memory.md#Options) or [`MaxBytes`](../reference/memory.md#Options).
 - Values are copied in and out.
 
@@ -37,6 +39,8 @@ Several processes must see the same entries. With [`backend/redis`](../reference
 ```
 
 1. A slow cache must not slow the service down.
+
+**Signature:** `func New(client goredis.UniversalClient) *Backend`
 
 - A stopped Redis takes longer than `ReadTimeout` to fail a call: see
   [outages](outages.md#circuitbreaker).
@@ -74,6 +78,8 @@ copy of what it reads from the shared backend in its own memory, and answers the
 ```go hl_lines="19-26"
 --8<-- "examples/docs/backends/redis-nearcache/main.go"
 ```
+
+**Signature:** `func New(local, shared gashe.Backend, o Options) *Backend` · Every field: [`nearcache.Options`](../reference/nearcache.md#Options)
 
 A keeps a copy of k for one minute: the bus makes it drop the copy at once; without a
 bus, A answers the old value until the copy ends.

@@ -14,6 +14,7 @@ nav = [
   { "Home" = "index.md" },
   { "Learn" = [
     "quickstart.md",
+    "choose.md",
     { "Basics" = [
       "concepts/setup.md",
       "concepts/backends.md",
@@ -128,6 +129,7 @@ markdown_description = "gashe is a caching library for Go services that run as m
 [project.plugins.llmstxt.sections]
 "Start" = [{ "index.md" = "what gashe is, a full example, the problems it solves" }]
 "Quickstart" = [{ "quickstart.md" = "a first cache, Redis, a policy to start with" }]
+"Which setting" = [{ "choose.md" = "a problem, the setting that solves it, and where it is shown" }]
 "Concepts" = ["concepts/*.md"]
 "Recipes" = ["recipes/*.md"]
 "Errors" = [

@@ -17,6 +17,8 @@ called for a while.
 --8<-- "examples/docs/breakers/guard/main.go"
 ```
 
+**Signature:** `func Guard[T any](c *Cache, key string, o CircuitBreaker, call func() (T, error)) (T, error)` · Every field: [`CircuitBreaker`](../reference/gashe.md#CircuitBreaker)
+
 With the options above, the provider fails, the breaker opens for 15 seconds, and then lets calls
 through again:
 
@@ -71,6 +73,8 @@ the call and report its result yourself; otherwise use [`Guard`](../reference/ga
 ```
 
 1. Call `done` once, with nil or the error of the call.
+
+**Signature:** `func (c *Cache) CircuitBreaker(key string, o CircuitBreaker) (DoneFunc, error)`
 
 - It returns a [`DoneFunc`](../reference/gashe.md#DoneFunc): call it once with the result of the call.
 - Its errors are those of [`gashe.Guard`](../reference/gashe.md#Guard).

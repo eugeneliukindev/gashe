@@ -15,6 +15,8 @@ A user changes their name, and you must drop every entry that shows it. With [`T
 
 1. Invalidate after the write, not before.
 
+**Signature:** `func (c *Cache) InvalidateTags(ctx context.Context, tags ...string) error`
+
 Each entry remembers the counter of its tag when it was stored: after the counter moves,
 the next read sees an older number and is a miss.
 
@@ -71,6 +73,8 @@ and shape of the policy.
 
 1. The next [`GetOrLoad`](../reference/gashe.md#GetOrLoad) is a hit with the new result.
 
+**Signature:** `func (p Cached[V]) Set(ctx context.Context, key string, v V) error`
+
 - A result the policy does not store, by [`CacheIf`](../reference/gashe.md#Policy), deletes the entry.
 - It returns backend and codec errors.
 
@@ -94,6 +98,8 @@ result, whatever is stored.
 --8<-- "examples/docs/invalidation/reload/main.go"
 ```
 
+**Signature:** `func (p Cached[V]) Reload(ctx context.Context, key string, load func(context.Context) (V, error)) (V, error)`
+
 - On a loader error, a "not found" too, the error is returned and the stored entry stays.
 - It returns the loaded result; [`ErrOverloaded`](../reference/gashe.md#variables) and [`ErrInvalidOptions`](../reference/gashe.md#variables) come as in [`GetOrLoad`](../reference/gashe.md#GetOrLoad).
 
@@ -111,6 +117,8 @@ One entry is wrong and must go. [`Cached.Delete`](../reference/gashe.md#Cached[V
 ```go hl_lines="21"
 --8<-- "examples/docs/invalidation/delete/main.go"
 ```
+
+**Signature:** `func (p Cached[V]) Delete(ctx context.Context, key string) (existed bool, err error)`
 
 - It returns whether the entry existed, and backend errors.
 

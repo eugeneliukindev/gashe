@@ -16,6 +16,8 @@ without calling it.
 --8<-- "examples/docs/httpcache/options/main.go"
 ```
 
+**Signature:** `func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler` · Every field: [`httpcache.Options`](../reference/httpcache.md#Options), [`Vary`](../reference/httpcache.md#Vary)
+
 What a request gets; its key is the host, the path and what [`Vary`](../reference/httpcache.md#Vary) names, see
 [how the key is made](#how-the-key-is-made):
 

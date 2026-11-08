@@ -18,6 +18,8 @@ backend and share it; each option has a card below.
 3. Gets how each [`GetOrLoad`](../reference/gashe.md#GetOrLoad) was answered. nil drops them.
 4. Gets the errors the cache works around instead of returning them. nil drops them.
 
+**Signature:** `func New(b Backend, o Options) *Cache` · Every field: [`Options`](../reference/gashe.md#Options)
+
 - `New` panics on a nil backend, a negative [`LockPollInterval`](../reference/gashe.md#Options) or invalid [`Options.CircuitBreaker`](../reference/gashe.md#Options).
 - The cache does not close the backend: you close it yourself, after [`Cache.Shutdown`](#cshutdown).
 

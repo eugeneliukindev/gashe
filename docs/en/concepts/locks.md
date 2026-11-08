@@ -15,6 +15,8 @@ the function runs.
 --8<-- "examples/docs/locks/withlock/main.go"
 ```
 
+**Signature:** `func (c *Cache) WithLock(ctx context.Context, key string, ttl time.Duration, fn func(ctx context.Context) error) error`
+
 With a TTL of one minute, the lock is extended every 20 seconds while `reindex` runs:
 
 ```mermaid
@@ -76,6 +78,8 @@ the lock if it is free, without waiting, and skip the work otherwise.
 
 1. The backend is down, or another process runs the job: skip it.
 
+**Signature:** `func (c *Cache) TryLock(ctx context.Context, key string, ttl time.Duration) (lease *Lease, ok bool, err error)`
+
 When two processes start the job at once, one takes the lock and the other skips:
 
 ```mermaid
@@ -108,6 +112,8 @@ else holds it, and get a [`*gashe.Lease`](../reference/gashe.md#Lease) you relea
 
 1. The wait ended first, or the backend failed: there is no lease to release.
 
+**Signature:** `func (c *Cache) Lock(ctx context.Context, key string, ttl time.Duration) (*Lease, error)`
+
 - It returns `ctx.Err()` when `ctx` ends first, [`ErrInvalidTTL`](../reference/gashe.md#variables) when the TTL is not positive, and
   backend errors.
 
@@ -127,6 +133,8 @@ from now, if it is still yours.
 ```go hl_lines="21"
 --8<-- "examples/docs/locks/extend/main.go"
 ```
+
+**Signature:** `func (l *Lease) Extend(ctx context.Context, ttl time.Duration) error`
 
 - [`ErrLockLost`](../reference/gashe.md#variables): the lock expired, and someone else may hold it.
 - It also returns [`ErrInvalidTTL`](../reference/gashe.md#variables) when the TTL is not positive, and backend errors.
@@ -150,6 +158,8 @@ behind.
 --8<-- "examples/docs/locks/unlock/main.go"
 ```
 
+**Signature:** `func (l *Lease) Unlock(ctx context.Context) error`
+
 - It returns backend errors.
 
 ??? note "Technical details"
@@ -164,6 +174,8 @@ With [`Cache.IsLocked`](../reference/gashe.md#Cache.IsLocked), you check whether
 ```go hl_lines="20 22"
 --8<-- "examples/docs/locks/islocked/main.go"
 ```
+
+**Signature:** `func (c *Cache) IsLocked(ctx context.Context, key string) (bool, error)`
 
 - It returns backend errors.
 
