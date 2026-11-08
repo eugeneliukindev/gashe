@@ -38,6 +38,10 @@ one load, and all of them get its result. Across processes, [`LockFor`](#lockonm
 --8<-- "examples/stampede/main.go:example"
 ```
 
+```text title="Output"
+--8<-- "examples/stampede/output.txt"
+```
+
 ??? example "Full program"
 
     ```go

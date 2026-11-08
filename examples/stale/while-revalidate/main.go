@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -26,14 +27,14 @@ func main() {
 		Stale: gashe.Stale{WhileRevalidate: time.Minute},
 	})
 
-	pages.GetOrLoad(ctx, "home", v1) // "v1", miss
+	fmt.Println(pages.GetOrLoad(ctx, "home", v1)) // miss
 
-	time.Sleep(1100 * time.Millisecond)  // past the TTL, the database is slow
-	pages.GetOrLoad(ctx, "home", slowV2) // "v1" at once, stale-while-revalidate
-	time.Sleep(600 * time.Millisecond)   // background loads are done
-	pages.GetOrLoad(ctx, "home", v2)     // "v2", hit
+	time.Sleep(1100 * time.Millisecond)               // past the TTL, the database is slow
+	fmt.Println(pages.GetOrLoad(ctx, "home", slowV2)) // at once, stale-while-revalidate
+	time.Sleep(800 * time.Millisecond)                // background loads are done
+	fmt.Println(pages.GetOrLoad(ctx, "home", v2))     // hit
 
-	time.Sleep(1100 * time.Millisecond) // past the TTL, the database is down
-	pages.GetOrLoad(ctx, "home", down)  // "v2", stale-while-revalidate
+	time.Sleep(1100 * time.Millisecond)             // past the TTL, the database is down
+	fmt.Println(pages.GetOrLoad(ctx, "home", down)) // stale-while-revalidate
 	// --8<-- [end:example]
 }

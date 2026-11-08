@@ -1,0 +1,5 @@
+SELECT name FROM users WHERE id = 42
+Ann <nil>
+Ann <nil>
+SELECT name FROM users WHERE id = 42
+Anna <nil>

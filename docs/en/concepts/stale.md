@@ -51,6 +51,10 @@ call returns; the versions differ in the lines highlighted.
     --8<-- "examples/stale/while-revalidate/main.go:example"
     ```
 
+    ```text title="Output"
+    --8<-- "examples/stale/while-revalidate/output.txt"
+    ```
+
     ??? example "Full program"
 
         ```go
@@ -67,6 +71,10 @@ call returns; the versions differ in the lines highlighted.
 
     ```go hl_lines="12"
     --8<-- "examples/stale/if-error/main.go:example"
+    ```
+
+    ```text title="Output"
+    --8<-- "examples/stale/if-error/output.txt"
     ```
 
     ??? example "Full program"
@@ -87,6 +95,10 @@ call returns; the versions differ in the lines highlighted.
     --8<-- "examples/stale/if-slow/main.go:example"
     ```
 
+    ```text title="Output"
+    --8<-- "examples/stale/if-slow/output.txt"
+    ```
+
     ??? example "Full program"
 
         ```go
@@ -103,6 +115,10 @@ call returns; the versions differ in the lines highlighted.
 
     ```go
     --8<-- "examples/stale/ttl-only/main.go:example"
+    ```
+
+    ```text title="Output"
+    --8<-- "examples/stale/ttl-only/output.txt"
     ```
 
     ??? example "Full program"

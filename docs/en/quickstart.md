@@ -10,8 +10,12 @@ cache answers. [`gashe.New`](reference/gashe.md#New) creates the cache,
 [`gashe.For`](reference/gashe.md#For) binds the policy to it, and
 [`GetOrLoad`](reference/gashe.md#Cached[V].GetOrLoad) reads or loads.
 
-```go hl_lines="3 5-8 14"
+```go hl_lines="3 5-8 15"
 --8<-- "examples/quickstart/main.go:example"
+```
+
+```text title="Output"
+--8<-- "examples/quickstart/output.txt"
 ```
 
 ??? example "Full program"
