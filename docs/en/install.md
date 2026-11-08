@@ -13,5 +13,4 @@ what you use:
 | `gashe/compress/zstd` | values compressed with Zstandard | klauspost/compress |
 
 Features marked <span class="version-badge">Added in v0.5</span> need that version or newer; the
-[release notes](changelog.md) list what each version changed. Next: the
-[quickstart](quickstart.md).
+[release notes](changelog.md) list what each version changed.
