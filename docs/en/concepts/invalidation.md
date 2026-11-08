@@ -57,8 +57,12 @@ sequenceDiagram
       [`InvalidateTags`](../reference/gashe.md#Cache.InvalidateTags), so entries stored before an eviction stay invalid.
     - In Redis: per tag, `SET __tag:<tag> <random> NX`, then `INCRBY __tag:<tag> 1`.
 
-```go hl_lines="4 12"
+```go hl_lines="4 15"
 --8<-- "examples/tags/main.go:example"
+```
+
+```text title="Output"
+--8<-- "examples/tags/output.txt"
 ```
 
 ??? example "Full program"

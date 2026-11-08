@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -27,10 +28,11 @@ func main() {
 	})
 
 	loadUser := func(context.Context) (User, error) {
-		return User{ID: "42", Name: "Ann"}, nil // SELECT * FROM users WHERE id = 42
+		fmt.Println("SELECT * FROM users WHERE id = 42")
+		return User{ID: "42", Name: "Ann"}, nil
 	}
 
-	users.GetOrLoad(ctx, "42", loadUser) // Ann, miss: loaded and stored
-	users.GetOrLoad(ctx, "42", loadUser) // Ann, hit: from the cache
+	fmt.Println(users.GetOrLoad(ctx, "42", loadUser)) // miss: loaded
+	fmt.Println(users.GetOrLoad(ctx, "42", loadUser)) // hit
 	// --8<-- [end:example]
 }

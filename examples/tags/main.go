@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/eugeneliukindev/gashe"
@@ -22,13 +23,16 @@ func main() {
 		TTL:  gashe.TTL{For: time.Hour},
 		Tags: []string{"user:42"}, // one tag per user
 	}
-	loadProfile := func(context.Context) (string, error) { return name, nil }
+	loadProfile := func(context.Context) (string, error) {
+		fmt.Println("SELECT name FROM users WHERE id = 42")
+		return name, nil
+	}
 
-	gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile) // Ann: loaded
-	gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile) // Ann: from the cache
+	fmt.Println(gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile))
+	fmt.Println(gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile))
 
 	name = "Anna" // UPDATE users SET name = 'Anna' WHERE id = 42
 	c.InvalidateTags(ctx, "user:42")
-	gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile) // Anna: loaded again
+	fmt.Println(gashe.GetOrLoad(ctx, c, "profile:42", policy, loadProfile))
 	// --8<-- [end:example]
 }

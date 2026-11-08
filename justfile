@@ -87,11 +87,11 @@ commitizen-check file:
 test: _work
     go test -race ./... ./backend/redis/... ./codec/msgpack/... ./compress/zstd/...
 
-[doc("Run examples that need no server")]
+[doc("Run examples that need no server; output.txt next to one is what it must print")]
 [group('test')]
 [working-directory('examples')]
 test-examples: _work
-    for e in $(find . -name main.go -exec dirname {} \; | sort); do sed 's#//.*##' "$e"/*.go | grep -qE '{{ needs_service }}' && continue; echo "== example $e"; go run "$e" > /dev/null; done
+    for e in $(find . -name main.go -exec dirname {} \; | sort); do sed 's#//.*##' "$e"/*.go | grep -qE '{{ needs_service }}' && continue; echo "== example $e"; if [ -f "$e/output.txt" ]; then go run "$e" | diff -u "$e/output.txt" -; else go run "$e" > /dev/null; fi; done
 
 [doc("Run Redis tests in Docker: just test-redis valkey -run Lock")]
 [group('test')]

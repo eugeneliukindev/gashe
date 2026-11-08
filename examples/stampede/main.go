@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,6 +34,7 @@ func main() {
 			gashe.GetOrLoad(ctx, c, "report:today", policy, loadReport)
 		})
 	}
-	wg.Wait() // loads is 1: a thousand calls share one load
+	wg.Wait()
+	fmt.Println("loads:", loads.Load()) // a thousand calls share one load
 	// --8<-- [end:example]
 }

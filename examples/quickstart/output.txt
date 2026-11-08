@@ -1,0 +1,3 @@
+SELECT * FROM users WHERE id = 42
+{42 Ann} <nil>
+{42 Ann} <nil>
