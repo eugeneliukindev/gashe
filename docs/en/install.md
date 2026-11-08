@@ -1,7 +1,3 @@
----
-status: new
----
-
 # Install { #install }
 
 gashe needs Go 1.25 or newer. The modules are separate, so each brings only the dependency of

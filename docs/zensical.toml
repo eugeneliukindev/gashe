@@ -58,9 +58,6 @@ nav = [
   { "Release notes" = ["changelog.md", "about/version-policy.md", "about/migration.md"] },
 ]
 
-[project.extra.status]
-new = "Added recently"
-
 [project.theme]
 variant = "classic"
 language = "en"

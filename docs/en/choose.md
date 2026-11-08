@@ -1,7 +1,3 @@
----
-status: new
----
-
 # Which setting { #which-setting }
 
 Find the problem, then the setting that solves it and the section that shows it.
