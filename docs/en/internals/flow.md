@@ -32,7 +32,7 @@ flowchart TD
     backend -- yes --> entry{"an entry that decodes, of the same type shape,<br/>stored after the last InvalidateTags of its Tags?"}
     entry -- no --> miss1[["Load, a miss"]]
     entry -- yes --> negative{"a stored not found?"}
-    negative -- "yes, within Negative.TTL" --> notFound(["ErrNotFound"])
+    negative -- "yes, within Negative.For" --> notFound(["ErrNotFound"])
     negative -- "yes, expired" --> miss2[["Load, a miss"]]
     negative -- no --> fresh{"within TTL?"}
     fresh -- yes --> hit(["the stored result"])
@@ -93,7 +93,7 @@ flowchart TD
 ```
 
 A result the codec cannot encode is not stored, and the error goes to `OnError`. A not found is
-stored the same way, for `Negative.TTL`, with no `Store` rules.
+stored the same way, for `Negative.For`, with no `Store` rules.
 
 ## Backend down { #backend-down }
 

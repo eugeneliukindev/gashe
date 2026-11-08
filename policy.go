@@ -118,9 +118,9 @@ type Stampede struct {
 
 // Negative caches loader errors that mean "there is no such data".
 type Negative struct {
-	// TTL is how long the negative answer is kept.
+	// For is how long the negative answer is kept.
 	// Required with IsNotFound; Jitter applies.
-	TTL time.Duration
+	For time.Duration
 	// IsNotFound picks the loader errors that mean "not found": answers, not failures. GetOrLoad returns
 	// ErrNotFound for them, wrapping the loader error when it loaded, and alone while the answer
 	// is cached; the stale result never hides them. nil turns negative caching off.
@@ -177,11 +177,11 @@ func (o Policy[V]) check() (ttl func(V) time.Duration, err error) {
 	}{
 		{
 			negative(o.Stale.WhileRevalidate, o.Stale.IfError.For, o.Stale.IfSlow.For, o.Stale.IfSlow.After,
-				o.Stampede.LockFor, o.Negative.TTL, o.Store.SlowerThan),
+				o.Stampede.LockFor, o.Negative.For, o.Store.SlowerThan),
 			"durations must not be negative",
 		},
 		{o.TTL.Jitter < 0 || o.TTL.Jitter >= 1, "TTL.Jitter must be from 0 to less than 1"},
-		{o.Negative.IsNotFound != nil && o.Negative.TTL == 0, "Negative needs a TTL"},
+		{o.Negative.IsNotFound != nil && o.Negative.For == 0, "Negative needs For"},
 		{(o.Stale.IfSlow.For > 0) != (o.Stale.IfSlow.After > 0), "Stale.IfSlow needs both For and After"},
 		{o.Stampede.MaxLoads < 0, "Stampede.MaxLoads must not be negative"},
 		{

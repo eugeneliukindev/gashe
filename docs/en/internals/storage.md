@@ -32,7 +32,7 @@ Parts are joined as they are, so put the separators into the prefixes yourself.
 | API | TTL |
 |---|---|
 | [`GetOrLoad`](../reference/gashe.md#GetOrLoad) | how long a result is fresh; the entry is kept for `TTL` plus the longest of [`Stale.WhileRevalidate`](../reference/gashe.md#Stale), [`Stale.IfError.For`](../reference/gashe.md#Stale) and [`Stale.IfSlow.For`](../reference/gashe.md#Stale), then the backend drops it |
-| [`Negative`](../reference/gashe.md#Negative) | a "not found" lives [`Negative.TTL`](../reference/gashe.md#Negative), with [`TTL.Jitter`](../reference/gashe.md#TTL) |
+| [`Negative`](../reference/gashe.md#Negative) | a "not found" lives [`Negative.For`](../reference/gashe.md#Negative), with [`TTL.Jitter`](../reference/gashe.md#TTL) |
 | the basic API | 0 means "never expires", a negative one returns [`ErrInvalidTTL`](../reference/gashe.md#variables) |
 
 ---
@@ -63,7 +63,7 @@ entry.
 | Strategy | Key | Value | TTL |
 |---|---|---|---|
 | [`GetOrLoad`](../reference/gashe.md#GetOrLoad) | `user:42` | the entry above | `TTL` + the longer window |
-| [`Negative`](../reference/gashe.md#Negative) | `user:999` | the entry above, with `neg` | [`Negative.TTL`](../reference/gashe.md#Negative) |
+| [`Negative`](../reference/gashe.md#Negative) | `user:999` | the entry above, with `neg` | [`Negative.For`](../reference/gashe.md#Negative) |
 | [`Stale.WhileRevalidate`](../reference/gashe.md#Stale) reload | `__refresh:feed:u1` | the random id of the reloading process | `min(Stale.WhileRevalidate, 1 minute)`, deleted once stored |
 | [`Stale.IfSlow`](../reference/gashe.md#Stale) load | `__refresh:feed:u1` | the random id of the loading process | 1 minute, deleted once stored |
 | [`Stampede.LockFor`](../reference/gashe.md#Stampede) | `__load:stats:2026-11-02` | the random id of the loading process | [`Stampede.LockFor`](../reference/gashe.md#Stampede), deleted once stored |

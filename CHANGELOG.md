@@ -9,6 +9,10 @@ module it is about.
 
 ## [Unreleased]
 
+### Changed
+
+- `Negative.TTL` is now `Negative.For`, as `TTL.For`: both say how long an entry is kept.
+
 ## [0.7.0] - 2026-11-08
 
 Released as `v0.7.0`. `backend/redis`, `codec/msgpack` and `compress/zstd` have no changes and stay

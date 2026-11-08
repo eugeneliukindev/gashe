@@ -308,7 +308,7 @@ func TestLockOnMissSharesANegativeAnswer(t *testing.T) {
 		TTL:      gashe.TTL{For: time.Minute},
 		Stampede: gashe.Stampede{SingleFlight: true, LockFor: 5 * time.Second},
 		Negative: gashe.Negative{
-			TTL:        time.Minute,
+			For:        time.Minute,
 			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 		},
 	}
@@ -347,7 +347,7 @@ func TestReloadErrorKeepsTheStoredResult(t *testing.T) {
 	p := gashe.Policy[string]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			TTL:        time.Minute,
+			For:        time.Minute,
 			IsNotFound: func(err error) bool { return errors.Is(err, errMissing) },
 		},
 	}

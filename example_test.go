@@ -309,7 +309,7 @@ func ExamplePolicy_negative() {
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Negative: gashe.Negative{
-			TTL:        time.Minute,
+			For:        time.Minute,
 			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
 		},
 	})
@@ -583,7 +583,7 @@ func ExamplePolicy() {
 		},
 		Tags: []string{"users"}, // InvalidateTags(ctx, "users") drops every user
 		Negative: gashe.Negative{ // cache "not found" too
-			TTL:        time.Minute,
+			For:        time.Minute,
 			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
 		},
 		Fallback: gashe.Fallback{Backend: spare, MaxTTL: 30 * time.Second}, // answers while the backend fails

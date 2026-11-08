@@ -97,9 +97,9 @@ func (l *loading[V]) sparedEntry(ctx context.Context, key string) (entry[V], boo
 	return e, true
 }
 
-// spareNegative keeps a "not found" in Policy.Fallback for Negative.TTL.
+// spareNegative keeps a "not found" in Policy.Fallback for Negative.For.
 func (l *loading[V]) spareNegative(ctx context.Context) {
-	ttl := l.o.spread(l.o.Negative.TTL)
+	ttl := l.o.spread(l.o.Negative.For)
 	raw, err := l.c.encode(l.key, entry[V]{At: time.Now().Add(ttl), Neg: true, T: l.shape}, 0)
 	if err != nil {
 		l.c.onError(ctx, err)

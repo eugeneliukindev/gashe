@@ -97,7 +97,7 @@ The fields of the policy are in [The policy](#policy).
       [`OnError`](../reference/gashe.md#Hooks) (`stale-if-error`);
     - stale, within [`Stale.IfSlow.For`](../reference/gashe.md#Stale), and the loader is slower than [`Stale.IfSlow.After`](../reference/gashe.md#Stale): the stale
       result, the loader goes on in the background and stores its result (`stale-if-slow`);
-    - a "not found" within [`Negative.TTL`](../reference/gashe.md#Negative): [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound), the loader does not run (`negative-hit`);
+    - a "not found" within [`Negative.For`](../reference/gashe.md#Negative): [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound), the loader does not run (`negative-hit`);
     - missing or expired: the loader runs; its result is returned and stored, its error is returned
       and not stored (`miss`);
     - the backend fails and [`Fallback`](../reference/gashe.md#Fallback) has the key: the kept result, the loader does not run

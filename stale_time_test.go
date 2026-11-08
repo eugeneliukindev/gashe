@@ -167,7 +167,7 @@ func TestStaleIfErrorDoesNotHideNotFound(t *testing.T) {
 			TTL:   gashe.TTL{For: time.Minute},
 			Stale: gashe.Stale{IfError: gashe.StaleIfError{For: time.Hour}},
 			Negative: gashe.Negative{
-				TTL:        time.Minute,
+				For:        time.Minute,
 				IsNotFound: func(err error) bool { return errors.Is(err, errNotFound) },
 			},
 		}

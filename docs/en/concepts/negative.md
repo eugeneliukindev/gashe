@@ -6,7 +6,7 @@ In this section, we will go through [`Negative`](#negative-cache-not-found).
 ## Caching "not found" { #negative-cache-not-found }
 
 Clients ask again and again for an id that does not exist, and every lookup reaches the database.
-With [`Negative`](../reference/gashe.md#Negative), you cache the "not found" for a short [`Negative.TTL`](../reference/gashe.md#Negative), and every call gets
+With [`Negative`](../reference/gashe.md#Negative), you cache the "not found" for a short [`Negative.For`](../reference/gashe.md#Negative), and every call gets
 [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound) meanwhile, without a query.
 
 ```go hl_lines="3-6"
@@ -51,9 +51,9 @@ sequenceDiagram
     which [`Stale.IfError`](../reference/gashe.md#Stale) may answer with the stale result.
 
 !!! warning
-    Data created meanwhile stays "not found" until [`Negative.TTL`](../reference/gashe.md#Negative) ends: keep it short, or delete the
+    Data created meanwhile stays "not found" until [`Negative.For`](../reference/gashe.md#Negative) ends: keep it short, or delete the
     key when you create the data.
 
 ??? note "Technical details"
-    - The "not found" is an entry of its own with `neg` set, stored for [`Negative.TTL`](../reference/gashe.md#Negative), see
+    - The "not found" is an entry of its own with `neg` set, stored for [`Negative.For`](../reference/gashe.md#Negative), see
       [the GetOrLoad entry](../internals/storage.md#the-getorload-entry).
