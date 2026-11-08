@@ -28,6 +28,7 @@ nav = [
     "concepts/rate-limits.md",
     "concepts/httpcache.md",
     "troubleshooting.md",
+    "internals/flow.md",
     "internals/storage.md",
     "internals/benchmarks.md",
   ] },
