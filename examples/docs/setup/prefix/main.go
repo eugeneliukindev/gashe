@@ -14,6 +14,8 @@ func main() {
 	backend := memory.New(memory.Options{})
 	defer backend.Close()
 
+	// --8<-- [start:example]
 	c := gashe.New(backend, gashe.Options{Prefix: "orders:"}) // stores orders:user:42
 	c.Set(ctx, "user:42", "Ann", time.Hour)
+	// --8<-- [end:example]
 }

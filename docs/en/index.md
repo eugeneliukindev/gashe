@@ -86,11 +86,17 @@ A user is loaded once, then answered from Redis by every process for an hour; af
 stale result answers at once while one process reloads it.
 
 ```go
---8<-- "examples/docs/index/example/main.go"
+--8<-- "examples/docs/index/example/main.go:example"
 ```
 
 1. For 10 minutes after the TTL, the stale result answers at once while one process reloads it in the background.
 2. A cold key loads once for all processes.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/index/example/main.go"
+    ```
 
 ## What it solves { #what-it-solves }
 

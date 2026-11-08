@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	client := goredis.NewUniversalClient(&goredis.UniversalOptions{Addrs: []string{"localhost:6379"}})
 	defer client.Close()
 
@@ -26,4 +27,5 @@ func main() {
 	defer backend.Close() // stops listening to the bus
 
 	_ = gashe.New(backend, gashe.Options{})
+	// --8<-- [end:example]
 }

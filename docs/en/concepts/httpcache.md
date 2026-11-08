@@ -12,9 +12,15 @@ Many requests get the same page, and each one runs your handler again. With [`ht
 wrap the handler in a middleware that stores its responses in a [`*gashe.Cache`](../reference/gashe.md#Cache) and answers hits
 without calling it.
 
-```go hl_lines="23-33"
---8<-- "examples/docs/httpcache/options/main.go"
+```go hl_lines="3-13"
+--8<-- "examples/docs/httpcache/options/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/httpcache/options/main.go"
+    ```
 
 **Signature:** `func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler` · Every field: [`httpcache.Options`](../reference/httpcache.md#Options), [`Vary`](../reference/httpcache.md#Vary)
 
@@ -61,9 +67,15 @@ What a request gets; its key is the host, the path and what [`Vary`](../referenc
     - The handler writes into a buffer first: [`MaxBodyBytes`](../reference/httpcache.md#Options) decides what is stored, not how much
       memory a render takes.
 
-```go hl_lines="20-23"
---8<-- "examples/httpserver/main.go"
+```go hl_lines="2-5"
+--8<-- "examples/httpserver/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/httpserver/main.go"
+    ```
 
 ---
 
@@ -81,9 +93,15 @@ holds after the request: the keys of the page, and how long they live.
 
 The server of `/products`:
 
-```go hl_lines="32-35"
---8<-- "examples/httpapi/products/main.go"
+```go hl_lines="7-10"
+--8<-- "examples/httpapi/products/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/httpapi/products/main.go"
+    ```
 
 ### The first request renders and stores { #the-first-request-renders-and-stores }
 
@@ -200,9 +218,15 @@ The page might depend on the session, so it is neither read nor stored: `fwd=req
 `/report` is fresh for a second, and [`Stale.IfError`](../reference/gashe.md#Stale) keeps it for an hour. Its handler works once,
 then fails:
 
-```go hl_lines="31"
---8<-- "examples/httpapi/report/main.go"
+```go hl_lines="6"
+--8<-- "examples/httpapi/report/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/httpapi/report/main.go"
+    ```
 
 ```mermaid
 sequenceDiagram
@@ -250,9 +274,15 @@ sequenceDiagram
 `/export` renders for two seconds with `Stampede.MaxLoads: 1`, and each request has 2.5 seconds,
 the render included:
 
-```go hl_lines="26 31-32"
---8<-- "examples/httpapi/export/main.go"
+```go hl_lines="6 11-12"
+--8<-- "examples/httpapi/export/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/httpapi/export/main.go"
+    ```
 
 ```mermaid
 sequenceDiagram
@@ -349,11 +379,17 @@ Behind a proxy, `Host` may name the upstream, not the site the page is built for
 headers that carry the real host into [`Vary.Headers`](../reference/httpcache.md#Vary), so the key holds the host the handler builds
 the page for.
 
-```go hl_lines="20-22"
---8<-- "examples/docs/httpcache/reverse-proxy/main.go"
+```go hl_lines="5-7"
+--8<-- "examples/docs/httpcache/reverse-proxy/main.go:example"
 ```
 
 1. These headers are set by your proxy, not by clients.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/httpcache/reverse-proxy/main.go"
+    ```
 
 !!! warning
     Trust `X-Forwarded-*` only where your proxy sets it and drops what the client sent.

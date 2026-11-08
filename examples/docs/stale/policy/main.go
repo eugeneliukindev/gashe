@@ -18,6 +18,7 @@ func isOutage(err error) bool { return errors.Is(err, errDown) }
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 
 	users := gashe.For(c, gashe.Policy[User]{
@@ -36,4 +37,5 @@ func main() {
 	})
 
 	users.GetOrLoad(ctx, "42", func(context.Context) (User, error) { return User{Name: "Ann"}, nil }) // Ann, miss
+	// --8<-- [end:example]
 }

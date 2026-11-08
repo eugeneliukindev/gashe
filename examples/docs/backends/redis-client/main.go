@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	client := goredis.NewUniversalClient(&goredis.UniversalOptions{
 		Addrs:        []string{"localhost:6379"},
 		ReadTimeout:  100 * time.Millisecond, // (1)!
@@ -20,4 +21,5 @@ func main() {
 	backend := gasheredis.New(client)
 
 	_ = gashe.New(backend, gashe.Options{})
+	// --8<-- [end:example]
 }

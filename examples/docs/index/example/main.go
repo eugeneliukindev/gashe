@@ -16,6 +16,7 @@ type User struct{ Name string }
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
 	defer client.Close()
 	c := gashe.New(gasheredis.New(client), gashe.Options{Prefix: "app:"})
@@ -35,4 +36,5 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(u.Name)
+	// --8<-- [end:example]
 }

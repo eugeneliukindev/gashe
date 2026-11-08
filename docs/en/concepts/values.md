@@ -11,9 +11,15 @@ The basic API takes plain values and a TTL in every call, with no [`Policy`](../
 !!! warning
     It does not read entries of [`GetOrLoad`](../reference/gashe.md#GetOrLoad): keep one key on one side.
 
-```go hl_lines="18 21"
---8<-- "examples/basic/main.go"
+```go hl_lines="1 4"
+--8<-- "examples/basic/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/basic/main.go"
+    ```
 
 The methods: [`Cache.Set`](../reference/gashe.md#Cache.Set), [`Cache.SetIfAbsent`](../reference/gashe.md#Cache.SetIfAbsent), [`Cache.SetIfPresent`](../reference/gashe.md#Cache.SetIfPresent), [`Cache.SetMany`](../reference/gashe.md#Cache.SetMany), [`Cache.Get`](../reference/gashe.md#Cache.Get), [`Cache.GetMany`](../reference/gashe.md#Cache.GetMany), [`Cache.Delete`](../reference/gashe.md#Cache.Delete), [`Cache.DeleteMany`](../reference/gashe.md#Cache.DeleteMany).
 

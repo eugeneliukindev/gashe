@@ -25,6 +25,7 @@ func productsByID(_ context.Context, ids []string) (map[string]Product, error) {
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 
 	productPolicy := gashe.Policy[Product]{TTL: gashe.TTL{For: time.Hour}, Prefix: "product:"}
@@ -36,4 +37,5 @@ func main() {
 		return productsByID(ctx, missing) // SELECT ... WHERE id = ANY($1)
 	})
 	gashe.GetOrLoadMany(ctx, c, ids, productPolicy, loadProducts) // the same without For
+	// --8<-- [end:example]
 }

@@ -22,6 +22,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
+	// --8<-- [start:example]
 	provider, p := Provider{}, Payment{Amount: 100}
 
 	payments := gashe.CircuitBreaker{
@@ -34,4 +35,5 @@ func main() {
 		return provider.Charge(ctx, p)
 	})
 	_, _ = receipt, err
+	// --8<-- [end:example]
 }

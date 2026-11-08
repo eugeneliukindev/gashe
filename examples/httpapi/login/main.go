@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -32,4 +33,5 @@ func main() {
 		fmt.Fprintln(w, "login form")
 	})
 	http.ListenAndServe("localhost:8080", nil)
+	// --8<-- [end:example]
 }

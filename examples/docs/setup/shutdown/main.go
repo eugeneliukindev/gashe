@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	// --8<-- [start:example]
 	client := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
 	c := gashe.New(gasheredis.New(client), gashe.Options{})
 	srv := &http.Server{Addr: ":8080", ReadHeaderTimeout: 5 * time.Second}
@@ -29,4 +30,5 @@ func main() {
 	_ = srv.Shutdown(ctx) // the HTTP server first
 	_ = c.Shutdown(ctx)
 	_ = client.Close() // the backend last
+	// --8<-- [end:example]
 }

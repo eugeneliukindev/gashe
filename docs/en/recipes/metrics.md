@@ -17,8 +17,14 @@ gashe has no dependencies: the metrics library is in your code, fed by [`Options
 A cache with the hooks, six calls and the `/metrics` page, `main.go`:
 
 ```go
---8<-- "examples/docs/metrics/prometheus/main.go"
+--8<-- "examples/docs/metrics/prometheus/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/metrics/prometheus/main.go"
+    ```
 
 The metrics after it ran, the buckets left out:
 
@@ -56,8 +62,14 @@ More on the hooks: [`OnResult`, `OnError`](../concepts/setup.md#onresult-onerror
 The same three instruments on the global `MeterProvider`; your OpenTelemetry setup exports them.
 
 ```go
---8<-- "examples/docs/metrics/opentelemetry/main.go"
+--8<-- "examples/docs/metrics/opentelemetry/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/metrics/opentelemetry/main.go"
+    ```
 
 ## Variations { #variations }
 

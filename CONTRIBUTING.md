@@ -76,7 +76,8 @@ just lychee            # external links, with lychee in Docker; CI checks them e
 ```
 
 The pages include the code of the examples from `examples/` with `--8<--`: the part between
-`// --8<-- [start:api]` and `// --8<-- [end:api]`, so a page shows the API, not the setup. An
+`// --8<-- [start:example]` and `// --8<-- [end:example]` (`"file.go:example"`), so a page shows
+the API, not the setup, and the whole program follows, folded, under "Full program". An
 example prints nothing: a comment at each call says what it returns, checked against a real run.
 Responses of curl and what the backend holds are in `docs/snippets/`. Headings carry fixed ids
 (`{ #id }`), so links keep working when a heading is reworded.

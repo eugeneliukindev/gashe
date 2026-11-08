@@ -23,6 +23,7 @@ func listProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 	cached := httpcache.New(c, httpcache.Options{
 		Policy: gashe.Policy[httpcache.Response]{
@@ -36,4 +37,5 @@ func main() {
 	})
 	http.Handle("/products", cached(http.HandlerFunc(listProducts)))
 	http.ListenAndServe("localhost:8080", nil)
+	// --8<-- [end:example]
 }

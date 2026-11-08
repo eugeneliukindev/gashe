@@ -16,6 +16,7 @@ type User struct {
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	mem := memory.New(memory.Options{}) // the backend: where entries live
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
@@ -31,4 +32,5 @@ func main() {
 
 	users.GetOrLoad(ctx, "42", loadUser) // Ann, miss: loaded and stored
 	users.GetOrLoad(ctx, "42", loadUser) // Ann, hit: from the cache
+	// --8<-- [end:example]
 }

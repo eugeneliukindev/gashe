@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	products := gashe.For(c, gashe.Policy[Product]{
 		TTL: gashe.TTL{For: time.Hour, Jitter: 0.2},
 	}) // 48 to 72 minutes each
@@ -24,4 +25,5 @@ func main() {
 	products.GetOrLoad(ctx, "7", func(context.Context) (Product, error) {
 		return Product{Name: "Lamp"}, nil
 	}) // Lamp, miss
+	// --8<-- [end:example]
 }

@@ -28,11 +28,17 @@ The read and the write, `load.go`:
 The setup, `main.go`:
 
 ```go
---8<-- "examples/docs/postgres/users/main.go"
+--8<-- "examples/docs/postgres/users/main.go:example"
 ```
 
 1. A slow cache must not slow the service down.
 2. Binary: smaller and faster to decode than JSON.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/postgres/users/main.go"
+    ```
 
 ## How it works { #how-it-works }
 
@@ -56,8 +62,14 @@ When one write changes many entries, tag them and bump the tag after the write, 
 The calls, `main.go`:
 
 ```go
---8<-- "examples/docs/postgres/tags/main.go"
+--8<-- "examples/docs/postgres/tags/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/postgres/tags/main.go"
+    ```
 
 | Part | What it does |
 |---|---|

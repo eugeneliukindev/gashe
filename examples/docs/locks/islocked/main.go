@@ -15,9 +15,11 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	lease, _ := c.Lock(ctx, "job:reindex", time.Minute)
 
 	c.IsLocked(ctx, "job:reindex") // true
 	lease.Unlock(ctx)
 	c.IsLocked(ctx, "job:reindex") // false
+	// --8<-- [end:example]
 }

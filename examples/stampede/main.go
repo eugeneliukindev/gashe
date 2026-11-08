@@ -13,6 +13,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 
 	policy := gashe.Policy[string]{
@@ -33,4 +34,5 @@ func main() {
 		})
 	}
 	wg.Wait() // loads is 1: a thousand calls share one load
+	// --8<-- [end:example]
 }

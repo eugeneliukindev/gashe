@@ -15,6 +15,7 @@ func main() {
 	backend := memory.New(memory.Options{})
 	defer backend.Close()
 
+	// --8<-- [start:example]
 	onResult := func(_ context.Context, o gashe.Outcome) { log.Println(o.Key, o.Result) }
 	onError := func(_ context.Context, err error) { log.Println("cache:", err) }
 	cacheBreaker := gashe.CircuitBreaker{
@@ -37,4 +38,5 @@ func main() {
 		},
 	})
 	defer c.Shutdown(context.Background())
+	// --8<-- [end:example]
 }

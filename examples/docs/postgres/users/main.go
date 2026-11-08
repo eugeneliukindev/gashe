@@ -16,6 +16,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	db, _ := sql.Open("pgx", "postgres://localhost:5432/app") // connects on the first query
 	defer db.Close()
 	client := goredis.NewClient(&goredis.Options{
@@ -33,4 +34,5 @@ func main() {
 	_ = users.Rename(ctx, 42, "Ann")
 	u, _ := users.Get(ctx, 42)
 	fmt.Println(u.Name) // Ann
+	// --8<-- [end:example]
 }

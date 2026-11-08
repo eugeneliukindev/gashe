@@ -20,6 +20,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	// skip empty results
 	feed := gashe.For(c, gashe.Policy[[]Item]{
 		TTL:   gashe.TTL{For: time.Minute},
@@ -34,4 +35,5 @@ func main() {
 
 	feed.GetOrLoad(ctx, "home", func(context.Context) ([]Item, error) { return nil, nil }) // empty: not stored
 	users.GetOrLoad(ctx, "42", func(context.Context) (User, error) { return User{Name: "Ann"}, nil })
+	// --8<-- [end:example]
 }

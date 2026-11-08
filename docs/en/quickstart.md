@@ -10,18 +10,30 @@ cache answers. [`gashe.New`](reference/gashe.md#New) creates the cache,
 [`gashe.For`](reference/gashe.md#For) binds the policy to it, and
 [`GetOrLoad`](reference/gashe.md#Cached[V].GetOrLoad) reads or loads.
 
-```go hl_lines="21 23-26 32"
---8<-- "examples/quickstart/main.go"
+```go hl_lines="3 5-8 14"
+--8<-- "examples/quickstart/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/quickstart/main.go"
+    ```
 
 ## On Redis { #on-redis }
 
 A service runs as many processes, each with its own memory: a memory backend is never shared.
 Redis is. Only the backend changes:
 
-```go hl_lines="12-14"
---8<-- "examples/docs/quickstart/redis/main.go"
+```go hl_lines="1-3"
+--8<-- "examples/docs/quickstart/redis/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/quickstart/redis/main.go"
+    ```
 
 Every process with the same Redis now sees the same entries, tags and locks.
 
@@ -30,13 +42,19 @@ Every process with the same Redis now sees the same entries, tags and locks.
 A [`gashe.Policy`](concepts/loading.md#policy) holds the rules of one kind of data. These are the
 fields most services set first; every field is in [The policy](concepts/loading.md#policy).
 
-```go hl_lines="18-23"
---8<-- "examples/docs/quickstart/policy/main.go"
+```go hl_lines="1-6"
+--8<-- "examples/docs/quickstart/policy/main.go:example"
 ```
 
 1. A result is fresh for an hour.
 2. Users live under `user:`, apart from other kinds of data.
 3. For 10 minutes after that, the stale result answers at once while one process reloads it.
 4. A cold key loads once for all processes, not once per process.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/quickstart/policy/main.go"
+    ```
 
 **Signature:** `func For[V any](c *Cache, o Policy[V]) Cached[V]` · Every field: [`Policy`](reference/gashe.md#Policy)

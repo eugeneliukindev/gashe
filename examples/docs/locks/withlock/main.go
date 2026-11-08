@@ -17,7 +17,9 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	c.WithLock(ctx, "job:reindex", time.Minute, func(ctx context.Context) error {
 		return reindex(ctx)
 	}) // nil: the error of reindex
+	// --8<-- [end:example]
 }

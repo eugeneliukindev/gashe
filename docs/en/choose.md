@@ -1,6 +1,7 @@
 # Which setting { #which-setting }
 
-Find the problem, then the setting that solves it and the section that shows it.
+Find the problem, then the setting that solves it and the section that shows it. Every field at
+once is in [Settings](settings.md).
 
 ## Load and store { #load-and-store }
 

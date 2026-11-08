@@ -42,6 +42,7 @@ nav = [
   ] },
   { "Reference" = [
     "reference.md",
+    "settings.md",
     { "gashe" = "reference/gashe.md" },
     { "memory" = "reference/memory.md" },
     { "redis" = "reference/redis.md" },
@@ -130,6 +131,7 @@ markdown_description = "gashe is a caching library for Go services that run as m
 ]
 "Reference" = [
   { "reference.md" = "the packages, with links to pkg.go.dev" },
+  { "settings.md" = "every field of the options and the policy, as written in code" },
   "internals/*.md",
   { "changelog.md" = "notable changes of every release" },
   { "glossary.md" = "the terms of the domain" },

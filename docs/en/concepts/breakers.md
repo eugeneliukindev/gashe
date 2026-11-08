@@ -13,9 +13,15 @@ A payment provider is down, and every call waits for its timeout and fails. With
 run each call through the circuit breaker of a key: once too many calls fail, the dependency is not
 called for a while.
 
-```go hl_lines="27-35"
---8<-- "examples/docs/breakers/guard/main.go"
+```go hl_lines="3-11"
+--8<-- "examples/docs/breakers/guard/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/breakers/guard/main.go"
+    ```
 
 **Signature:** `func Guard[T any](c *Cache, key string, o CircuitBreaker, call func() (T, error)) (T, error)` · Every field: [`CircuitBreaker`](../reference/gashe.md#CircuitBreaker)
 
@@ -57,9 +63,15 @@ sequenceDiagram
     - [`Window`](../reference/gashe.md#CircuitBreaker) is counted in 10 parts and slides by one part at a time; opening clears the counts.
     - In Redis: nothing; checking the breaker costs no round trip.
 
-```go hl_lines="28-29 33"
---8<-- "examples/breaker/main.go"
+```go hl_lines="11-12 16"
+--8<-- "examples/breaker/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/breaker/main.go"
+    ```
 
 ---
 

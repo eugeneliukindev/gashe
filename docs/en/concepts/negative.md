@@ -9,9 +9,15 @@ Clients ask again and again for an id that does not exist, and every lookup reac
 With [`Negative`](../reference/gashe.md#Negative), you cache the "not found" for a short [`Negative.TTL`](../reference/gashe.md#Negative), and every call gets
 [`gashe.ErrNotFound`](../reference/gashe.md#ErrNotFound) meanwhile, without a query.
 
-```go hl_lines="17-20"
---8<-- "examples/docs/negative/policy/main.go"
+```go hl_lines="3-6"
+--8<-- "examples/docs/negative/policy/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/negative/policy/main.go"
+    ```
 
 Here the first `GetOrLoad("999")` stores the "not found", lookups within 30 seconds get it without a
 query, and after that the loader runs again:

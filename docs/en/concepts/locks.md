@@ -11,9 +11,15 @@ A job must never run twice at once, but every process may start it. With [`Cache
 function under a lock that one caller across all processes holds, and the lock is kept as long as
 the function runs.
 
-```go hl_lines="20-22"
---8<-- "examples/docs/locks/withlock/main.go"
+```go hl_lines="1-3"
+--8<-- "examples/docs/locks/withlock/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/locks/withlock/main.go"
+    ```
 
 **Signature:** `func (c *Cache) WithLock(ctx context.Context, key string, ttl time.Duration, fn func(ctx context.Context) error) error`
 
@@ -61,9 +67,15 @@ sequenceDiagram
     - The lock is a key that holds the random id of its holder.
     - In Redis: as [`Cache.Lock`](../reference/gashe.md#Cache.Lock), [`Lease.Extend`](../reference/gashe.md#Lease) and [`Lease.Unlock`](../reference/gashe.md#Lease.Unlock).
 
-```go hl_lines="20 26-27"
---8<-- "examples/lock/main.go"
+```go hl_lines="2 8-9"
+--8<-- "examples/lock/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/lock/main.go"
+    ```
 
 ---
 
@@ -130,9 +142,15 @@ else holds it, and get a [`*gashe.Lease`](../reference/gashe.md#Lease) you relea
 Your work takes longer than the TTL of the lock. With [`Lease.Extend`](../reference/gashe.md#Lease.Extend), you give the lock a new TTL
 from now, if it is still yours.
 
-```go hl_lines="21"
---8<-- "examples/docs/locks/extend/main.go"
+```go hl_lines="4"
+--8<-- "examples/docs/locks/extend/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/locks/extend/main.go"
+    ```
 
 **Signature:** `func (l *Lease) Extend(ctx context.Context, ttl time.Duration) error`
 
@@ -154,9 +172,15 @@ A lock left behind blocks others until its TTL ends. With [`Lease.Unlock`](../re
 is still yours; it ignores the cancellation of `ctx`, so a finished request does not leave the lock
 behind.
 
-```go hl_lines="20"
---8<-- "examples/docs/locks/unlock/main.go"
+```go hl_lines="3"
+--8<-- "examples/docs/locks/unlock/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/locks/unlock/main.go"
+    ```
 
 **Signature:** `func (l *Lease) Unlock(ctx context.Context) error`
 
@@ -171,9 +195,15 @@ behind.
 
 With [`Cache.IsLocked`](../reference/gashe.md#Cache.IsLocked), you check whether someone holds the lock, without taking it.
 
-```go hl_lines="20 22"
---8<-- "examples/docs/locks/islocked/main.go"
+```go hl_lines="3 5"
+--8<-- "examples/docs/locks/islocked/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/locks/islocked/main.go"
+    ```
 
 **Signature:** `func (c *Cache) IsLocked(ctx context.Context, key string) (bool, error)`
 

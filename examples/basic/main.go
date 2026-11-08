@@ -15,6 +15,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	c.Set(ctx, "greeting", "hello", time.Minute)
 
 	var s string
@@ -27,4 +28,5 @@ func main() {
 	c.IncrBy(ctx, "visits", 1, time.Hour) // 2
 
 	c.TTL(ctx, "greeting") // about a minute
+	// --8<-- [end:example]
 }

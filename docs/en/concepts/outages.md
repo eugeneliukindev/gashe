@@ -14,9 +14,15 @@ With the backend down, every call waits for its timeout before it goes to the lo
 [`Options.CircuitBreaker`](../reference/gashe.md#Options), the cache stops calling a failing backend for a while: calls fail at once
 with [`ErrCircuitOpen`](../reference/gashe.md#variables), and [`GetOrLoad`](../reference/gashe.md#GetOrLoad) goes straight to the loader.
 
-```go hl_lines="15-20"
---8<-- "examples/docs/outages/circuit-breaker/main.go"
+```go hl_lines="1-6"
+--8<-- "examples/docs/outages/circuit-breaker/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/outages/circuit-breaker/main.go"
+    ```
 
 With the options above, Redis stops at t = 0: until the breaker opens, every call waits for the
 go-redis timeout; while it is open, calls fail at once.
@@ -70,11 +76,17 @@ With [`Fallback`](../reference/gashe.md#Fallback), while the backend fails or [`
 policy keeps its result in [`Fallback.Backend`](../reference/gashe.md#Fallback) and answers from it: one load per key and process, not
 one per call.
 
-```go hl_lines="20-27"
---8<-- "examples/docs/outages/fallback/main.go"
+```go hl_lines="1-8"
+--8<-- "examples/docs/outages/fallback/main.go:example"
 ```
 
 1. A backend of its own; policies may share it.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/outages/fallback/main.go"
+    ```
 
 Where a call looks: the breaker guards the whole backend given to [`gashe.New`](../reference/gashe.md#New), so while it is open
 the near cache is not read either.

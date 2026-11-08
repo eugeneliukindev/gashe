@@ -8,9 +8,15 @@ we will go through [`Cache.RateLimit`](#cratelimit) and [its requests and respon
 A client calls far too often. With [`Cache.RateLimit`](../reference/gashe.md#Cache.RateLimit), you count its calls across all processes and
 refuse the ones over the limit.
 
-```go hl_lines="23-31 33-37"
---8<-- "examples/docs/rate-limits/login/main.go"
+```go hl_lines="4-12 14-18"
+--8<-- "examples/docs/rate-limits/login/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/rate-limits/login/main.go"
+    ```
 
 **Signature:** `func (c *Cache) RateLimit(ctx context.Context, key string, limit Limit) error` · Every field: [`Limit`](../reference/gashe.md#Limit)
 
@@ -59,9 +65,15 @@ sequenceDiagram
       to [`BanFor`](../reference/gashe.md#FixedWindow) or `PTTL`. [`SlidingWindow`](../reference/gashe.md#SlidingWindow) runs `INCRBY` of the current span, `GET` of the last
       one, and `INCRBY -1` when the call is refused.
 
-```go hl_lines="26 31 34"
---8<-- "examples/ratelimit/main.go"
+```go hl_lines="7 12 15"
+--8<-- "examples/ratelimit/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/ratelimit/main.go"
+    ```
 
 ```text title="In the backend"
 --8<-- "docs/snippets/backend/ratelimit.txt"
@@ -74,9 +86,15 @@ sequenceDiagram
 This server allows two calls a minute per client to `/login`, with
 `FixedWindow{Calls: 2, Per: time.Minute, BanFor: 15 * time.Minute}`:
 
-```go hl_lines="21-25"
---8<-- "examples/httpapi/login/main.go"
+```go hl_lines="4-8"
+--8<-- "examples/httpapi/login/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/httpapi/login/main.go"
+    ```
 
 Three calls:
 

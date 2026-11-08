@@ -13,6 +13,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
+	// --8<-- [start:example]
 	pages := gashe.Policy[httpcache.Response]{TTL: gashe.TTL{For: time.Minute}}
 
 	cached := httpcache.New(c, httpcache.Options{
@@ -22,4 +23,5 @@ func main() {
 		},
 	})
 	_ = cached
+	// --8<-- [end:example]
 }

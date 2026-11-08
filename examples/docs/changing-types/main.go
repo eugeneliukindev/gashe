@@ -18,6 +18,7 @@ func main() {
 	mem := memory.New(memory.Options{})
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
+	// --8<-- [start:example]
 	loadV1 := func(context.Context) (UserV1, error) { return UserV1{Name: "Ann"}, nil }
 	loadV2 := func(context.Context) (UserV2, error) { return UserV2{FullName: "Ann Lee"}, nil }
 
@@ -36,4 +37,5 @@ func main() {
 	v2p.GetOrLoad(ctx, "42", loadV2) // miss
 	v2p.GetOrLoad(ctx, "42", loadV2) // hit
 	v1.GetOrLoad(ctx, "42", loadV1)  // hit: users:42 is left to the old processes
+	// --8<-- [end:example]
 }

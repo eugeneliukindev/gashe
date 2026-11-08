@@ -16,6 +16,7 @@ type (
 
 func main() {
 	ctx := context.Background()
+	// --8<-- [start:example]
 	c := gashe.New(memory.New(memory.Options{}), gashe.Options{})
 
 	profiles := gashe.For(c, gashe.Policy[Profile]{
@@ -30,4 +31,5 @@ func main() {
 
 	// db.ExecContext(ctx, "UPDATE users SET name = $1 WHERE id = 42", "Ann")
 	c.InvalidateTags(ctx, "user:42") // (1)!
+	// --8<-- [end:example]
 }

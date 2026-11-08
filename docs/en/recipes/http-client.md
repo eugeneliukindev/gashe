@@ -24,8 +24,14 @@ The loader turns every answer of the API into a result or an error:
 keep `WeatherAPI` and pass the real base URL.
 
 ```go
---8<-- "examples/docs/http-client/main.go"
+--8<-- "examples/docs/http-client/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/http-client/main.go"
+    ```
 
 ## How it works { #how-it-works }
 

@@ -11,9 +11,15 @@ A cold key is asked for by a thousand calls in ten processes at once, and each w
 query. With [`Stampede`](../reference/gashe.md#Stampede), you say how calls share loads: within the process, across processes, and
 how many run at once.
 
-```go hl_lines="22-26"
---8<-- "examples/docs/stampedes/policy/main.go"
+```go hl_lines="3-7"
+--8<-- "examples/docs/stampedes/policy/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stampedes/policy/main.go"
+    ```
 
 - They work together: with [`SingleFlight`](../reference/gashe.md#Stampede), the calls of a process share one load first, and only
   that load takes the lock of [`LockFor`](../reference/gashe.md#Stampede); that load takes one slot of [`MaxLoads`](../reference/gashe.md#Stampede).
@@ -28,9 +34,15 @@ A thousand requests ask for one key at once, and each would send its own query. 
 [`Stampede.SingleFlight`](../reference/gashe.md#Stampede), concurrent calls for one key and type in a process share one lookup and
 one load, and all of them get its result. Across processes, [`LockFor`](#lockonmiss) does the same.
 
-```go hl_lines="20"
---8<-- "examples/stampede/main.go"
+```go hl_lines="5"
+--8<-- "examples/stampede/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/stampede/main.go"
+    ```
 
 - The shared load runs with the `ctx` values of the call that started it, but not with its
   deadline: it ends once the last waiting call has left.
@@ -49,9 +61,15 @@ one load, and all of them get its result. Across processes, [`LockFor`](#lockonm
 A key misses in ten processes at once, and each sends the same query to the database. With
 [`Stampede.LockFor`](../reference/gashe.md#Stampede), one process loads and the others wait for its result.
 
-```go hl_lines="22"
---8<-- "examples/docs/stampedes/lock-for/main.go"
+```go hl_lines="3"
+--8<-- "examples/docs/stampedes/lock-for/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stampedes/lock-for/main.go"
+    ```
 
 Three processes miss one key at once: A takes the lock and sends the one query, B and C
 wait, then read the result of A.
@@ -96,11 +114,17 @@ A thousand cold keys after a deploy, or with the cache down, send a thousand que
 sharing a load and [`Fallback`](../reference/gashe.md#Fallback) only help with one key. With [`Stampede.MaxLoads`](../reference/gashe.md#Stampede), at most this many
 loads of one kind of data, its type and `Prefix`, run at once in one [`*gashe.Cache`](../reference/gashe.md#Cache).
 
-```go hl_lines="23"
---8<-- "examples/docs/stampedes/max-loads/main.go"
+```go hl_lines="4"
+--8<-- "examples/docs/stampedes/max-loads/main.go:example"
 ```
 
 1. At most 20 loads of users at once in this process.
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stampedes/max-loads/main.go"
+    ```
 
 - The slots live in the [`*gashe.Cache`](../reference/gashe.md#Cache): two caches in one process have separate limits, and 10
   processes let up to 10 times as many loads reach the source.
@@ -131,9 +155,15 @@ loads of one kind of data, its type and `Prefix`, run at once in one [`*gashe.Ca
 Keys stored together expire together, and their loads hit the source at the same second. With
 [`TTL.Jitter`](../reference/gashe.md#TTL), every TTL is spread randomly by up to this share.
 
-```go hl_lines="21"
---8<-- "examples/docs/stampedes/jitter/main.go"
+```go hl_lines="2"
+--8<-- "examples/docs/stampedes/jitter/main.go:example"
 ```
+
+??? example "Full program"
+
+    ```go
+    --8<-- "examples/docs/stampedes/jitter/main.go"
+    ```
 
 - With 1000 keys stored at once and a TTL of 1h, `Jitter: 0` makes all of them expire at 60m: 1000
   loads in a second. `Jitter: 0.2` spreads them from 48m to 72m: about one load every 1.5 seconds.

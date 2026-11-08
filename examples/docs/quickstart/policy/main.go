@@ -15,6 +15,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL:      gashe.TTL{For: time.Hour},                      // (1)!
 		Prefix:   "user:",                                        // (2)!
@@ -22,4 +23,5 @@ func main() {
 		Stampede: gashe.Stampede{LockFor: 5 * time.Second},       // (4)!
 	})
 	_ = users
+	// --8<-- [end:example]
 }

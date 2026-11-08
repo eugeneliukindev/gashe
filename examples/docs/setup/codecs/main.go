@@ -18,6 +18,7 @@ func main() {
 	backend := memory.New(memory.Options{})
 	defer backend.Close()
 
+	// --8<-- [start:example]
 	for _, codec := range []gashe.Codec{
 		gashe.JSON{},                      // (1)!
 		msgpack.Codec{},                   // (2)!
@@ -26,4 +27,5 @@ func main() {
 		c := gashe.New(backend, gashe.Options{Codec: codec})
 		c.Set(ctx, "user:42", User{Name: "Ann"}, time.Hour)
 	}
+	// --8<-- [end:example]
 }

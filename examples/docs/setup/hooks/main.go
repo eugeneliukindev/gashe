@@ -21,6 +21,7 @@ func main() {
 	backend := memory.New(memory.Options{})
 	defer backend.Close()
 
+	// --8<-- [start:example]
 	c := gashe.New(backend, gashe.Options{
 		Hooks: gashe.Hooks{
 			OnResult: func(ctx context.Context, o gashe.Outcome) {
@@ -32,4 +33,5 @@ func main() {
 
 	load := func(context.Context) (string, error) { return "Ann", nil }
 	gashe.GetOrLoad(context.Background(), c, "user:42", gashe.Policy[string]{TTL: gashe.TTL{For: time.Hour}}, load)
+	// --8<-- [end:example]
 }

@@ -18,6 +18,7 @@ func main() {
 	c := gashe.New(mem, gashe.Options{})
 	defer c.Shutdown(ctx)
 
+	// --8<-- [start:example]
 	rateCache := gashe.For(c, gashe.Policy[Rates]{
 		TTL: gashe.TTL{For: time.Minute},
 		Stale: gashe.Stale{
@@ -31,4 +32,5 @@ func main() {
 	rateCache.GetOrLoad(ctx, "EUR", func(context.Context) (Rates, error) {
 		return Rates{"USD": 1.08}, nil
 	}) // {USD: 1.08}, miss
+	// --8<-- [end:example]
 }

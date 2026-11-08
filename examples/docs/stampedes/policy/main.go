@@ -17,6 +17,7 @@ func main() {
 	defer mem.Close()
 	c := gashe.New(mem, gashe.Options{})
 
+	// --8<-- [start:example]
 	users := gashe.For(c, gashe.Policy[User]{
 		TTL: gashe.TTL{For: time.Hour},
 		Stampede: gashe.Stampede{
@@ -29,4 +30,5 @@ func main() {
 	users.GetOrLoad(ctx, "42", func(context.Context) (User, error) {
 		return User{Name: "Ann"}, nil
 	}) // Ann, miss
+	// --8<-- [end:example]
 }
