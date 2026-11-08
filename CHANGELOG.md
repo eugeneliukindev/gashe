@@ -9,6 +9,11 @@ module it is about.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-08
+
+Released as `v0.7.0`. `backend/redis`, `codec/msgpack` and `compress/zstd` have no changes and stay
+at `v0.5.0`, `v0.4.0` and `v0.2.0`.
+
 ### Added
 
 - `Policy.Store.SlowerThan`: only results whose load took at least this long are stored, so a
@@ -285,7 +290,8 @@ The first release.
   tested on Redis 7, Valkey 8, Dragonfly and KeyDB.
 - `codec/msgpack` (module): a MessagePack codec.
 
-[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/eugeneliukindev/gashe/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eugeneliukindev/gashe/releases/tag/v0.4.0
