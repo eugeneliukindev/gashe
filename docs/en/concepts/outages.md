@@ -113,22 +113,3 @@ flowchart LR
 !!! tip
     Set [`MaxTTL`](../reference/gashe.md#Fallback) per kind of data, as long as a result may stay unchanged by invalidations: shorter
     for rates than for users.
-
-100 requests while Redis is down. The two versions differ in the lines
-highlighted.
-
-=== "With Fallback"
-
-    ```go hl_lines="25"
-    --8<-- "examples/fallback/with/main.go"
-    ```
-
-    The first request loads into the fallback and the others read it: 1 query.
-
-=== "Without Fallback"
-
-    ```go
-    --8<-- "examples/fallback/without/main.go"
-    ```
-
-    Every request goes to the database, 100 queries.

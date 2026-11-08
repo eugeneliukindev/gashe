@@ -176,23 +176,7 @@ With the policy above:
     late: permissions, balances, prices at checkout.
 
 `IsFailure` picks which errors the stale result answers. Without it, every error does, so a row that
-was deleted keeps showing until `TTL + IfError.For`:
-
-=== "With IsFailure"
-
-    ```go hl_lines="23-26"
-    --8<-- "examples/staleif/with/main.go"
-    ```
-
-    The stale result answers the outage, and the deleted page gets its error.
-
-=== "Without IsFailure"
-
-    ```go
-    --8<-- "examples/staleif/without/main.go"
-    ```
-
-    The stale result answers both, so the deleted page is still shown.
+was deleted keeps showing until `TTL + IfError.For`.
 
 ---
 

@@ -1,1 +1,0 @@
-user:999  "not found"   lives 30s: Negative.TTL

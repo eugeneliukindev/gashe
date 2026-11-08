@@ -86,24 +86,6 @@ sequenceDiagram
     In Redis, the load lock is `SET __load:<key> NX EX or PX`, tried again every
     [`LockPollInterval`](../reference/gashe.md#Options).
 
-One process of a service, run three times at once; each has its own memory, only Redis is shared.
-
-=== "With Stampede.LockFor"
-
-    ```go hl_lines="28"
-    --8<-- "examples/lockfor/with/main.go"
-    ```
-
-    One process loads, the other two read its result, 1 query in all.
-
-=== "Without Stampede.LockFor"
-
-    ```go
-    --8<-- "examples/lockfor/without/main.go"
-    ```
-
-    Every process loads, 3 queries in all.
-
 ---
 
 ## A limit on loads at once { #maxconcurrentloads }

@@ -51,29 +51,3 @@ sequenceDiagram
 ??? note "Technical details"
     - The "not found" is an entry of its own with `neg` set, stored for [`Negative.TTL`](../reference/gashe.md#Negative), see
       [the GetOrLoad entry](../internals/storage.md#the-getorload-entry).
-
-Three lookups of a user that does not exist. The two versions differ in the highlighted lines.
-
-=== "With Negative"
-
-    ```go hl_lines="22-25"
-    --8<-- "examples/negative/with/main.go"
-    ```
-
-    The first lookup caches the "not found", the other two get it from the cache: 1 query.
-
-    ```text title="In the backend"
-    --8<-- "docs/snippets/backend/negative-with.txt"
-    ```
-
-=== "Without Negative"
-
-    ```go
-    --8<-- "examples/negative/without/main.go"
-    ```
-
-    Every lookup reaches the database, 3 queries.
-
-    ```text title="In the backend"
-    --8<-- "docs/snippets/backend/negative-without.txt"
-    ```
