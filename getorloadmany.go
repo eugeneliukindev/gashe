@@ -15,7 +15,7 @@ import (
 // stored.
 //
 // It reads entries stored by GetOrLoad with the same policy and the other way round. It supports
-// TTL, Tags, CacheIf and Prefix; Stale, Stampede.LockFor
+// TTL, Tags, Store and Prefix; Stale, Stampede.LockFor
 // and Negative return ErrInvalidOptions. Unlike GetOrLoad, concurrent calls do not share a load.
 // An error from load is returned as is; if the backend fails, the result of load is returned
 // without storing it.
@@ -69,7 +69,7 @@ func getOrLoadMany[V any](
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(found, l.storeMany(ctx, missing, loaded))
+	maps.Copy(found, l.storeMany(ctx, missing, loaded, took))
 	return found, nil
 }
 
@@ -113,7 +113,12 @@ func (l *loading[V]) readMany(
 // storeMany stores the loaded results of missing in one call and returns them as they read back.
 // Every entry gets its own jittered fresh time; the backend keeps all of them as long as the
 // longest, which costs a little memory and changes no answer.
-func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map[string]V) map[string]V {
+func (l *loading[V]) storeMany(
+	ctx context.Context,
+	missing []string,
+	loaded map[string]V,
+	took time.Duration,
+) map[string]V {
 	out := make(map[string]V, len(loaded))
 	raws := make(map[string][]byte, len(loaded))
 	var ttl time.Duration
@@ -124,7 +129,7 @@ func (l *loading[V]) storeMany(ctx context.Context, missing []string, loaded map
 		}
 		out[k] = v
 		fresh, ok := l.freshFor(ctx, v)
-		if !ok || (l.o.CacheIf != nil && !l.o.CacheIf(v)) {
+		if !ok || !l.o.Store.stores(v, took) {
 			continue
 		}
 		key := l.o.Prefix + k

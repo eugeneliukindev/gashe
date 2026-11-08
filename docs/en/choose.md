@@ -12,7 +12,8 @@ Find the problem, then the setting that solves it and the section that shows it.
 | --- | --- | --- |
 | The same expensive call runs again and again | `gashe.For`, `GetOrLoad`, `Policy.TTL.For` | [Read, or load and store](concepts/loading.md#getorload) |
 | A page loads many keys, one query each | `GetOrLoadMany` | [Many keys in one query](concepts/loading.md#getorloadmany) |
-| Empty results or some values must not be stored | `Policy.CacheIf` | [What is stored](concepts/loading.md#cacheif-prefix) |
+| Empty results or some values must not be stored | `Policy.Store.If` | [What is stored](concepts/loading.md#cacheif-prefix) |
+| A source answers fast, and only its slow answers are worth caching | `Policy.Store.SlowerThan` | [What is stored](concepts/loading.md#cacheif-prefix) |
 | Lookups of rows that do not exist reach the database every time | `Policy.Negative` | [Caching "not found"](concepts/negative.md#negative-cache-not-found) |
 
 ## Many calls at once { #many-calls-at-once }

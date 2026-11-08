@@ -22,8 +22,8 @@ func main() {
 
 	// skip empty results
 	feed := gashe.For(c, gashe.Policy[[]Item]{
-		TTL:     gashe.TTL{For: time.Minute},
-		CacheIf: func(v []Item) bool { return len(v) > 0 },
+		TTL:   gashe.TTL{For: time.Minute},
+		Store: gashe.Store[[]Item]{If: func(v []Item) bool { return len(v) > 0 }},
 	})
 
 	// stores users:v2:42

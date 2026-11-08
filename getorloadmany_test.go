@@ -86,10 +86,13 @@ func TestGetOrLoadManyTags(t *testing.T) {
 	}
 }
 
-func TestGetOrLoadManyCacheIf(t *testing.T) {
+func TestGetOrLoadManyStoreIf(t *testing.T) {
 	ctx := context.Background()
 	c := newCache(t)
-	o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Minute}, CacheIf: func(u user) bool { return u.Name != "a" }}
+	o := gashe.Policy[user]{
+		TTL:   gashe.TTL{For: time.Minute},
+		Store: gashe.Store[user]{If: func(u user) bool { return u.Name != "a" }},
+	}
 	var asked [][]string
 	load := byName(&asked)
 

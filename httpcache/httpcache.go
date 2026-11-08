@@ -74,7 +74,7 @@ type serverError struct {
 func (e *serverError) Error() string        { return errServer.Error() }
 func (e *serverError) Is(target error) bool { return target == errServer }
 
-// Response is a stored response. Policy.CacheIf receives it.
+// Response is a stored response. Policy.Store.If receives it.
 type Response struct {
 	// Status is the status code of the response.
 	Status int
@@ -90,7 +90,7 @@ type Response struct {
 
 // Options configures New.
 type Options struct {
-	// Policy says how responses are cached, as for gashe.GetOrLoad. CacheIf decides which statuses
+	// Policy says how responses are cached, as for gashe.GetOrLoad. Store.If decides which statuses
 	// are stored; nil stores 200 only. The rules of New apply on top of it.
 	Policy gashe.Policy[Response]
 	// Vary says which parts of a request a page depends on, and so what its key is made of;
@@ -106,7 +106,7 @@ type Options struct {
 // New returns a middleware that caches the responses of a handler in c.
 //
 // A request goes straight to the handler if it is not GET or HEAD, has a Range header, or has an
-// Authorization or Cookie header Vary does not cover. A response is stored only if CacheIf
+// Authorization or Cookie header Vary does not cover. A response is stored only if Store.If
 // allows its status and it has no Set-Cookie, no Vary header beyond Options.Vary, no Cache-Control
 // no-store, private or no-cache, and a body within MaxBodyBytes; otherwise it is sent as is to the
 // request that made it. A 5xx response counts as a loader error, so Stale.IfError answers it with
@@ -117,7 +117,7 @@ type Options struct {
 // every request. Responses get an ETag (a hash of the body unless the handler set one), Age on a
 // response from the cache, and Cache-Status (RFC 9211), with fwd=stale and fwd-status on a stale
 // page Stale.IfError answered; a matching If-None-Match gets 304. It panics on a negative
-// MaxBodyBytes and on Policy.Negative, which cannot apply: CacheIf stores 404 responses.
+// MaxBodyBytes and on Policy.Negative, which cannot apply: Store.If stores 404 responses.
 //
 //nolint:gocritic // options by value, like gashe.New
 func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
@@ -126,16 +126,16 @@ func New(c *gashe.Cache, o Options) func(http.Handler) http.Handler {
 	}
 	if o.Policy.Negative.IsNotFound != nil {
 		// The loader returns only server errors and responses not to store, never "not found".
-		panic("httpcache: Policy.Negative does not apply; store 404 responses with CacheIf")
+		panic("httpcache: Policy.Negative does not apply; store 404 responses with Store.If")
 	}
 	m := &middleware{
 		c:       c,
 		policy:  o.Policy,
-		cacheIf: o.Policy.CacheIf,
+		cacheIf: o.Policy.Store.If,
 		vary:    newVary(&o.Vary),
 		maxBody: cmp.Or(o.MaxBodyBytes, defaultMaxBody),
 	}
-	m.policy.CacheIf = nil // the loader applies it, with the rules above
+	m.policy.Store.If = nil // the loader applies it, with the rules above
 	isFailure := o.Policy.Stale.IfError.IsFailure
 	m.policy.Stale.IfError.IsFailure = func(err error) bool {
 		return !errors.Is(err, errNotStored) && (isFailure == nil || isFailure(err))

@@ -50,7 +50,10 @@ func TestCachedSetDeletesWhatThePolicyDoesNotStore(t *testing.T) {
 	c := newCache(t)
 	users := gashe.For(
 		c,
-		gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, CacheIf: func(u user) bool { return u.Name != "" }},
+		gashe.Policy[user]{
+			TTL:   gashe.TTL{For: time.Hour},
+			Store: gashe.Store[user]{If: func(u user) bool { return u.Name != "" }},
+		},
 	)
 	_, load := counter(user{Name: "Ann"})
 
@@ -59,7 +62,7 @@ func TestCachedSetDeletesWhatThePolicyDoesNotStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok, _ := c.Exists(ctx, "42"); ok {
-		t.Fatal("an empty user is not stored by CacheIf, so Set must drop the old entry")
+		t.Fatal("an empty user is not stored by Store.If, so Set must drop the old entry")
 	}
 }
 

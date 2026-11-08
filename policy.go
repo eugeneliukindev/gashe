@@ -42,15 +42,34 @@ type Policy[V any] struct {
 	// one per call. The basic API and locks do not use it. Without a Backend there is none: while
 	// the backend fails, every call loads.
 	Fallback Fallback
-	// CacheIf decides whether a result is stored. nil stores every successful result.
-	CacheIf func(V) bool
+	// Store says which results are stored. The zero value stores every successful result.
+	Store Store[V]
+}
+
+// Store says which loaded results are stored.
+type Store[V any] struct {
+	// SlowerThan stores only results whose load took at least this long, so a source that answers
+	// fast is called every time. 0 means every load. Cached.Set is not a load and ignores it.
+	SlowerThan time.Duration
+	// If decides whether a result is stored. nil stores every successful result.
+	If func(V) bool
+}
+
+// accepts reports whether Store.If lets v be stored.
+func (s Store[V]) accepts(v V) bool {
+	return s.If == nil || s.If(v)
+}
+
+// stores reports whether v, whose load took took, is stored.
+func (s Store[V]) stores(v V, took time.Duration) bool {
+	return took >= s.SlowerThan && s.accepts(v)
 }
 
 // TTL says how long a result is fresh.
 type TTL struct {
 	// For is how long a result is fresh: a time.Duration, a string for time.ParseDuration such
 	// as "1h", or a func(V) time.Duration of the result type that picks it from the result; to
-	// leave a result out, use CacheIf, not a negative TTL:
+	// leave a result out, use Store.If, not a negative TTL:
 	//
 	//	For: time.Hour
 	//	For: 90 * time.Second
@@ -158,7 +177,7 @@ func (o Policy[V]) check() (ttl func(V) time.Duration, err error) {
 	}{
 		{
 			negative(o.Stale.WhileRevalidate, o.Stale.IfError.For, o.Stale.IfSlow.For, o.Stale.IfSlow.After,
-				o.Stampede.LockFor, o.Negative.TTL),
+				o.Stampede.LockFor, o.Negative.TTL, o.Store.SlowerThan),
 			"durations must not be negative",
 		},
 		{o.TTL.Jitter < 0 || o.TTL.Jitter >= 1, "TTL.Jitter must be from 0 to less than 1"},
@@ -228,7 +247,7 @@ func (o Policy[V]) spread(d time.Duration) time.Duration {
 	return time.Duration(float64(d) * (1 + (rand.Float64()*2-1)*o.TTL.Jitter)) //nolint:gosec // jitter, not a secret
 }
 
-// NotNil is a CacheIf rule that skips nil pointers, slices, maps, channels, functions and interfaces.
+// NotNil is a Store.If rule that skips nil pointers, slices, maps, channels, functions and interfaces.
 // Values of other kinds always pass.
 func NotNil[V any](v V) bool {
 	rv := reflect.ValueOf(any(v))

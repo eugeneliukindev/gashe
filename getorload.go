@@ -263,7 +263,7 @@ func (l *loading[V]) notFound(err error) bool {
 
 // storeResult stores v as the policy says and returns it as it reads back.
 func (l *loading[V]) storeResult(ctx context.Context, v V) V {
-	if l.o.CacheIf != nil && !l.o.CacheIf(v) {
+	if !l.o.Store.stores(v, l.took) {
 		return v
 	}
 	fresh, ok := l.freshFor(ctx, v)
@@ -284,7 +284,7 @@ func (l *loading[V]) storeResult(ctx context.Context, v V) V {
 func (l *loading[V]) freshFor(ctx context.Context, v V) (time.Duration, bool) {
 	fresh := l.ttl(v)
 	if fresh < 0 {
-		l.c.onError(ctx, fmt.Errorf("%w: TTL.For returned %v for %q; leave a result out with CacheIf",
+		l.c.onError(ctx, fmt.Errorf("%w: TTL.For returned %v for %q; leave a result out with Store.If",
 			ErrInvalidOptions, fresh, l.key))
 		return 0, false
 	}

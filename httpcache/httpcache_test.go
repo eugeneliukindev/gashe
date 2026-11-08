@@ -191,17 +191,19 @@ func TestLargeBodyIsSentWholeAndNotStored(t *testing.T) {
 	}
 }
 
-func TestCacheIfDecidesStatuses(t *testing.T) {
+func TestStoreIfDecidesStatuses(t *testing.T) {
 	p := &page{body: "no such product"}
 	p.status.Store(http.StatusNotFound)
 	h := serve(t, newCache(t), &httpcache.Options{Policy: gashe.Policy[httpcache.Response]{
-		TTL:     gashe.TTL{For: time.Minute},
-		CacheIf: func(r httpcache.Response) bool { return r.Status == 200 || r.Status == 404 },
+		TTL: gashe.TTL{For: time.Minute},
+		Store: gashe.Store[httpcache.Response]{
+			If: func(r httpcache.Response) bool { return r.Status == 200 || r.Status == 404 },
+		},
 	}}, p)
 
 	get(h, http.MethodGet, "/p/1")
 	if w := get(h, http.MethodGet, "/p/1"); w.Code != http.StatusNotFound || p.runs.Load() != 1 {
-		t.Fatalf("got %d after %d runs; CacheIf allowed 404", w.Code, p.runs.Load())
+		t.Fatalf("got %d after %d runs; Store.If allowed 404", w.Code, p.runs.Load())
 	}
 }
 
@@ -579,7 +581,7 @@ func TestServerErrorIsSharedWithWaiters(t *testing.T) {
 func TestNegativeIsRejected(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("no panic: Policy.Negative cannot work in httpcache, CacheIf stores 404s")
+			t.Fatal("no panic: Policy.Negative cannot work in httpcache, Store.If stores 404s")
 		}
 	}()
 	httpcache.New(newCache(t), httpcache.Options{Policy: gashe.Policy[httpcache.Response]{

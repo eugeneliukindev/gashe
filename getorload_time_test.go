@@ -138,3 +138,67 @@ func TestGetOrLoadWaiterStopsOnItsContext(t *testing.T) {
 		close(release)
 	})
 }
+
+func TestStoreSlowerThan(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s := newCached(newCache(t), gashe.Policy[user]{
+			TTL:   gashe.TTL{For: time.Hour},
+			Store: gashe.Store[user]{SlowerThan: 100 * time.Millisecond},
+		})
+		var calls atomic.Int32
+		loadTaking := func(d time.Duration) func(context.Context) (user, error) {
+			return func(context.Context) (user, error) {
+				calls.Add(1)
+				time.Sleep(d)
+				return user{Name: "Ann"}, nil
+			}
+		}
+
+		_, _ = s.Do(ctx, "fast", loadTaking(10*time.Millisecond))
+		_, _ = s.Do(ctx, "fast", loadTaking(10*time.Millisecond))
+		if n := calls.Load(); n != 2 {
+			t.Fatalf("a load faster than SlowerThan was stored: %d loads, want 2", n)
+		}
+		_, _ = s.Do(ctx, "slow", loadTaking(200*time.Millisecond))
+		_, _ = s.Do(ctx, "slow", loadTaking(200*time.Millisecond))
+		if n := calls.Load(); n != 3 {
+			t.Fatalf("a load slower than SlowerThan was not stored: %d loads, want 3", n)
+		}
+	})
+}
+
+func TestGetOrLoadManyStoreSlowerThan(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		c := newCache(t)
+		o := gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Store: gashe.Store[user]{SlowerThan: time.Second}}
+		var calls atomic.Int32
+		load := func(_ context.Context, missing []string) (map[string]user, error) {
+			calls.Add(1)
+			time.Sleep(10 * time.Millisecond)
+			out := map[string]user{}
+			for _, k := range missing {
+				out[k] = user{Name: k}
+			}
+			return out, nil
+		}
+		for range 2 {
+			if _, err := gashe.GetOrLoadMany(ctx, c, []string{"a", "b"}, o, load); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if n := calls.Load(); n != 2 {
+			t.Fatalf("a batch faster than SlowerThan was stored: %d loads, want 2", n)
+		}
+	})
+}
+
+func TestStoreSlowerThanNegative(t *testing.T) {
+	_, err := gashe.GetOrLoad(context.Background(), newCache(t), "k",
+		gashe.Policy[user]{TTL: gashe.TTL{For: time.Hour}, Store: gashe.Store[user]{SlowerThan: -time.Second}},
+		func(context.Context) (user, error) { return user{}, nil })
+	if !errors.Is(err, gashe.ErrInvalidOptions) {
+		t.Fatalf("err = %v, want ErrInvalidOptions", err)
+	}
+}

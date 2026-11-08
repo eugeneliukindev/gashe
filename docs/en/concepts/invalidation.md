@@ -75,7 +75,7 @@ and shape of the policy.
 
 **Signature:** `func (p Cached[V]) Set(ctx context.Context, key string, v V) error`
 
-- A result the policy does not store, by [`CacheIf`](../reference/gashe.md#Policy), deletes the entry.
+- A result the policy does not store, by [`Store.If`](../reference/gashe.md#Store), deletes the entry.
 - It returns backend and codec errors.
 
 !!! warning

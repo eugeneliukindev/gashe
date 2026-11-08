@@ -3,7 +3,7 @@
 This page shows how [`GetOrLoad`](../reference/gashe.md#GetOrLoad) answers, how a list loads with one query, how long results stay fresh and what gets stored. In this
 section, we will go through [the policy](#policy), [`gashe.For`](#gashefor), [`GetOrLoad`](#getorload),
 [`GetOrLoadMany`](#getorloadmany), [`TTL`](#ttl),
-[`CacheIf` and `Prefix`](#cacheif-prefix) and
+[`Store` and `Prefix`](#cacheif-prefix) and
 [type shapes](#type-shapes).
 
 ## The policy { #policy }
@@ -128,7 +128,7 @@ sequenceDiagram
 
 - It returns a map of every key that was found or loaded.
 - Concurrent calls do not share a load.
-- It supports the policy fields `TTL`, [`TTL.Jitter`](../reference/gashe.md#TTL), [`Tags`](../reference/gashe.md#Policy), [`CacheIf`](../reference/gashe.md#Policy), `Prefix`,
+- It supports the policy fields `TTL`, [`TTL.Jitter`](../reference/gashe.md#TTL), [`Tags`](../reference/gashe.md#Policy), [`Store`](../reference/gashe.md#Store), `Prefix`,
   [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) and [`Fallback`](../reference/gashe.md#Fallback). With [`Stale`](../reference/gashe.md#Stale), [`Stampede.LockFor`](../reference/gashe.md#Stampede) or
   [`Negative`](../reference/gashe.md#Negative) set, it returns [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - It returns the loader error, or [`ErrOverloaded`](../reference/gashe.md#variables) when every slot of [`Stampede.MaxLoads`](../reference/gashe.md#Stampede) stayed
@@ -170,7 +170,7 @@ that gashe calls after a load.
 
 - Any type but these three, a string `time.ParseDuration` rejects, a negative duration, or neither
   [`TTL.For`](../reference/gashe.md#TTL) nor a stale window is [`ErrInvalidOptions`](../reference/gashe.md#variables).
-- To leave a result out, use [`CacheIf`](#cacheif-prefix): a negative TTL from the function is not
+- To leave a result out, use [`Store.If`](#cacheif-prefix): a negative TTL from the function is not
   stored, and goes to [`OnError`](../reference/gashe.md#Hooks) as [`ErrInvalidOptions`](../reference/gashe.md#variables).
 - The entry lives `TTL` plus the longest of [`Stale.WhileRevalidate`](../reference/gashe.md#Stale), [`Stale.IfError.For`](../reference/gashe.md#Stale) and
   [`Stale.IfSlow.For`](../reference/gashe.md#Stale).
@@ -186,15 +186,18 @@ that gashe calls after a load.
 
 ## What is stored, and under which key { #cacheif-prefix }
 
-Not every result is worth storing, and two kinds of data may share a key. [`CacheIf`](../reference/gashe.md#Policy) decides which
-results are stored; `Prefix` goes before every key of the policy.
+Not every result is worth storing, and two kinds of data may share a key. [`Store`](../reference/gashe.md#Store) decides which
+results are stored: `If` looks at the result, `SlowerThan` at how long its load took. `Prefix`
+goes before every key of the policy.
 
 ```go hl_lines="26 32"
 --8<-- "examples/docs/loading/cacheif-prefix/main.go"
 ```
 
 - Changing `Prefix` makes every entry of that kind a miss at once.
-- When [`CacheIf`](../reference/gashe.md#Policy) returns false, the result is returned and not stored.
+- When `Store.If` returns false, the result is returned and not stored.
+- With `Store.SlowerThan`, a load faster than it is returned and not stored: a source that answers
+  fast is called every time, and only the slow ones are cached.
 
 !!! tip
     After a change in what a result means, change its `Prefix`, such as `users:v2:` to `users:v3:`:

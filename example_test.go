@@ -587,7 +587,10 @@ func ExamplePolicy() {
 			IsNotFound: func(err error) bool { return errors.Is(err, errNoUser) },
 		},
 		Fallback: gashe.Fallback{Backend: spare, MaxTTL: 30 * time.Second}, // answers while the backend fails
-		CacheIf:  func(u User) bool { return u.Name != "" },                // store only users with a name
+		Store: gashe.Store[User]{
+			SlowerThan: 50 * time.Millisecond,                     // store only loads that took this long
+			If:         func(u User) bool { return u.Name != "" }, // store only users with a name
+		},
 	})
 
 	u, err := users.GetOrLoad(ctx, "42", func(context.Context) (User, error) {
