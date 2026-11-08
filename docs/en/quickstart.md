@@ -1,7 +1,7 @@
 # Quickstart { #quickstart }
 
 From a first cache to a cache shared by every process of a service, in three steps. Install gashe
-first: [Install](index.md#install).
+first: [Install](install.md).
 
 ## A first cache { #a-first-cache }
 

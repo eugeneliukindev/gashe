@@ -12,7 +12,7 @@ extra_css = ["assets/stylesheets/extra.css"]
 extra_javascript = ["assets/javascripts/mermaid-zoom.js", "assets/javascripts/go-roles.js"]
 nav = [
   { "Home" = "index.md" },
-  { "Getting started" = ["quickstart.md", "install.md", "choose.md", "about/alternatives.md"] },
+  { "Getting started" = ["install.md", "quickstart.md", "choose.md", "about/alternatives.md"] },
   { "Guides" = [
     "concepts/setup.md",
     "concepts/loading.md",
