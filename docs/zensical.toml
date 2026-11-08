@@ -55,7 +55,7 @@ nav = [
     { "gzip" = "reference/gzip.md" },
     { "zstd" = "reference/zstd.md" },
     "errors.md",
-    "glossary.md",
+    { "Glossary" = "glossary.md" },
   ] },
   { "Release notes" = ["changelog.md", "about/version-policy.md", "about/migration.md"] },
 ]
