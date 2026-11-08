@@ -118,6 +118,14 @@ test-cluster *flags: _work
 redis-down:
     docker compose down
 
+[doc("Search for inputs that break the fuzz tests: just fuzz 1m")]
+[group('test')]
+fuzz time="10s": _work
+    go test -run '^$' -fuzz '^FuzzMatch$' -fuzztime {{ time }} ./backend/memory
+    go test -run '^$' -fuzz '^FuzzGetOrLoadStoredBytes$' -fuzztime {{ time }} .
+    go test -run '^$' -fuzz '^FuzzCompressor$' -fuzztime {{ time }} ./compress/gzip
+    go test -run '^$' -fuzz '^FuzzCompressor$' -fuzztime {{ time }} ./compress/zstd
+
 [doc("Run benchmarks: just bench -count=5")]
 [group('test')]
 [working-directory('benchmarks')]

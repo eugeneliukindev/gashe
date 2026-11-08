@@ -27,6 +27,7 @@ just check          # before a commit: golangci-lint, typos, tombi, actionlint, 
 just check-all      # before a tag: check, the examples, Redis, Valkey and a Cluster in Docker, the site
 just golangci-fmt   # format with the formatters of .golangci.yml
 just prek-install   # install the git hooks of prek.toml, which run the linters on the changed files
+just fuzz 1m        # search for inputs that break the fuzz tests; CI runs it every night
 just bench -count=5 # the benchmarks; update the tables in docs/en/internals/benchmarks.md from them
 just test-redis-all # the Redis tests on Redis 7.0 and Valkey 8, in Docker
 just test-cluster   # the Cluster tests on three masters, in Docker
