@@ -18,23 +18,38 @@ func main() {
 
 	// --8<-- [start:example]
 	c := gashe.New(backend, gashe.Options{
-		Prefix:     "orders:",    // in front of every key, the own keys included; "" means none
+		// in front of every key, the own keys included; "" means none
+		Prefix:     "orders:",
 		Codec:      gashe.JSON{}, // the format of values; nil means JSON
 		Compressor: zstd.New(),   // shrinks what Codec produced; nil means none
-		CircuitBreaker: gashe.CircuitBreaker{ // stops calling a failing backend; the zero value means none
-			FailurePercent: 50,               // opens at this share of failed calls, 1 to 99; required
-			MinCalls:       20,               // calls the window needs before it may open; 0 means 1
-			Window:         10 * time.Second, // the span calls are counted over; required
-			OpenFor:        5 * time.Second,  // how long the open breaker refuses calls; required
-			HalfOpenCalls:  1,                // test calls after OpenFor; 0 means it just closes
-			IsFailure: func(err error) bool { // which errors count; nil means any but a miss
+		// stops calling a failing backend; the zero value means none
+		CircuitBreaker: gashe.CircuitBreaker{
+			// opens at this share of failed calls, 1 to 99; required
+			FailurePercent: 50,
+			// calls the window needs before it may open; 0 means 1
+			MinCalls: 20,
+			// the span calls are counted over; required
+			Window: 10 * time.Second,
+			// how long the open breaker refuses calls; required
+			OpenFor: 5 * time.Second,
+			// test calls after OpenFor; 0 means it just closes
+			HalfOpenCalls: 1,
+			// which errors count; nil means any but a miss
+			IsFailure: func(err error) bool {
 				return !errors.Is(err, context.Canceled)
 			},
 		},
-		LockPollInterval: 20 * time.Millisecond, // how often a busy lock is checked; 0 means 100ms
+		// how often a busy lock is checked; 0 means 100ms
+		LockPollInterval: 20 * time.Millisecond,
 		Hooks: gashe.Hooks{
-			OnResult: func(_ context.Context, o gashe.Outcome) { log.Println(o.Key, o.Result) }, // nil drops them
-			OnError:  func(_ context.Context, err error) { log.Println("cache:", err) },         // nil drops them
+			// how each GetOrLoad was answered; nil drops it
+			OnResult: func(_ context.Context, o gashe.Outcome) {
+				log.Println(o.Key, o.Result)
+			},
+			// the errors the cache works around; nil drops them
+			OnError: func(_ context.Context, err error) {
+				log.Println("cache:", err)
+			},
 		},
 	})
 	defer c.Shutdown(context.Background())
